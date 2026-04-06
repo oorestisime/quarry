@@ -7,6 +7,7 @@ Chqry is a query builder first. It is not trying to be an ORM or hide ClickHouse
 ## Docs
 
 - [Approach](./docs/approach.md)
+- [Roadmap](./docs/roadmap.md)
 - [Usage](./docs/usage.md)
 
 ## Status

@@ -4,6 +4,30 @@
 
 This project is a ClickHouse-native TypeScript query builder.
 
+## Inspiration
+
+Chqry is not a port of Kysely or Drizzle, but both projects are useful reference points.
+
+- Kysely influenced the overall query-builder architecture, immutable chaining style, and a lot of the type-level thinking around source scope and selected output types.
+- Drizzle is a useful reference point for ergonomics, schema-first thinking, and keeping the API approachable.
+
+The goal is to learn from those projects without forcing ClickHouse into abstractions that were designed for other databases.
+
+## Why Not A Kysely Dialect Or Drizzle Adapter?
+
+Because ClickHouse differs in ways that are not just syntax deep.
+
+Examples:
+
+- `FINAL` belongs to table sources
+- `PREWHERE` is a distinct clause
+- `SETTINGS` is a query-level ClickHouse feature
+- `LEFT JOIN` runtime behavior differs from the null-default assumptions many SQL tools make
+- typed ClickHouse placeholders such as `{p0:UInt64}` matter directly in the SQL text
+- ClickHouse result shapes and runtime value types do not always line up with the defaults expected by more generic SQL builders
+
+Those differences make it possible to borrow ideas from Kysely and Drizzle without wanting to force Chqry into a dialect or adapter layer on top of them.
+
 It is not trying to be:
 
 - a generic SQL abstraction across many databases
