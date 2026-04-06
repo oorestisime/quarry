@@ -62,16 +62,22 @@ try {
     `,
   });
 
-  await db.insertInto("users").values([
-    { id: 1, email: "alice@example.com", status: "active" },
-    { id: 2, email: "bruno@example.com", status: "inactive" },
-  ]).execute();
+  await db
+    .insertInto("users")
+    .values([
+      { id: 1, email: "alice@example.com", status: "active" },
+      { id: 2, email: "bruno@example.com", status: "inactive" },
+    ])
+    .execute();
 
-  await db.insertInto("event_logs").values([
-    { user_id: 1, event_type: "signup", created_at: "2025-01-01 10:00:00" },
-    { user_id: 1, event_type: "purchase", created_at: "2025-01-02 11:00:00" },
-    { user_id: 2, event_type: "signup", created_at: "2025-01-03 12:00:00" },
-  ]).execute();
+  await db
+    .insertInto("event_logs")
+    .values([
+      { user_id: 1, event_type: "signup", created_at: "2025-01-01 10:00:00" },
+      { user_id: 1, event_type: "purchase", created_at: "2025-01-02 11:00:00" },
+      { user_id: 2, event_type: "signup", created_at: "2025-01-03 12:00:00" },
+    ])
+    .execute();
 
   const compiled = db
     .selectFrom("users as u")
