@@ -1,5 +1,5 @@
 {
-  "name": "chqry",
+  "name": "@oorestisime/quarry",
   "version": "0.1.0",
   "private": false,
   "description": "Experimental ClickHouse-native query builder for TypeScript.",
@@ -15,14 +15,14 @@
     "type-safety",
     "typescript"
   ],
-  "homepage": "https://github.com/oorestisime/chqry",
+  "homepage": "https://github.com/oorestisime/quarry",
   "bugs": {
-    "url": "https://github.com/oorestisime/chqry/issues"
+    "url": "https://github.com/oorestisime/quarry/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/oorestisime/chqry.git"
+    "url": "git+ssh://git@github.com/oorestisime/quarry.git"
   },
   "files": [
     "dist"

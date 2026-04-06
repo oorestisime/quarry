@@ -6,7 +6,7 @@ This project is a ClickHouse-native TypeScript query builder.
 
 ## Inspiration
 
-Chqry is not a port of Kysely or Drizzle, but both projects are useful reference points.
+Quarry is not a port of Kysely or Drizzle, but both projects are useful reference points.
 
 - Kysely influenced the overall query-builder architecture, immutable chaining style, and a lot of the type-level thinking around source scope and selected output types.
 - Drizzle is a useful reference point for ergonomics, schema-first thinking, and keeping the API approachable.
@@ -26,7 +26,7 @@ Examples:
 - typed ClickHouse placeholders such as `{p0:UInt64}` matter directly in the SQL text
 - ClickHouse result shapes and runtime value types do not always line up with the defaults expected by more generic SQL builders
 
-Those differences make it possible to borrow ideas from Kysely and Drizzle without wanting to force Chqry into a dialect or adapter layer on top of them.
+Those differences make it possible to borrow ideas from Kysely and Drizzle without wanting to force Quarry into a dialect or adapter layer on top of them.
 
 It is not trying to be:
 

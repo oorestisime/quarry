@@ -4,7 +4,7 @@
 
 ```ts
 import { createClient } from "@clickhouse/client";
-import { createClickHouseDB } from "chqry";
+import { createClickHouseDB } from "@oorestisime/quarry";
 
 interface DB {
   event_logs: {
@@ -58,7 +58,7 @@ compiled.params;
 Use `param(...)` when you need to control the ClickHouse placeholder type directly.
 
 ```ts
-import { param } from "chqry";
+import { param } from "@oorestisime/quarry";
 
 const rows = await db
   .selectFrom("event_logs as e")

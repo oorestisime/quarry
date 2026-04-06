@@ -1,8 +1,8 @@
-# Chqry
+# Quarry
 
 Experimental ClickHouse-native query builder for TypeScript.
 
-Chqry is a query builder first. It is not trying to be an ORM or hide ClickHouse behind a generic multi-dialect SQL abstraction.
+Quarry is a query builder first. It is not trying to be an ORM or hide ClickHouse behind a generic multi-dialect SQL abstraction.
 
 ## Docs
 
@@ -37,4 +37,4 @@ const rows = await db
 
 ## Naming
 
-The project and package name are `chqry`.
+The project name is Quarry. The npm package name is `@oorestisime/quarry`.
