@@ -1,0 +1,60 @@
+{
+  "name": "chqry",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Experimental ClickHouse-native query builder for TypeScript.",
+  "keywords": [
+    "analytics",
+    "clickhouse",
+    "columnar",
+    "query",
+    "query builder",
+    "query-builder",
+    "sql",
+    "type-safe",
+    "type-safety",
+    "typescript"
+  ],
+  "homepage": "https://github.com/oorestisime/chqry",
+  "bugs": {
+    "url": "https://github.com/oorestisime/chqry/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/oorestisime/chqry.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts vitest.integration.config.ts",
+    "lint:fix": "oxlint --vitest-plugin -A valid-title --fix src test vitest.config.ts vitest.integration.config.ts",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@clickhouse/client": "^1.18.2",
+    "@types/node": "^24.3.0",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
+    "testcontainers": "^11.13.0",
+    "tsdown": "^0.21.7",
+    "typescript": "^6.0.2",
+    "vitest": "^3.2.4"
+  }
+}

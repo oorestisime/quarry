@@ -1,0 +1,3 @@
+{
+  "ignorePatterns": ["README.md", "docs/**", "dist/**", "internal-docs/**", "queries/**/*.sql"]
+}
