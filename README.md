@@ -1,5 +1,7 @@
 # Quarry
 
+[![npm version](https://img.shields.io/npm/v/%40oorestisime%2Fquarry)](https://www.npmjs.com/package/@oorestisime/quarry)
+
 Experimental ClickHouse-native query builder for TypeScript.
 
 Quarry is a query builder first. It is not trying to be an ORM or hide ClickHouse behind a generic multi-dialect SQL abstraction.
