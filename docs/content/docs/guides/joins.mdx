@@ -1,0 +1,100 @@
+---
+title: Joins
+description: Inner, left, and multi-condition joins, plus joining against subqueries and FINAL sources.
+---
+
+Quarry supports the standard join shapes plus the ClickHouse-specific extras
+you need on real analytics tables.
+
+## Simple join
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .innerJoin("event_logs as e", "u.id", "e.user_id")
+  .select("u.id", "u.email", "e.event_type")
+  .execute();
+```
+
+The third and fourth arguments are typed column references. Both must be
+in scope (i.e. they must belong to a table you have already added to the
+query).
+
+## Multi-condition join
+
+When the join condition needs more than one equality, pass an expression
+callback:
+
+```ts
+const rows = await db
+  .selectFrom("users as a")
+  .innerJoin("users as b", (eb) =>
+    eb.and([
+      eb.cmpRef("a.id", "=", "b.id"),
+      eb.cmpRef("a.email", "=", "b.email"),
+    ]),
+  )
+  .select("a.id", "a.email")
+  .execute();
+```
+
+`eb.cmpRef(left, op, right)` compares two column references. Both sides must
+resolve to columns that exist in the current scope.
+
+## `LEFT JOIN`
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .leftJoin("event_logs as e", "u.id", "e.user_id")
+  .select("u.id", "u.email", "e.event_type")
+  .execute();
+```
+
+<Callout type="warn">
+ClickHouse `LEFT JOIN` does **not** produce `null` for unmatched rows by
+default. See
+[Runtime semantics](/docs/concepts/runtime-semantics#left-join-does-not-produce-null-by-default)
+before relying on the result shape.
+</Callout>
+
+## `FINAL` on a joined table source
+
+When you need `FINAL` on the right-hand side of a join, build the source
+explicitly with `db.table(...).as(...).final()`:
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .innerJoin(
+    db.table("event_logs").as("e").final(),
+    "u.id",
+    "e.user_id",
+  )
+  .select("u.id", "u.email", "e.event_type")
+  .execute();
+```
+
+This is the same builder you use for top-level `selectFrom(...)` sources, just
+passed into `innerJoin` directly.
+
+## Joining against a subquery
+
+A select query can be aliased and used as a join source:
+
+```ts
+const downloads = db
+  .selectFrom(db.table("event_logs").as("e").final())
+  .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
+  .groupBy("e.user_id")
+  .as("downloads");
+
+const rows = await db
+  .selectFrom("users as u")
+  .leftJoin(downloads, "downloads.user_id", "u.id")
+  .select("u.id", "u.email", "downloads.event_count")
+  .execute();
+```
+
+The aliased subquery contributes its columns to the surrounding scope, so
+`"downloads.event_count"` is type-checked exactly like a real table column.

@@ -19,3 +19,9 @@ yarn-error.log*
 .idea/
 .vscode/
 internal-docs/
+
+# Fumadocs / Next.js docs site
+docs/.next/
+docs/.source/
+docs/out/
+docs/next-env.d.ts

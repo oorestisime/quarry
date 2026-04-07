@@ -1,0 +1,20 @@
+SELECT
+  count() AS sample_count,
+  countIf(t.status = {p0:String}) AS active_samples,
+  sum(t.amount) AS amount_sum,
+  sum(t.big_user_id) AS big_user_id_sum,
+  sumIf(t.amount, t.status = {p1:String}) AS active_amount_sum,
+  sumIf(t.big_user_id, t.status = {p2:String}) AS active_big_user_id_sum,
+  avg(t.amount) AS amount_avg,
+  avg(t.big_user_id) AS big_user_id_avg,
+  avgIf(t.amount, t.status = {p3:String}) AS active_amount_avg,
+  min(t.label) AS min_label,
+  max(t.label) AS max_label,
+  uniq(t.status) AS uniq_statuses,
+  uniqExact(t.status) AS uniq_statuses_exact,
+  uniqIf(t.status, t.status = {p4:String}) AS uniq_active_statuses,
+  groupArray(t.label) AS labels,
+  groupArray(t.nickname) AS nicknames,
+  any(t.label) AS any_label,
+  anyLast(t.label) AS any_last_label
+FROM typed_samples AS t

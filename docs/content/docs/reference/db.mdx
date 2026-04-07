@@ -1,0 +1,43 @@
+---
+title: createClickHouseDB
+description: The entry point that turns a @clickhouse/client instance into a typed database handle.
+---
+
+`createClickHouseDB<DB>(options)` is the entry point of the library. You give
+it a TypeScript interface describing your schema and (usually) a configured
+`@clickhouse/client` instance, and you get back a typed `db` handle.
+
+```ts
+import { createClient } from "@clickhouse/client";
+import { createClickHouseDB } from "@oorestisime/quarry";
+
+interface DB {
+  users: {
+    id: number;
+    email: string;
+  };
+}
+
+const db = createClickHouseDB<DB>({
+  client: createClient({ url: "http://localhost:8123" }),
+});
+```
+
+## Options
+
+The options object is rendered live from the source:
+
+<auto-type-table path="../../../../src/query/db.ts" name="CreateClickHouseDBOptions" />
+
+## What you get back
+
+`db` is an instance of `ClickHouseDB<DB>`. The methods you actually use are:
+
+- `db.selectFrom(...)` &mdash; start a `SELECT` query
+- `db.insertInto(...)` &mdash; start an `INSERT` query
+- `db.with(name, callback)` &mdash; add a CTE that the rest of the chain can
+  reference
+- `db.table(name)` &mdash; build an explicit table source (for `FINAL`,
+  custom aliases, etc.)
+
+See the [guides](/docs/guides) for end-to-end examples of each.

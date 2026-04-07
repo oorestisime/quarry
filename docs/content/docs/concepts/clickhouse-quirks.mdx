@@ -1,0 +1,216 @@
+---
+title: ClickHouse quirks
+description: A practical map of what Quarry covers, what ClickHouse does differently, and what is intentionally out of scope.
+---
+
+This page is the answer to "what does Quarry actually support, and what
+should I know about ClickHouse before relying on the result?" &mdash; in a
+single matrix you can scan, plus a section on the ClickHouse-specific
+behaviors that catch people off-guard.
+
+For the runtime type story (UInt64 → string, etc.), see
+[Runtime semantics](/docs/concepts/runtime-semantics) instead.
+
+## Supported clauses matrix
+
+| Clause | Status | Notes |
+| --- | --- | --- |
+| `SELECT col, col`           | ✅ | Type-checked against scope |
+| `SELECT col AS alias`       | ✅ | Via `"col as alias"` string or `eb.fn.x().as(...)` |
+| `SELECT *`                  | ✅ | `selectAll()` &mdash; single-source only |
+| `SELECT alias.*`            | ✅ | `selectAll("alias")` &mdash; works in joined queries |
+| `FROM table`                | ✅ | `selectFrom("table as alias")` |
+| `FROM table FINAL`          | ✅ | Via `db.table(name).as(alias).final()` or `.final()` on the builder when the source is a single table |
+| `INNER JOIN`                | ✅ | Positional and callback forms |
+| `LEFT JOIN`                 | ✅ | **See LEFT JOIN nulls below** |
+| `RIGHT JOIN`                | ❌ | Not yet |
+| `FULL OUTER JOIN`           | ❌ | Not yet |
+| `CROSS JOIN`                | ❌ | Not yet |
+| `ASOF JOIN`                 | ❌ | Not yet |
+| `ARRAY JOIN`                | ❌ | Not yet |
+| Multi-condition joins       | ✅ | Via the callback form: `innerJoin(source, (eb) => eb.and([...]))` |
+| Subquery as source          | ✅ | `.as("alias")` on a select builder |
+| Subquery in `IN` predicate  | ✅ | `where("col", "in", subquery)` |
+| `WITH cte AS (...)` (CTEs)  | ✅ | `db.with(name, callback)` |
+| `WHERE`                     | ✅ | Positional and callback forms |
+| `PREWHERE`                  | ✅ | Same shape as `where` |
+| `GROUP BY`                  | ✅ | Column refs only (not aliases) |
+| `GROUP BY ROLLUP/CUBE`      | ❌ | Not yet |
+| `GROUP BY GROUPING SETS`    | ❌ | Not yet |
+| `HAVING`                    | ✅ | Accepts both real columns and aliases from `selectExpr` |
+| `ORDER BY`                  | ✅ | Accepts both real columns and aliases from `selectExpr` |
+| `LIMIT n`                   | ✅ | Validates non-negative integer |
+| `OFFSET n`                  | ✅ | Validates non-negative integer |
+| `LIMIT n BY col`            | ❌ | Not yet |
+| `LIMIT n WITH TIES`         | ❌ | Not yet |
+| `SETTINGS k = v`            | ✅ | Query-level, merges across calls |
+| `SAMPLE`                    | ❌ | Not yet |
+| `UNION ALL` / `UNION DISTINCT` | ❌ | Not yet |
+| `INTERSECT` / `EXCEPT`      | ❌ | Not yet |
+| `WINDOW` / window functions | ❌ | Not yet |
+| `INSERT INTO`               | ✅ | `db.insertInto(table).values([...])` |
+| `INSERT INTO ... SELECT`    | ❌ | Not yet |
+| Migrations / schema diff    | ❌ | Not in scope &mdash; see [roadmap](/docs/roadmap#out-of-scope-for-now) |
+
+The roadmap section on [more ClickHouse-specific AST and builder support](/docs/roadmap#2-more-clickhouse-specific-ast-and-builder-support)
+covers the strategy for filling in the missing rows over time. The current
+direction is corpus-driven &mdash; implement what real queries actually need
+first, not exhaustive coverage of the ClickHouse spec.
+
+## Quirks that catch people off-guard
+
+### `LEFT JOIN` does not produce nulls by default
+
+This is the single biggest ClickHouse footgun for people coming from
+PostgreSQL or other databases. Without
+[`join_use_nulls = 1`](https://clickhouse.com/docs/en/operations/settings/settings#join_use_nulls),
+unmatched right-side columns come back as their **type defaults**:
+
+| Column type | Default returned |
+| --- | --- |
+| numeric  | `0`     |
+| string   | `''`    |
+| boolean  | `false` |
+
+Quarry's typing follows that default behavior &mdash; left-joined columns
+are typed as the actual column type, not `T | null`. If you want SQL-standard
+null semantics, opt in with:
+
+```ts
+.settings({ join_use_nulls: 1 })
+```
+
+See [Runtime semantics](/docs/concepts/runtime-semantics#left-join-does-not-produce-null-by-default)
+for the longer version.
+
+### `PREWHERE` is a separate clause
+
+ClickHouse's `PREWHERE` runs **before** the main `WHERE`, and it can
+dramatically reduce how many rows have to be read for the rest of the query.
+Use it for highly selective predicates over indexed columns:
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .prewhere("e.event_date", "=", "2025-01-01")
+  .where("e.event_type", "=", "signup");
+```
+
+Quarry treats `prewhere` and `where` as completely separate clauses with the
+same shape. There is no automatic promotion &mdash; you decide which one a
+condition belongs in based on your data.
+
+### `FINAL` belongs to the table source, not the query
+
+ClickHouse `FINAL` is a property of the table you are reading from, not of
+the surrounding query. When you only have one table, `.final()` on the
+builder is fine:
+
+```ts
+db.selectFrom("event_logs as e").final();
+```
+
+But in a join, the table source itself has to carry the `FINAL` flag, so
+you build it explicitly:
+
+```ts
+db
+  .selectFrom("users as u")
+  .innerJoin(
+    db.table("event_logs").as("e").final(),
+    "u.id",
+    "e.user_id",
+  );
+```
+
+Calling `.final()` on a query whose source is a subquery throws &mdash;
+`FINAL` is not meaningful there.
+
+### `SETTINGS` is a query-level feature
+
+ClickHouse lets you attach `SETTINGS k = v, k = v` to a query to override
+session-level settings for that one query. Quarry exposes this as
+`.settings({...})`:
+
+```ts
+.settings({ join_use_nulls: 1, max_threads: 4 })
+```
+
+Multiple `.settings(...)` calls are merged. Values are coerced to the right
+SQL form by the compiler (strings get single-quoted, booleans become `1`/`0`).
+
+### Bare `null` is rejected
+
+Quarry refuses to accept `null` as a predicate value:
+
+```ts
+db
+  .selectFrom("users as u")
+  .where("u.email", "=", null);    // throws at runtime
+```
+
+The error is:
+
+> Bare null predicate values are not supported. Use whereNull()/whereNotNull() or param(null, "Nullable(...)").
+
+This is intentional. ClickHouse `NULL` semantics differ from ANSI SQL in
+both joins and equality, so silently accepting `null` would do the wrong
+thing roughly half the time. The library forces you to be explicit:
+
+- Use [`whereNull(column)` / `whereNotNull(column)`](/docs/reference/select#wherenullcolumn--wherenotnullcolumn)
+  for null checks.
+- Use `param(null, "Nullable(String)")` (or whatever the column type is) if
+  you really do want to bind a typed null.
+
+### Typed parameter placeholders
+
+Quarry compiles bound values into ClickHouse's typed placeholder syntax:
+
+```sql
+WHERE u.id = {p0:Int64}
+```
+
+The driver substitutes `{p0:Int64}` server-side using a separate parameter
+map &mdash; the value never gets concatenated into the SQL string. Type
+inference picks the placeholder type from the JS value (see
+[architecture](/docs/concepts/architecture#parameter-type-inference)), and
+you can override it with `param(value, "Type")` when inference would be
+wrong.
+
+The most common time to reach for `param(...)` is for date/time values,
+unsigned integers (so the placeholder says `UInt64` instead of `Int64`),
+and decimal types.
+
+### Result types come from `JSONEachRow`
+
+`execute()` calls the driver with `format: "JSONEachRow"`, which means the
+runtime type of every column is whatever `@clickhouse/client` produces under
+that format. That is why `UInt64` and `count()` come back as `string`,
+`DateTime64` comes back as `string`, and `Decimal` comes back as `number`.
+
+If you fetch the same query through a different format, the runtime types
+will be different and Quarry's typed result will lie. The library is built
+around `JSONEachRow` and that is the only format it currently supports.
+
+### Inserts only via `JSONEachRow`
+
+Symmetrically, inserts always use `format: "JSONEachRow"`. Your row objects
+are sent to the driver's `insert()` method directly &mdash; they never get
+serialized into the SQL query. This is what makes large batch inserts
+efficient. The downside is that you cannot use Quarry to do an
+`INSERT INTO ... SELECT FROM` query yet.
+
+## Things that are deliberately not in scope
+
+These are not "missing features" &mdash; they are decisions:
+
+- **Migrations and schema diff.** Quarry is a query builder, not a schema
+  manager. ClickHouse-aware migrations are on the [roadmap](/docs/roadmap#4-introspection-and-migrations)
+  but they will be a separate concern.
+- **A generic SQL abstraction across multiple databases.** Quarry models
+  ClickHouse directly. There is no plan to make it portable.
+- **An ORM-style "model" layer.** No entities, no relationships, no lazy
+  loading. Just typed query construction.
+- **Hiding ClickHouse runtime types behind safer-looking JS types.** The
+  library exposes what the driver returns, not what users wish it returned.
+  See [Runtime semantics](/docs/concepts/runtime-semantics).

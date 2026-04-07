@@ -7,6 +7,7 @@ interface QueryBuilderTestDB {
     event_type: string;
   };
   typed_samples: {
+    label: string;
     nickname: string | null;
     tags: string[];
   };
@@ -73,6 +74,49 @@ describe("query builder validation", () => {
       "SELECT tags, length(tags) AS tag_count FROM typed_samples PREWHERE has(tags, {p0:String}) WHERE notEmpty(tags)",
     );
     expect(query.params).toEqual({ p0: "vip" });
+  });
+
+  it("compiles string function expressions", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        "t.label",
+        eb.fn.like("t.label", "%ph%").as("has_ph"),
+        eb.fn.concat(eb.ref("t.label"), "-", "suffix").as("label_key"),
+        eb.fn.substring("t.label", 2, 3).as("label_slice"),
+        eb.fn.trimBoth(eb.fn.concat("  ", eb.ref("t.label"), "  ")).as("label_trimmed"),
+      ])
+      .where((eb) => eb.fn.notEmpty("t.label"))
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT t.label, like(t.label, {p0:String}) AS has_ph, concat(t.label, {p1:String}, {p2:String}) AS label_key, substring(t.label, {p3:Int64}, {p4:Int64}) AS label_slice, trimBoth(concat({p5:String}, t.label, {p6:String})) AS label_trimmed FROM typed_samples AS t WHERE notEmpty(t.label)",
+    );
+    expect(query.params).toEqual({
+      p0: "%ph%",
+      p1: "-",
+      p2: "suffix",
+      p3: 2,
+      p4: 3,
+      p5: "  ",
+      p6: "  ",
+    });
+  });
+
+  it("treats plain concat strings as literals, so column refs must use eb.ref()", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [eb.fn.concat("t.label", "-", "suffix").as("label_key")])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT concat({p0:String}, {p1:String}, {p2:String}) AS label_key FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({
+      p0: "t.label",
+      p1: "-",
+      p2: "suffix",
+    });
   });
 
   it("compiles unary having expression predicates", () => {

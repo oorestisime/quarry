@@ -1,0 +1,197 @@
+---
+title: Architecture
+description: How Quarry turns a chained builder call into ClickHouse SQL.
+---
+
+Quarry is structured as a four-stage pipeline:
+
+```
+your code  →  builder  →  AST  →  compiler  →  SQL + params
+```
+
+You only ever interact with the **builder** layer. The AST and compiler are
+implementation details, but they are also small enough that you can read the
+whole compiler in one sitting if you want to know exactly what is happening.
+
+## The four stages
+
+### 1. Builder
+
+The builder is the public API: `SelectQueryBuilder`, `InsertQueryBuilder`,
+`ExpressionBuilder`, plus the small helper classes like `TableSourceBuilder`
+and `AliasedQuery`.
+
+Builders are **immutable**. Every method returns a new instance with a new
+internal AST node, leaving the original untouched. That is why this works:
+
+```ts
+const base = db.selectFrom("users as u").select("u.id", "u.email");
+
+const recent = base.orderBy("u.id", "desc").limit(10);
+const filtered = base.where("u.email", "!=", "");
+
+// `base` is unchanged. `recent` and `filtered` are independent.
+```
+
+The chained methods carry the query's type-level state through three
+parameters &mdash; `Sources`, `Scope`, and `Output` &mdash; which is what
+gives you type-checked column references, type-safe joins, and an inferred
+result row type. See [Scopes and aliases](/docs/concepts/scopes-and-aliases)
+for the details.
+
+### 2. AST
+
+The AST is a plain TypeScript data structure. No methods, no inheritance,
+just nested interfaces. The whole thing lives in
+[`src/ast/query.ts`](https://github.com/oorestisime/quarry/blob/main/src/ast/query.ts)
+and is around 110 lines.
+
+The top-level node for a select query looks like this:
+
+```ts
+interface SelectQueryNode {
+  with: CteNode[];
+  from?: SourceNode;
+  selections: SelectionNode[];
+  joins: JoinNode[];
+  prewhere?: ExprNode;
+  where?: ExprNode;
+  having?: ExprNode;
+  groupBy: ExprNode[];
+  orderBy: OrderByNode[];
+  limit?: number;
+  offset?: number;
+  settings: Record<string, string | number | boolean>;
+}
+```
+
+Expressions are a discriminated union with seven shapes:
+
+| `kind` | What it represents |
+| --- | --- |
+| `ref` | A column reference like `u.email` |
+| `value` | A bound parameter value (becomes a `{pN:Type}` placeholder) |
+| `raw` | A literal SQL fragment, no escaping |
+| `function` | A function call like `count()` or `toInt32(x)` |
+| `subqueryExpr` | A subquery used as an expression (e.g. inside `IN`) |
+| `binary` | A binary operator like `=`, `<`, `IS` |
+| `logical` | An `AND` or `OR` over a list of conditions |
+
+Sources are a smaller union:
+
+| `kind` | What it represents |
+| --- | --- |
+| `table` | `name`, optional `alias`, optional `final` |
+| `subquery` | A nested `SelectQueryNode` plus a required `alias` |
+
+Each builder method appends or replaces fields on a `SelectQueryNode`. For
+example, `where("col", "=", value)` builds a `BinaryNode` and folds it into
+the existing `where` field via `appendCondition`, which AND-merges new
+conditions onto whatever was there before.
+
+### 3. Compiler
+
+The compiler is a single pass that walks a `SelectQueryNode` and produces a
+SQL string plus a parameter map. The whole thing is around 170 lines in
+[`src/compiler/query-compiler.ts`](https://github.com/oorestisime/quarry/blob/main/src/compiler/query-compiler.ts).
+
+The two important pieces:
+
+**`compileExpr`** &mdash; the recursive expression compiler. It pattern-matches
+on the expression kind and builds the SQL fragment. Values are bound through
+a `CompileContext` that maintains a counter (`p0`, `p1`, ...) and a params
+map.
+
+**`compileQuerySql`** &mdash; the top-level walker. It assembles the final
+query in a fixed order:
+
+```
+WITH ... ?
+SELECT ...
+FROM ...
+INNER JOIN ... ?
+LEFT JOIN ... ?
+PREWHERE ... ?
+WHERE ... ?
+GROUP BY ... ?
+HAVING ... ?
+ORDER BY ... ?
+LIMIT ... ?
+OFFSET ... ?
+SETTINGS ... ?
+```
+
+The order is fixed because ClickHouse's clause order is fixed.
+
+### 4. SQL + params
+
+The output of the compiler is just:
+
+```ts
+interface CompiledQuery {
+  query: string;
+  params: Record<string, unknown>;
+}
+```
+
+This is what you get back from `toSQL()`. It is also what `execute()` passes
+to `@clickhouse/client.query({ ... })` &mdash; Quarry never strings together
+the values inline, they always travel through the driver's `query_params`
+channel.
+
+## Parameter type inference
+
+When you write `where("col", "=", value)` and the value is not wrapped in
+`param(...)`, Quarry has to choose a ClickHouse type for the placeholder.
+The rules in [`inferClickHouseType`](https://github.com/oorestisime/quarry/blob/main/src/compiler/query-compiler.ts)
+are intentionally simple:
+
+| JS value | ClickHouse type |
+| --- | --- |
+| `Array<T>` | `Array(<inferred member type>)` |
+| `boolean` | `Bool` |
+| `number` (integer) | `Int64` |
+| `number` (float) | `Float64` |
+| `bigint` | `Int64` |
+| `Date` | `DateTime` |
+| anything else | `String` |
+
+When inference is wrong or ambiguous &mdash; especially around dates,
+unsigned integers, and decimal types &mdash; reach for `param(value, "Type")`
+to be explicit. See the [`ExpressionBuilder` reference](/docs/reference/expressions#building-expressions)
+for the full story.
+
+## Inserts skip the AST
+
+There is one exception to the four-stage pipeline:
+[`InsertQueryBuilder`](/docs/reference/insert) does **not** go through the
+AST and compiler. Inserts in ClickHouse are simple enough that the builder
+constructs the SQL directly in `toSQL()`:
+
+```ts
+return {
+  query: `INSERT INTO ${this.table} FORMAT JSONEachRow`,
+  values: structuredClone(this.rows),
+};
+```
+
+The actual row data is sent to ClickHouse via the driver's `insert()` API,
+not as query parameters. That is why insert queries can stream very large
+batches efficiently &mdash; the values never have to be serialized into the
+query string.
+
+## Where to read the source
+
+If you want to understand any of this in more depth, the relevant files are
+small enough to read end-to-end:
+
+- [`src/ast/query.ts`](https://github.com/oorestisime/quarry/blob/main/src/ast/query.ts)
+  &mdash; ~110 lines, the AST node definitions
+- [`src/compiler/query-compiler.ts`](https://github.com/oorestisime/quarry/blob/main/src/compiler/query-compiler.ts)
+  &mdash; ~170 lines, the compiler
+- [`src/query/select-query-builder.ts`](https://github.com/oorestisime/quarry/blob/main/src/query/select-query-builder.ts)
+  &mdash; ~630 lines, the select builder (most of it is type-overload bodies)
+- [`src/query/expression-builder.ts`](https://github.com/oorestisime/quarry/blob/main/src/query/expression-builder.ts)
+  &mdash; ~270 lines, the expression builder
+
+The whole library is under 1700 lines of source.

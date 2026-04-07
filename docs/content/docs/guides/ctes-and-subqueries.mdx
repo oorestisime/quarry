@@ -1,0 +1,53 @@
+---
+title: CTEs and subqueries
+description: Use db.with for CTEs, and aliased select queries as subqueries inside WHERE or joins.
+---
+
+## CTEs
+
+Use `db.with(name, callback)` to define a Common Table Expression. The CTE is
+added to the database scope and you can `selectFrom` it like any other table.
+
+```ts
+const rows = await db
+  .with("active_users", (db) =>
+    db
+      .selectFrom("event_logs as e")
+      .select("e.user_id")
+      .where("e.event_type", "=", "signup")
+      .groupBy("e.user_id"),
+  )
+  .selectFrom("active_users as au")
+  .innerJoin("users as u", "u.id", "au.user_id")
+  .select("u.id", "u.email")
+  .execute();
+```
+
+`db.with` returns a new `db` value with the CTE in scope. You can chain
+multiple `.with` calls to define more than one CTE.
+
+## Subqueries in `WHERE`
+
+A select query can be used directly as the right-hand side of an `IN`
+predicate:
+
+```ts
+const activeUsers = db
+  .selectFrom("event_logs as e")
+  .select("e.user_id")
+  .where("e.event_type", "=", "signup");
+
+const rows = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .where("u.id", "in", activeUsers)
+  .execute();
+```
+
+The subquery is compiled inline into the parent query &mdash; this is not a
+two-round-trip pattern.
+
+## Subqueries as join sources
+
+See [Joining against a subquery](/docs/guides/joins#joining-against-a-subquery)
+in the Joins guide.

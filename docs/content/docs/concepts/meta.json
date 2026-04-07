@@ -1,0 +1,12 @@
+{
+  "title": "Concepts",
+  "description": "How Quarry thinks about ClickHouse and TypeScript",
+  "pages": [
+    "index",
+    "approach",
+    "architecture",
+    "scopes-and-aliases",
+    "clickhouse-quirks",
+    "runtime-semantics"
+  ]
+}

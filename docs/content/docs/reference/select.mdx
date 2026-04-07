@@ -1,0 +1,456 @@
+---
+title: SelectQueryBuilder
+description: Reference for every method on SelectQueryBuilder.
+---
+
+`SelectQueryBuilder` is what you get back from `db.selectFrom(...)`. Every
+method returns a **new builder**, so chains are immutable and you can fork at
+any point.
+
+```ts twoslash
+import { createClient } from "@clickhouse/client";
+import { createClickHouseDB } from "@oorestisime/quarry";
+
+interface DB {
+  users: { id: number; email: string };
+  event_logs: { user_id: number; event_type: string; created_at: string };
+}
+
+const db = createClickHouseDB<DB>({
+  client: createClient({ url: "http://localhost:8123" }),
+});
+
+const base = db.selectFrom("users as u").where("u.email", "!=", "");
+const recent = base.orderBy("u.id", "desc").limit(10);
+//    ^?
+```
+
+Most filtering methods come in two flavors:
+
+- **Positional form** &mdash; `where("col", "=", value)` &mdash; for the common
+  case of comparing one column against one value.
+- **Callback form** &mdash; `where((eb) => eb.fn.has("u.tags", "pro"))` &mdash;
+  when you need the [expression builder](/docs/reference/expressions) for
+  functions, multi-condition logic, or refs to other columns.
+
+## Selecting columns
+
+### `select(...selections)`
+
+Adds named columns to the projection. Each argument is either a column ref
+(`"u.id"`) or a column-with-alias string (`"u.id as user_id"`). The result
+type narrows to exactly the columns you asked for.
+
+```ts twoslash
+import { createClient } from "@clickhouse/client";
+import { createClickHouseDB } from "@oorestisime/quarry";
+
+interface DB {
+  users: { id: number; email: string; status: string };
+}
+
+const db = createClickHouseDB<DB>({
+  client: createClient({ url: "http://localhost:8123" }),
+});
+// ---cut---
+const rows = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .execute();
+//      ^?
+```
+
+### `selectAll()` / `selectAll(alias)`
+
+`selectAll()` with no argument is for **single-source queries** &mdash; it
+expands to `SELECT *`. The argument-less form is a type error if your query
+has more than one source.
+
+For joined queries, prefer `selectAll(alias)` so the resulting columns are
+unambiguous:
+
+```ts
+db
+  .selectFrom("users as u")
+  .innerJoin("event_logs as e", "u.id", "e.user_id")
+  .selectAll("u");
+```
+
+### `selectExpr(callback)`
+
+Same as `select(...)`, but the argument is a callback that receives the
+[expression builder](/docs/reference/expressions). Use this when you need
+function calls or aliased expressions in the projection.
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    "e.user_id",
+    eb.fn.count().as("event_count"),
+  ])
+  .groupBy("e.user_id");
+```
+
+You can mix plain column refs and expression builder results in the same
+array.
+
+## Filtering: `where`
+
+### `where(column, operator, value)`
+
+The positional form. Type-checks `value` against the column's TypeScript type
+and against the operator (e.g. `in` requires an array, equality requires a
+scalar).
+
+```ts
+db
+  .selectFrom("users as u")
+  .select("u.id")
+  .where("u.email", "=", "alice@example.com");
+```
+
+### `where(column, operator, subquery)`
+
+Pass a `SelectQueryBuilder` as the right-hand side for `IN` style predicates:
+
+```ts
+const activeUsers = db
+  .selectFrom("event_logs as e")
+  .select("e.user_id")
+  .where("e.event_type", "=", "signup");
+
+db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .where("u.id", "in", activeUsers);
+```
+
+### `where((eb) => expression)`
+
+Single-argument callback form. Use this when you need an `and`/`or`
+combination, a function call as the predicate, or anything the positional
+form cannot express.
+
+```ts
+db
+  .selectFrom("users as u")
+  .where((eb) =>
+    eb.and([
+      eb.cmpRef("u.id", "=", "u.id"),
+      eb.fn.has("u.tags", "premium"),
+    ]),
+  );
+```
+
+### `where((eb) => expression, operator, value)`
+
+Three-argument callback form. The first argument is an expression (typically
+a function call), the next two are the operator and value to compare against.
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .where((eb) => eb.fn.toUInt32("e.user_id"), ">", 0);
+```
+
+### `whereRef(left, operator, right)`
+
+Compare two column references. Both sides must be columns in scope.
+
+```ts
+db
+  .selectFrom("users as a")
+  .innerJoin("users as b", (eb) => eb.cmpRef("a.id", "=", "b.id"))
+  .whereRef("a.email", "=", "b.email");
+```
+
+### `whereNull(column)` / `whereNotNull(column)`
+
+Use these instead of comparing against `null` directly. ClickHouse `NULL`
+semantics differ from ANSI SQL in joins (see
+[runtime semantics](/docs/concepts/runtime-semantics)), so Quarry forces
+you to be explicit.
+
+```ts
+db.selectFrom("users as u").whereNull("u.email");
+db.selectFrom("users as u").whereNotNull("u.email");
+```
+
+## Filtering: `prewhere`
+
+`PREWHERE` is ClickHouse-specific. It runs before the main `WHERE` clause and
+can dramatically reduce the rows that have to be read for the rest of the
+query. Use it for highly selective predicates over indexed columns.
+
+`prewhere(...)` accepts the **same overloads** as [`where`](#filtering-where):
+
+- `prewhere(column, operator, value)`
+- `prewhere(column, operator, subquery)`
+- `prewhere((eb) => expression)`
+- `prewhere((eb) => expression, operator, value)`
+
+There is also a `prewhereRef(left, operator, right)` variant matching
+`whereRef`.
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .prewhere("e.event_date", "=", "2025-01-01")
+  .where("e.event_type", "=", "signup");
+```
+
+## `having(...)`
+
+`having(...)` filters grouped rows. Its column-name form accepts:
+
+- real columns in scope, **and**
+- aliases that you defined earlier in `selectExpr(...)`
+
+This matches ClickHouse SQL semantics.
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
+  .groupBy("e.user_id")
+  .having("event_count", ">", param(1, "Int64"));
+```
+
+`having` accepts the same callback overloads as `where`.
+
+## `groupBy(...columns)`
+
+Adds columns to the `GROUP BY` clause. All arguments must be column references
+in scope; aliases from `selectExpr` are not accepted here (use the real column
+ref instead).
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.event_type", eb.fn.count().as("c")])
+  .groupBy("e.event_type");
+```
+
+## Joins
+
+### `innerJoin(source, leftRef, rightRef)`
+
+Adds an `INNER JOIN`. The two refs must resolve to columns in the **combined**
+scope (the existing scope plus the new joined source).
+
+```ts
+db
+  .selectFrom("users as u")
+  .innerJoin("event_logs as e", "u.id", "e.user_id");
+```
+
+### `innerJoin(source, callback)`
+
+Multi-condition or expression-based join. The callback receives an expression
+builder bound to the combined scope.
+
+```ts
+db
+  .selectFrom("users as a")
+  .innerJoin("users as b", (eb) =>
+    eb.and([
+      eb.cmpRef("a.id", "=", "b.id"),
+      eb.cmpRef("a.email", "=", "b.email"),
+    ]),
+  );
+```
+
+### `leftJoin(source, leftRef, rightRef)` / `leftJoin(source, callback)`
+
+Same shapes as `innerJoin`.
+
+<Callout type="warn">
+ClickHouse `LEFT JOIN` does **not** produce `null` for unmatched rows by
+default &mdash; columns come back as type defaults instead (`0`, `''`,
+`false`). Quarry's typing reflects this. To opt into ANSI null semantics,
+pass `settings({ join_use_nulls: 1 })` on the query. See
+[runtime semantics](/docs/concepts/runtime-semantics#left-join-does-not-produce-null-by-default).
+</Callout>
+
+The `source` argument can be:
+
+- a `"table as alias"` string,
+- an explicit `db.table("name").as("alias")` builder (for `final()` or other
+  source-level options),
+- another select query that has been aliased with `.as("alias")`.
+
+## Ordering and pagination
+
+### `orderBy(column, direction?)`
+
+`direction` defaults to `"asc"`. The column reference is checked against the
+current scope **and** any aliases you created with `selectExpr`.
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.user_id", eb.fn.count().as("c")])
+  .groupBy("e.user_id")
+  .orderBy("c", "desc");
+```
+
+### `limit(n)`
+
+Throws if `n` is not a non-negative integer. Compiles to `LIMIT n`.
+
+### `offset(n)`
+
+Throws if `n` is not a non-negative integer. Compiles to `OFFSET n`.
+
+## ClickHouse-specific clauses
+
+### `settings(record)`
+
+Merges query-level ClickHouse settings.
+
+```ts
+db
+  .selectFrom("users as u")
+  .leftJoin("event_logs as e", "u.id", "e.user_id")
+  .settings({ join_use_nulls: 1 });
+```
+
+Multiple `.settings(...)` calls are merged. Values are coerced to ClickHouse's
+expected encoding by the driver.
+
+### `final()`
+
+Adds `FINAL` to the table source.
+
+```ts
+db.selectFrom("event_logs as e").final();
+```
+
+`final()` only works when the current source is a single table. Calling it on
+a query whose source is a subquery throws:
+
+> FINAL can only be applied to table sources.
+
+If you need `FINAL` on a join's right-hand side, build the source explicitly:
+
+```ts
+db
+  .selectFrom("users as u")
+  .innerJoin(db.table("event_logs").as("e").final(), "u.id", "e.user_id");
+```
+
+## Using a query as a source
+
+### `as(alias)`
+
+Wraps the current query in an `AliasedQuery` so it can be used as the source
+of another `selectFrom` or as a join source. The alias contributes its
+selected columns to the parent query's scope.
+
+```ts
+const downloads = db
+  .selectFrom(db.table("event_logs").as("e").final())
+  .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
+  .groupBy("e.user_id")
+  .as("downloads");
+
+db
+  .selectFrom("users as u")
+  .leftJoin(downloads, "downloads.user_id", "u.id")
+  .select("u.id", "u.email", "downloads.event_count");
+```
+
+## Compilation and execution
+
+`SelectQueryBuilder` implements the `ExecutableQuery<Output>` interface:
+
+<auto-type-table path="../../../../src/query/select-query-builder.ts" name="ExecutableQuery" />
+
+### `toSQL()`
+
+Returns the compiled query without running it. The result is a
+`CompiledQuery` object with `query` (the SQL string) and `params` (the
+parameter map).
+
+```ts
+const compiled = db
+  .selectFrom("users as u")
+  .select("u.id")
+  .where("u.email", "=", "alice@example.com")
+  .toSQL();
+
+compiled.query;
+// SELECT u.id FROM users AS u WHERE u.email = {p0:String}
+compiled.params;
+// { p0: "alice@example.com" }
+```
+
+### `execute(client?)`
+
+Runs the query against ClickHouse and returns all rows as `Output[]`.
+
+If you passed a client to `createClickHouseDB({ client })`, that client is
+used by default. You can pass a different client per call if you need to:
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .execute();
+```
+
+Throws if no client is configured:
+
+> No ClickHouse client configured. Pass one to execute() or createClickHouseDB().
+
+The result is parsed from `JSONEachRow`, so the runtime types follow the
+[runtime semantics](/docs/concepts/runtime-semantics) rules
+(`UInt64` → `string`, etc.).
+
+### `executeTakeFirst(client?)`
+
+Runs the query and returns the first row, or `undefined` if there were none.
+
+```ts
+const user = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .where("u.id", "=", 1)
+  .executeTakeFirst();
+//      ^?
+```
+
+### `executeTakeFirstOrThrow(client?)`
+
+Same as `executeTakeFirst`, but throws `Query returned no rows.` instead of
+returning `undefined`.
+
+```ts
+const user = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .where("u.id", "=", 1)
+  .executeTakeFirstOrThrow();
+```
+
+### `toAST()`
+
+Returns a structured clone of the internal AST node. This is an escape hatch
+for tooling and tests &mdash; you do not need it for normal use.
+
+## Type parameters
+
+`SelectQueryBuilder<Sources, Scope, Output>` carries three parameters that
+encode the query's type-level state:
+
+| Parameter | What it represents |
+| --------- | ------------------ |
+| `Sources` | The full database schema (every table you might join). |
+| `Scope`   | The aliased sources currently in scope (driven by `selectFrom` and `join` calls). Used to type-check column references. |
+| `Output`  | The shape of one row in the result. Driven by `select`, `selectAll`, and `selectExpr`. |
+
+You almost never write these by hand &mdash; they are inferred from the
+methods you call.

@@ -1,0 +1,102 @@
+---
+title: Getting started
+description: Install Quarry, define a typed database, and run your first query.
+---
+
+## Install
+
+```bash
+pnpm add @oorestisime/quarry @clickhouse/client
+```
+
+Quarry expects you to bring your own `@clickhouse/client` instance.
+
+## Create a typed DB
+
+Define your schema as a plain TypeScript interface and pass it as the type
+parameter to `createClickHouseDB`.
+
+```ts
+import { createClient } from "@clickhouse/client";
+import { createClickHouseDB } from "@oorestisime/quarry";
+
+interface DB {
+  event_logs: {
+    user_id: number;
+    event_type: string;
+    created_at: string;
+    event_date: string;
+    properties: string;
+  };
+  users: {
+    id: number;
+    email: string;
+    status: string;
+  };
+}
+
+const client = createClient({
+  url: "http://localhost:8123",
+});
+
+const db = createClickHouseDB<DB>({ client });
+```
+
+That `db` value is now strongly typed against your schema. Table names,
+columns, and aliases are all checked.
+
+## Build and execute a query
+
+```ts twoslash
+import { createClient } from "@clickhouse/client";
+import { createClickHouseDB } from "@oorestisime/quarry";
+
+interface DB {
+  event_logs: {
+    user_id: number;
+    event_type: string;
+    created_at: string;
+  };
+}
+
+const db = createClickHouseDB<DB>({
+  client: createClient({ url: "http://localhost:8123" }),
+});
+
+const rows = await db
+  .selectFrom("event_logs as e")
+  .select("e.user_id", "e.event_type")
+  .where("e.event_type", "=", "signup")
+  .orderBy("e.created_at", "desc")
+  .limit(50)
+  .execute();
+//      ^?
+```
+
+Hover over `rows` above &mdash; the result type is inferred from the columns
+you actually selected.
+
+## Inspect SQL without executing
+
+When you want to see what Quarry is going to send to ClickHouse without
+running it, use `toSQL()` instead of `execute()`.
+
+```ts
+const compiled = db
+  .selectFrom("event_logs as e")
+  .select("e.user_id", "e.event_type")
+  .where("e.event_type", "=", "signup")
+  .toSQL();
+
+compiled.query;
+// SELECT e.user_id, e.event_type
+// FROM event_logs AS e
+// WHERE e.event_type = {p0:String}
+
+compiled.params;
+// { p0: "signup" }
+```
+
+The placeholders are
+[ClickHouse parameterised queries](https://clickhouse.com/docs/en/sql-reference/syntax#defining-and-using-query-parameters),
+not string interpolation. The driver substitutes them server-side.

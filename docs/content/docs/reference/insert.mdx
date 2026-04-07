@@ -1,0 +1,158 @@
+---
+title: InsertQueryBuilder
+description: Reference for every method on InsertQueryBuilder.
+---
+
+`InsertQueryBuilder` is what you get back from `db.insertInto(table)`. It is
+much smaller than [`SelectQueryBuilder`](/docs/reference/select) because
+inserts in Quarry have a deliberately narrow shape:
+
+- you pick a table,
+- you set rows,
+- you execute.
+
+There are no joins, no `WHERE`, no expressions. The compiled query is always
+`INSERT INTO <table> FORMAT JSONEachRow` and the actual values are streamed
+to the driver via its native `insert()` API rather than going through query
+parameters.
+
+## How you get one
+
+```ts
+import { createClient } from "@clickhouse/client";
+import { createClickHouseDB } from "@oorestisime/quarry";
+
+interface DB {
+  users: {
+    id: number;
+    email: string;
+    status: string;
+  };
+}
+
+const db = createClickHouseDB<DB>({
+  client: createClient({ url: "http://localhost:8123" }),
+});
+
+const insert = db.insertInto("users");
+```
+
+`db.insertInto<Table>(table)` is type-checked against your schema &mdash;
+passing a table name that does not exist on `DB` is a compile error, and the
+returned builder is parameterised by that table's row type.
+
+## `values(rows)`
+
+Sets the rows to be inserted. Accepts a `readonly Row[]` and returns a new
+builder. Each row is type-checked against the table's row type from your
+schema.
+
+```ts
+db
+  .insertInto("users")
+  .values([
+    { id: 1, email: "alice@example.com", status: "active" },
+    { id: 2, email: "bob@example.com",   status: "active" },
+  ]);
+```
+
+<Callout type="warn">
+`values()` can only be called **once** per insert query. Calling it twice on
+the same builder throws:
+
+> values() can only be called once per insert query.
+
+This is intentional &mdash; insert builders model a single insert operation,
+not an accumulating buffer. If you want to insert two batches, build two
+queries.
+</Callout>
+
+## `toSQL()`
+
+Returns the compiled query without running it.
+
+```ts
+const compiled = db
+  .insertInto("users")
+  .values([{ id: 1, email: "alice@example.com", status: "active" }])
+  .toSQL();
+
+compiled.query;
+// INSERT INTO users FORMAT JSONEachRow
+compiled.values;
+// [{ id: 1, email: "alice@example.com", status: "active" }]
+```
+
+The returned object shape:
+
+<auto-type-table path="../../../../src/query/insert-query-builder.ts" name="CompiledInsertQuery" />
+
+Notice that the `query` string never contains the row data &mdash; the values
+travel separately through the driver's `insert()` API. This is how Quarry
+keeps inserts efficient even for large batches.
+
+`toSQL()` throws if no values have been set:
+
+> Cannot compile an insert without any values
+
+## `execute(client?)`
+
+Runs the insert and returns the driver's `ClickHouseInsertResult`.
+
+```ts
+const result = await db
+  .insertInto("users")
+  .values([{ id: 1, email: "alice@example.com", status: "active" }])
+  .execute();
+```
+
+If you passed a client to `createClickHouseDB({ client })`, that client is
+used by default. You can pass a different client per call when needed:
+
+```ts
+await insertBuilder.execute(otherClient);
+```
+
+`execute()` throws in two cases:
+
+| Error message | When it happens |
+| ------------- | --------------- |
+| `Cannot execute an insert without any values` | You called `execute()` before `values()`. |
+| `No ClickHouse insert client configured. Pass one to execute() or createClickHouseDB().` | No client is set on the builder and none was passed to `execute()`. |
+
+The driver call uses `format: "JSONEachRow"` &mdash; values are sent as
+newline-delimited JSON objects, which means you do not have to think about
+column ordering. The keys in your row objects map to columns by name.
+
+## What `InsertQueryBuilder` is **not**
+
+It does not have:
+
+- a `where(...)` method &mdash; ClickHouse inserts cannot be conditional at
+  the query level. If you need conditional inserts, do the filtering in
+  application code before calling `values(...)`.
+- a `returning(...)` method &mdash; ClickHouse does not support
+  `INSERT ... RETURNING`.
+- an `as(...)` method &mdash; insert queries cannot be used as subqueries.
+- an `executeTakeFirst(...)` variant &mdash; inserts return a single
+  `ClickHouseInsertResult`, not a row list.
+- a `toAST()` method &mdash; inserts do not go through the AST/compiler
+  pipeline that select queries use; the SQL is constructed directly.
+
+If you need any of those, you are reaching for the wrong builder &mdash;
+either use [`SelectQueryBuilder`](/docs/reference/select) for query work, or
+fall through to the underlying `@clickhouse/client` for things Quarry does
+not model.
+
+## Type parameters
+
+`InsertQueryBuilder<Table, Row>` carries two parameters that encode the
+target of the insert:
+
+| Parameter | What it represents |
+| --------- | ------------------ |
+| `Table`   | The table name as a string literal type. Used to format the `INSERT INTO` clause and to track which table this builder is bound to. |
+| `Row`     | The row type for that table, derived from the schema you passed to `createClickHouseDB`. |
+
+You almost never write these by hand &mdash; they are inferred from the
+`db.insertInto(...)` call.

@@ -1,0 +1,21 @@
+---
+title: Reference
+description: Hand-curated API reference for the public Quarry surface.
+---
+
+This section is a hand-curated reference for the public Quarry surface, with
+selected types rendered live from the source via
+[`fumadocs-typescript`](https://fumadocs.dev/docs/integrations/typescript).
+
+If you find an exported symbol that is not yet documented here, that is a docs
+gap, not an intentional omission &mdash; please open an issue.
+
+- [`createClickHouseDB`](/docs/reference/db) &mdash; the entry point that turns
+  a `@clickhouse/client` instance into a typed database handle.
+- [`SelectQueryBuilder`](/docs/reference/select) &mdash; the immutable builder
+  returned by `db.selectFrom(...)`. Every method, every overload.
+- [`InsertQueryBuilder`](/docs/reference/insert) &mdash; the builder returned
+  by `db.insertInto(...)`. Deliberately narrow surface.
+- [`ExpressionBuilder`](/docs/reference/expressions) &mdash; the callback-form
+  API for `where`, `having`, `selectExpr`, and joins, including every
+  `eb.fn.*` helper.

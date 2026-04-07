@@ -1,0 +1,94 @@
+---
+title: Grouping, aggregation, and ordering
+description: GROUP BY, HAVING, ORDER BY, LIMIT/OFFSET, and the rules around selectAll().
+---
+
+This page is about the **clauses** you use when aggregating. For the list of
+aggregate **functions** themselves (`count`, `sum`, `avg`, `min`, `max`,
+`uniq`, `groupArray`, the `-If` combinators, ...) see the
+[`ExpressionBuilder` reference](/docs/reference/expressions#aggregates) and
+the [Aggregates and the `-If` combinator](/docs/guides/expressions-and-functions#aggregates-and-the--if-combinator)
+section of the expressions guide.
+
+## `GROUP BY` and `HAVING`
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+const rows = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
+  .groupBy("e.user_id")
+  .having("event_count", ">", param(1, "Int64"))
+  .orderBy("event_count", "desc")
+  .execute();
+```
+
+A few things to notice:
+
+- Aliases created in `selectExpr(...)` (here, `event_count`) are visible to
+  `having(...)` and `orderBy(...)`. This is the same behavior as ClickHouse SQL.
+- `count()` returns a `UInt64`, and `param(1, "Int64")` makes the comparison
+  side explicit so the placeholder type is what you expect.
+
+## `ORDER BY`, `LIMIT`, `OFFSET`
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .orderBy("u.id", "desc")
+  .limit(50)
+  .offset(100)
+  .execute();
+```
+
+## `selectAll()` rules
+
+`selectAll()` and `selectAll(alias)` exist to skip listing every column. The
+no-argument form is intended for single-source queries:
+
+```ts
+db.selectFrom("users as u").selectAll();
+```
+
+In a joined query, prefer `selectAll("alias")` so the resulting columns are
+unambiguous:
+
+```ts
+db
+  .selectFrom("users as u")
+  .innerJoin("event_logs as e", "u.id", "e.user_id")
+  .selectAll("u");
+```
+
+## `PREWHERE`
+
+`PREWHERE` is ClickHouse-specific. It runs before the main `WHERE` clause and
+can dramatically reduce the number of rows that have to be read for the rest
+of the query. Use it for highly selective predicates over indexed columns:
+
+```ts
+const rows = await db
+  .selectFrom("event_logs as e")
+  .select("e.user_id", "e.event_type")
+  .prewhere("e.event_date", "=", "2025-01-01")
+  .where("e.event_type", "=", "signup")
+  .execute();
+```
+
+## `SETTINGS`
+
+Pass query-level ClickHouse settings via `.settings({...})`:
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .leftJoin("event_logs as e", "u.id", "e.user_id")
+  .select("u.id", "u.email", "e.event_type")
+  .settings({ join_use_nulls: 1 })
+  .execute();
+```
+
+This is how you opt into SQL-standard `LEFT JOIN` null behavior. See
+[Runtime semantics](/docs/concepts/runtime-semantics#left-join-does-not-produce-null-by-default).

@@ -1,0 +1,108 @@
+---
+title: Roadmap
+description: What is likely to land next, and what is intentionally out of scope today.
+---
+
+This roadmap reflects the current direction of the project. It is not a strict
+release contract, but it does show what is likely to be prioritized next.
+
+## Current state
+
+The current alpha already covers:
+
+- typed selects and inserts
+- joins, subqueries, and CTEs
+- `FINAL`, `PREWHERE`, `GROUP BY`, and `HAVING`
+- `toSQL()` and `execute()`
+- integration tests against a real ClickHouse instance
+
+## 1. More ClickHouse functions
+
+The expression builder surface keeps growing as real queries ask for more
+helpers. The direction stays corpus-driven &mdash; add functions that users
+actually reach for, with typed helpers where they improve ergonomics
+meaningfully.
+
+**Already shipped:**
+
+- aggregation helpers: `count`, `sum`, `avg`, `min`, `max`, `uniq`,
+  `uniqExact`, `groupArray`, `any`, `anyLast`
+- the `-If` combinators for the most common aggregates: `countIf`, `sumIf`,
+  `avgIf`, `uniqIf`
+- string helpers: `like`, `ilike`, `concat`, `lower`, `upper`, `substring`,
+  `trimBoth`, `trimLeft`, `trimRight`
+- array helpers: `has`, `hasAny`, `hasAll`, `length`, `empty`, `notEmpty`
+- type conversion helpers: the full `toInt*` / `toUInt*` / `toFloat*` /
+  `toDate` / `toDateTime` / `toDateTime64` / `toDecimal*` / `toString` set
+- one JSON helper: `jsonExtractString`
+
+**Likely next:**
+
+- more JSON helpers (`jsonExtractInt`, `jsonExtract`, typed variants)
+- date/time helpers (`now`, `today`, `dateDiff`, `toStartOfMonth` / `Day` / ...)
+- conditional helpers (`if`, `multiIf`, `coalesce`, `isNotNull`)
+- the `quantile*` family
+- more string helpers as real queries ask for them
+
+## 2. More ClickHouse-specific AST and builder support
+
+The second priority is broadening support for ClickHouse-specific SQL features
+where they clearly improve the query-building experience.
+
+This includes features that are awkward to represent as plain generic SQL but
+common enough to deserve first-class support:
+
+- more clause-level ClickHouse features
+- more source-level ClickHouse features
+- more expression-level ClickHouse-specific syntax
+
+The goal is to stay corpus-driven and avoid implementing every possible
+ClickHouse feature up front.
+
+## 3. Schema structure
+
+The next larger system after the query builder is a richer schema model.
+
+That schema work should support:
+
+- runtime schema metadata
+- introspection
+- code generation
+- migration support
+
+The likely direction is:
+
+- keep query-only usage lightweight
+- add a richer schema-first path later
+- let schema definitions feed into query typing, not replace the plain
+  interface-based mode
+
+## 4. Introspection and migrations
+
+Schema work should eventually lead to:
+
+- introspecting existing ClickHouse databases
+- generating TypeScript-facing schema definitions
+- migration support
+
+The current expectation is that migration support should be ClickHouse-aware
+and pragmatic, not a naive generic schema diff engine.
+
+## 5. Better public API documentation
+
+The docs you are reading right now are the start of this. A later docs pass
+should add:
+
+- fuller API reference material
+- more end-to-end examples
+- more ClickHouse-specific examples
+- clearer guidance around runtime semantics and typed parameters
+
+## Out of scope (for now)
+
+- migrations
+- schema diffing
+- a full raw SQL API beyond the current typed builder surface
+
+These may come later, but the current goal is to keep the core query builder
+small and solid.

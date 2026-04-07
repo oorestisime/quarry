@@ -1,0 +1,107 @@
+---
+title: Runtime semantics
+description: ClickHouse behaviors you must know about to read query results correctly.
+---
+
+These are the ClickHouse-specific behaviors that show up at runtime. None of
+them are bugs &mdash; they are properties of ClickHouse itself, and Quarry
+exposes them rather than papering over them.
+
+## `LEFT JOIN` does not produce `null` by default
+
+ClickHouse does not default unmatched `LEFT JOIN` columns to `null` unless
+[`join_use_nulls = 1`](https://clickhouse.com/docs/en/operations/settings/settings#join_use_nulls)
+is enabled on the query or session.
+
+Without that setting, unmatched right-side columns come back as the **type
+default** instead:
+
+| Column type | Default returned for unmatched rows |
+| ----------- | ----------------------------------- |
+| numeric     | `0`                                 |
+| string      | `''`                                |
+| boolean     | `false`                             |
+
+If you want SQL-standard `NULL` semantics for outer joins, opt in with:
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .leftJoin("event_logs as e", "u.id", "e.user_id")
+  .select("u.id", "u.email", "e.event_type")
+  .settings({ join_use_nulls: 1 })
+  .execute();
+```
+
+## `UInt64` and `count()` come back as strings
+
+The `@clickhouse/client` driver returns 64-bit integer types as **JavaScript
+strings** under `JSONEachRow`, because they cannot fit in a JS `number`
+without precision loss.
+
+This affects:
+
+- `UInt64` columns
+- `Int64` columns (depending on driver settings)
+- `count()`, `sum()`, and any aggregate that returns a 64-bit integer
+- the `length(array)` array helper
+
+Quarry types these as `string` in the result type so the builder stays honest
+about what you actually receive.
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .selectExpr((eb) => ["u.id", eb.fn.length("u.tags").as("tag_count")])
+  .execute();
+
+// rows[0].tag_count is `string`, not `number`
+```
+
+## `DateTime64` is a string
+
+`DateTime64(N)` columns also come back as strings under the default JSON
+formats. If you need a `Date` object, parse it on the JavaScript side.
+
+## `Decimal(p, s)` is a number
+
+By contrast, `Decimal(18, 2)` and friends come back as JS `number`. This is
+fine for many analytics use cases but is a precision risk for anything
+financial. If you need exact decimals, cast or convert on the SQL side or
+deserialize through a decimal library.
+
+## `groupArray(...)` removes `NULL` values
+
+`groupArray(...)` does not preserve `NULL` entries from nullable inputs.
+ClickHouse drops them from the resulting array.
+
+That means a nullable column like `Nullable(String)` behaves like this at
+runtime:
+
+```ts
+const rows = await db
+  .selectFrom("typed_samples as t")
+  .selectExpr((eb) => [eb.fn.groupArray("t.nickname").as("nicknames")])
+  .execute();
+
+// `nicknames` is `string[]`, not `(string | null)[]`
+```
+
+If every input value is `NULL`, the result is `[]`.
+
+## Date inputs
+
+Raw JavaScript `Date` values work with `@clickhouse/client` query parameters
+when the placeholder type is explicitly `DateTime`. Even so, explicit strings
+or `param(value, "DateTime")` are still the clearest way to control date and
+time values on the query side.
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+const rows = await db
+  .selectFrom("event_logs as e")
+  .select("e.user_id", "e.created_at")
+  .where("e.created_at", ">=", param("2025-01-01 00:00:00", "DateTime"))
+  .execute();
+```

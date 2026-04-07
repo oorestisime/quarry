@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClickHouseDB } from "../../src";
 import { startClickHouse, stopClickHouse, type ClickHouseTestContext } from "./clickhouse";
 import {
+  aggregateFunctionsCase,
   cteLeftJoinBaseTableCase,
   cteJoinCase,
   finalPrewhereSettingsCase,
@@ -20,6 +21,7 @@ import {
   selectAllCase,
   selectAllForAliasCase,
   simpleSelectCase,
+  stringFunctionsCase,
   typeCastFunctionsCase,
   whereRefCase,
 } from "../cases";
@@ -158,6 +160,16 @@ describe("clickhouse integration", () => {
   it(arrayFunctionsCase.name, async () => {
     const rows = await arrayFunctionsCase.build().execute(getContext().client);
     expect(rows).toEqual(arrayFunctionsCase.expectedRows);
+  });
+
+  it(stringFunctionsCase.name, async () => {
+    const rows = await stringFunctionsCase.build().execute(getContext().client);
+    expect(rows).toEqual(stringFunctionsCase.expectedRows);
+  });
+
+  it(aggregateFunctionsCase.name, async () => {
+    const rows = await aggregateFunctionsCase.build().execute(getContext().client);
+    expect(rows).toEqual(aggregateFunctionsCase.expectedRows);
   });
 
   it("executes unary where expression predicates", async () => {

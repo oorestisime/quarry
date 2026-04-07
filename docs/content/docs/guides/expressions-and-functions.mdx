@@ -1,0 +1,265 @@
+---
+title: Expressions and functions
+description: Use the expression builder for params, type conversions, null checks, and ClickHouse functions.
+---
+
+The expression builder is the callback-based API you reach for when the simple
+`(column, operator, value)` form of `where` and friends is not enough.
+
+You access it by passing a callback to `select`, `where`, `having`, etc.:
+
+```ts
+db.selectFrom("users as u").where((eb) => /* eb is the expression builder */);
+```
+
+<Callout type="info">
+This guide focuses on the patterns you reach for in real queries. For the
+exhaustive list of every helper, every signature, and every return type, see
+the [`ExpressionBuilder` reference](/docs/reference/expressions).
+</Callout>
+
+## Explicit parameter types
+
+By default Quarry infers the ClickHouse placeholder type from the JS value.
+When you need to control it &mdash; for example to force `DateTime` instead of
+plain `String` &mdash; use `param(value, "Type")`.
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+const rows = await db
+  .selectFrom("event_logs as e")
+  .select("e.user_id", "e.created_at")
+  .where("e.created_at", ">=", param("2025-01-01 00:00:00", "DateTime"))
+  .execute();
+```
+
+The string `"DateTime"` here is a ClickHouse type name, not a TypeScript type.
+It is the type that ends up inside the `{p0:DateTime}` placeholder in the
+generated SQL.
+
+## Type conversion helpers
+
+Common ClickHouse cast functions are exposed under `eb.fn`:
+
+```ts
+const rows = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    eb.fn.toInt32("e.user_id").as("user_id_i32"),
+    eb.fn.toDate("e.created_at").as("event_date"),
+    eb.fn.toDateTime64("e.created_at", 3).as("event_time_ms"),
+    eb.fn.toString("e.user_id").as("user_id_text"),
+  ])
+  .where((eb) => eb.fn.toUInt32("e.user_id"), ">", 0)
+  .execute();
+```
+
+The currently exposed cast helpers are:
+
+| Helper                          | Returns         |
+| ------------------------------- | --------------- |
+| `eb.fn.toInt32(value)`          | `number`        |
+| `eb.fn.toInt64(value)`          | `string`        |
+| `eb.fn.toUInt32(value)`         | `number`        |
+| `eb.fn.toUInt64(value)`         | `string`        |
+| `eb.fn.toFloat32(value)`        | `number`        |
+| `eb.fn.toFloat64(value)`        | `number`        |
+| `eb.fn.toDate(value)`           | `string`        |
+| `eb.fn.toDateTime(value)`       | `string`        |
+| `eb.fn.toDateTime64(value, p)`  | `string`        |
+| `eb.fn.toString(value)`         | `string`        |
+| `eb.fn.toDecimal64(value, s)`   | `number`        |
+| `eb.fn.toDecimal128(value, s)`  | `number`        |
+
+The result types reflect the
+[runtime-honest typing](/docs/concepts/runtime-semantics) story: 64-bit ints
+return as `string` because that is what `@clickhouse/client` actually returns.
+
+## Null checks
+
+ClickHouse `NULL` semantics are not the same as ANSI SQL when joins are
+involved (see [Runtime semantics](/docs/concepts/runtime-semantics)). Quarry
+forces you to be explicit by exposing dedicated helpers instead of `null`
+equality.
+
+```ts
+const withEmail = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .whereNotNull("u.email")
+  .execute();
+
+const withoutEmail = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .whereNull("u.email")
+  .execute();
+```
+
+## Combining conditions
+
+When you need multiple conditions combined with `AND` or `OR` inside a
+`where(...)` or `having(...)`, use the callback form with `eb.cmp(...)` and
+`eb.and([...])` / `eb.or([...])`.
+
+```ts
+db
+  .selectFrom("users as u")
+  .where((eb) =>
+    eb.and([
+      eb.cmp("u.email", "!=", ""),
+      eb.cmp("u.status", "in", ["active", "pending"]),
+      eb.or([
+        eb.fn.has("u.tags", "premium"),
+        eb.cmp(eb.fn.length("u.tags"), ">", 5),
+      ]),
+    ]),
+  );
+```
+
+`eb.cmp(left, operator, right)` is the expression-level counterpart of the
+top-level `where(column, operator, value)` form. The left side can be a
+column reference or another expression (including an `eb.fn.*` call), and
+the right side accepts values, `param(...)`, expressions, and subqueries.
+
+For comparing two columns directly (both sides are refs), use
+`eb.cmpRef(left, operator, right)` instead &mdash; it is the narrower
+sibling.
+
+## Array helpers
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .where((eb) => eb.fn.has("u.tags", "premium"))
+  .execute();
+```
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .selectExpr((eb) => ["u.id", eb.fn.length("u.tags").as("tag_count")])
+  .where((eb) => eb.fn.hasAny("u.tags", ["premium", "trial"]))
+  .where((eb) => eb.fn.length("u.tags"), ">", param(0, "UInt64"))
+  .execute();
+```
+
+Currently available array helpers:
+
+| Helper                          | Description                                                          |
+| ------------------------------- | -------------------------------------------------------------------- |
+| `eb.fn.has(array, element)`     | `element` is present in `array`                                      |
+| `eb.fn.hasAny(array, elements)` | any of `elements` is present in `array`                              |
+| `eb.fn.hasAll(array, elements)` | all of `elements` are present in `array`                             |
+| `eb.fn.length(array)`           | length of the array, returned as `string`                            |
+| `eb.fn.empty(value)`            | `1` if `value` is empty. Works on arrays **and** strings.            |
+| `eb.fn.notEmpty(value)`         | `1` if `value` is non-empty. Works on arrays **and** strings.        |
+
+`length()` returns ClickHouse `UInt64`, so under `JSONEachRow` it comes back
+as `string` at runtime. See
+[Runtime semantics](/docs/concepts/runtime-semantics) for why.
+
+`empty(...)` and `notEmpty(...)` are deliberately broader than the rest of
+this section &mdash; they accept any "emptyable" input. That includes arrays,
+non-null strings, and nullable strings, so the same helper works whether you
+are checking that a tag list has entries or that an email field is set.
+
+## String helpers
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .where((eb) => eb.fn.ilike("u.email", "%@example.com"))
+  .selectExpr((eb) => [
+    "u.id",
+    eb.fn.lower("u.email").as("email_normalized"),
+    eb.fn.concat(eb.fn.upper("u.status"), " - ", "u.email").as("label"),
+  ])
+  .execute();
+```
+
+Available string helpers:
+
+| Helper                                    | Description                                                  |
+| ----------------------------------------- | ------------------------------------------------------------ |
+| `eb.fn.like(value, pattern)`              | ClickHouse `LIKE` with `%` and `_` wildcards.                |
+| `eb.fn.ilike(value, pattern)`             | Case-insensitive `LIKE`.                                     |
+| `eb.fn.concat(part1, part2, ...rest)`     | String concatenation. **At least two parts required.**       |
+| `eb.fn.lower(value)`                      | Lowercase.                                                   |
+| `eb.fn.upper(value)`                      | Uppercase.                                                   |
+| `eb.fn.substring(value, offset, length)`  | Slice from `offset` for `length` characters.                 |
+| `eb.fn.trimBoth(value)`                   | Strip whitespace from both ends.                             |
+| `eb.fn.trimLeft(value)`                   | Strip leading whitespace.                                    |
+| `eb.fn.trimRight(value)`                  | Strip trailing whitespace.                                   |
+
+The `pattern` argument for `like` / `ilike` and the parts of `concat` accept
+a literal JS string, a `param(...)`, or another expression &mdash; you do
+not need to wrap them in `eb.val(...)` yourself. ClickHouse string predicates
+return `0`/`1`, hence the `number` return type.
+
+## JSON helpers
+
+```ts
+const rows = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    "e.user_id",
+    eb.fn.jsonExtractString("e.properties", "campaign").as("campaign"),
+  ])
+  .execute();
+```
+
+## Aggregates and the `-If` combinator
+
+The aggregate surface covers the common statistical and set helpers you
+reach for in analytics queries: `count`, `sum`, `avg`, `min`, `max`, `uniq`,
+`uniqExact`, `groupArray`, `any`, `anyLast`, plus their `-If` combinators.
+See the [`ExpressionBuilder` reference](/docs/reference/expressions#aggregates)
+for the full list and return types.
+
+```ts
+const stats = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    "e.user_id",
+    eb.fn.count().as("total"),
+    eb.fn.sum("e.amount").as("total_amount"),
+    eb.fn.avg("e.amount").as("avg_amount"),
+    eb.fn.uniqExact("e.session_id").as("unique_sessions"),
+  ])
+  .groupBy("e.user_id")
+  .execute();
+```
+
+### The `-If` combinator
+
+ClickHouse's `-If` combinator takes an aggregate and restricts it to rows
+where an extra condition is truthy. It is one of the features that makes
+ClickHouse aggregations dramatically more expressive than standard SQL.
+
+Quarry exposes typed helpers for the common `-If` variants: `countIf`,
+`sumIf`, `avgIf`, and `uniqIf`. The second argument is an expression &mdash;
+typically an `eb.cmp(...)` call.
+
+```ts
+const conversion = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    "e.user_id",
+    eb.fn.count().as("total_events"),
+    eb.fn.countIf(eb.cmp("e.event_type", "=", "signup")).as("signups"),
+    eb.fn.countIf(eb.cmp("e.event_type", "=", "purchase")).as("purchases"),
+    eb.fn
+      .sumIf("e.amount", eb.cmp("e.event_type", "=", "purchase"))
+      .as("revenue"),
+  ])
+  .groupBy("e.user_id")
+  .execute();
+```
+
+One query gives you total events, signup count, purchase count, and
+purchase revenue &mdash; all computed in a single pass. In standard SQL you
+would need `CASE WHEN ... END` expressions inside each aggregate; ClickHouse
+(and Quarry) lets you write it directly.

@@ -105,11 +105,21 @@ type NonTupleArray<T> = T extends readonly unknown[]
     : never
   : never;
 
+type StringLike<T> = Exclude<T, null> extends string ? T : never;
+
 export type ArrayColumnRef<Scope extends ScopeMap> = {
   [Ref in ColumnRef<Scope>]: NonTupleArray<ResolveColumnType<Scope, Ref>> extends never
     ? never
     : Ref;
 }[ColumnRef<Scope>];
+
+export type StringColumnRef<Scope extends ScopeMap> = {
+  [Ref in ColumnRef<Scope>]: StringLike<ResolveColumnType<Scope, Ref>> extends never ? never : Ref;
+}[ColumnRef<Scope>];
+
+export type EmptyableColumnRef<Scope extends ScopeMap> =
+  | ArrayColumnRef<Scope>
+  | StringColumnRef<Scope>;
 
 export type ResolveArrayElementType<Scope extends ScopeMap, Ref extends ColumnRef<Scope>> =
   NonTupleArray<ResolveColumnType<Scope, Ref>> extends readonly (infer Item)[] ? Item : never;

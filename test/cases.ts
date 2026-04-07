@@ -22,6 +22,9 @@ interface SpikeDB {
   typed_samples: {
     id: number;
     big_user_id: string;
+    label: string;
+    status: "pending" | "active" | "archived";
+    nickname: string | null;
     tags: string[];
     amount: number;
     created_at: string;
@@ -544,4 +547,130 @@ export const arrayFunctionsCase = defineQueryCase({
         eb.fn.notEmpty("t.tags").as("is_not_empty"),
       ])
       .orderBy("t.id", "asc"),
+});
+
+export const stringFunctionsCase = defineQueryCase({
+  name: "23 string functions",
+  file: "23_string_functions.sql",
+  expectedParams: {
+    p0: "%ph%",
+    p1: "%AL%",
+    p2: "-",
+    p3: 2,
+    p4: 3,
+    p5: "  ",
+    p6: "  ",
+    p7: "  ",
+    p8: "  ",
+    p9: "  ",
+    p10: "  ",
+  },
+  expectedRows: [
+    {
+      id: 1,
+      has_ph: 1,
+      has_al_insensitive: 1,
+      label_is_empty: 0,
+      label_is_not_empty: 1,
+      label_key: "alpha-1",
+      label_lower: "alpha",
+      label_upper: "ALPHA",
+      label_slice: "lph",
+      label_trimmed: "alpha",
+      label_left_trimmed: "alpha  ",
+      label_right_trimmed: "  alpha",
+    },
+    {
+      id: 2,
+      has_ph: 0,
+      has_al_insensitive: 0,
+      label_is_empty: 0,
+      label_is_not_empty: 1,
+      label_key: "beta-2",
+      label_lower: "beta",
+      label_upper: "BETA",
+      label_slice: "eta",
+      label_trimmed: "beta",
+      label_left_trimmed: "beta  ",
+      label_right_trimmed: "  beta",
+    },
+  ],
+  build: () =>
+    db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        "t.id",
+        eb.fn.like("t.label", "%ph%").as("has_ph"),
+        eb.fn.ilike("t.label", "%AL%").as("has_al_insensitive"),
+        eb.fn.empty("t.label").as("label_is_empty"),
+        eb.fn.notEmpty("t.label").as("label_is_not_empty"),
+        eb.fn.concat(eb.ref("t.label"), "-", eb.fn.toString("t.id")).as("label_key"),
+        eb.fn.lower("t.label").as("label_lower"),
+        eb.fn.upper("t.label").as("label_upper"),
+        eb.fn.substring("t.label", 2, 3).as("label_slice"),
+        eb.fn.trimBoth(eb.fn.concat("  ", eb.ref("t.label"), "  ")).as("label_trimmed"),
+        eb.fn.trimLeft(eb.fn.concat("  ", eb.ref("t.label"), "  ")).as("label_left_trimmed"),
+        eb.fn.trimRight(eb.fn.concat("  ", eb.ref("t.label"), "  ")).as("label_right_trimmed"),
+      ])
+      .where((eb) => eb.fn.notEmpty("t.label"))
+      .orderBy("t.id", "asc"),
+});
+
+export const aggregateFunctionsCase = defineQueryCase({
+  name: "24 aggregate functions",
+  file: "24_aggregate_functions.sql",
+  expectedParams: {
+    p0: "active",
+    p1: "active",
+    p2: "active",
+    p3: "active",
+    p4: "active",
+  },
+  expectedRows: [
+    {
+      sample_count: "2",
+      active_samples: "1",
+      amount_sum: 123.55,
+      big_user_id_sum: "9007199254741035",
+      active_amount_sum: 123.45,
+      active_big_user_id_sum: "9007199254740993",
+      amount_avg: 61.775,
+      big_user_id_avg: 4503599627370518,
+      active_amount_avg: 123.45,
+      min_label: "alpha",
+      max_label: "beta",
+      uniq_statuses: "2",
+      uniq_statuses_exact: "2",
+      uniq_active_statuses: "1",
+      labels: ["alpha", "beta"],
+      nicknames: ["bee"],
+      any_label: "alpha",
+      any_last_label: "beta",
+    },
+  ],
+  build: () =>
+    db.selectFrom("typed_samples as t").selectExpr((eb) => {
+      const isActive = eb.cmp("t.status", "=", "active");
+
+      return [
+        eb.fn.count().as("sample_count"),
+        eb.fn.countIf(isActive).as("active_samples"),
+        eb.fn.sum("t.amount").as("amount_sum"),
+        eb.fn.sum("t.big_user_id").as("big_user_id_sum"),
+        eb.fn.sumIf("t.amount", isActive).as("active_amount_sum"),
+        eb.fn.sumIf("t.big_user_id", isActive).as("active_big_user_id_sum"),
+        eb.fn.avg("t.amount").as("amount_avg"),
+        eb.fn.avg("t.big_user_id").as("big_user_id_avg"),
+        eb.fn.avgIf("t.amount", isActive).as("active_amount_avg"),
+        eb.fn.min("t.label").as("min_label"),
+        eb.fn.max("t.label").as("max_label"),
+        eb.fn.uniq("t.status").as("uniq_statuses"),
+        eb.fn.uniqExact("t.status").as("uniq_statuses_exact"),
+        eb.fn.uniqIf("t.status", isActive).as("uniq_active_statuses"),
+        eb.fn.groupArray("t.label").as("labels"),
+        eb.fn.groupArray("t.nickname").as("nicknames"),
+        eb.fn.any("t.label").as("any_label"),
+        eb.fn.anyLast("t.label").as("any_last_label"),
+      ];
+    }),
 });

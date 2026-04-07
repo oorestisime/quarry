@@ -1,0 +1,25 @@
+---
+title: Introduction
+description: Quarry is an experimental ClickHouse-native query builder for TypeScript.
+---
+
+Quarry is a **query builder first**. It is not trying to be an ORM, and it is
+not trying to hide ClickHouse behind a generic multi-dialect SQL abstraction.
+
+This package is currently in early alpha. The current API is already validated
+against a real ClickHouse instance in integration tests, but the surface may
+still change before a stable release.
+
+## What it covers today
+
+- typed selects and inserts
+- joins, subqueries, and CTEs
+- `FINAL`, `PREWHERE`, `GROUP BY`, and `HAVING`
+- `toSQL()` and `execute()`
+
+## Where to start
+
+- [Approach](/docs/concepts/approach) &mdash; what Quarry is and is not
+- [Getting Started](/docs/guides/getting-started) &mdash; install and run your
+  first query
+- [Roadmap](/docs/roadmap) &mdash; what is likely to land next

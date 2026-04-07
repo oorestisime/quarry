@@ -1,0 +1,394 @@
+---
+title: ExpressionBuilder
+description: Reference for the expression builder, including every eb.fn helper.
+---
+
+The expression builder is the API you reach for when the simple
+`(column, operator, value)` form of `where`, `having`, etc. is not enough.
+You access it through callbacks:
+
+```ts
+db.selectFrom("users as u").where((eb) => /* eb is the expression builder */);
+db.selectFrom("users as u").selectExpr((eb) => [/* projections */]);
+```
+
+The builder is parameterised by the **scope** of the surrounding query, so
+all column references and function arguments are type-checked against the
+columns currently in scope.
+
+## Building expressions
+
+### `eb.ref(columnRef)`
+
+Wraps a column reference as an `Expression`. The result type matches the
+column's TypeScript type from the schema.
+
+```ts
+db
+  .selectFrom("users as u")
+  .selectExpr((eb) => [eb.ref("u.email")]);
+```
+
+In most places where you can pass `eb.ref("u.email")` you can also pass the
+plain string `"u.email"` directly. `ref` is useful when you specifically
+need an `Expression<T>` value (e.g. to pass into a function helper that
+takes either a column or an expression).
+
+### `eb.val(value)`
+
+Wraps a JavaScript value as a typed parameterised expression. The compiled
+SQL gets a `{pN:Type}` placeholder; the value is sent through the driver's
+parameter map, **not** string-interpolated.
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+db
+  .selectFrom("users as u")
+  .where((eb) =>
+    eb.cmpRef("u.id", "=", "u.id"), /* placeholder */
+  )
+  .selectExpr((eb) => [eb.val(param(42, "UInt32"))]);
+```
+
+For literal values where Quarry can infer the type, you can pass the JS
+value directly to most APIs without going through `eb.val`.
+
+### `eb.raw(sql)`
+
+Inserts raw SQL into the expression. **No escaping is performed**, so this
+is an explicit escape hatch &mdash; only use it for trusted, hard-coded SQL
+fragments.
+
+```ts
+db
+  .selectFrom("users as u")
+  .selectExpr((eb) => [eb.raw<string>("toString(u.id)").as("id_text")]);
+```
+
+The optional type parameter (`<string>` above) controls how the result type
+is treated downstream.
+
+## Comparing values
+
+Quarry exposes two comparison helpers on the expression builder.
+`eb.cmp(...)` is the general-purpose one you reach for most of the time.
+`eb.cmpRef(...)` is a narrower variant for comparing two columns directly.
+
+### `eb.cmp(left, operator, right)`
+
+The callback-form counterpart of
+[`where(column, operator, value)`](/docs/reference/select#filtering-where).
+Use it inside `eb.and([...])` or `eb.or([...])` to combine multi-part
+conditions, or when the left side needs to be an expression rather than a
+raw column reference.
+
+The **left side** accepts either a column reference or another `Expression`.
+The **right side** accepts a scalar value, a `param(...)`, another
+`Expression`, or a subquery.
+
+```ts
+db
+  .selectFrom("users as u")
+  .where((eb) =>
+    eb.and([
+      eb.cmp("u.email", "!=", ""),
+      eb.cmp("u.status", "in", ["active", "pending"]),
+      eb.cmp(eb.fn.length("u.tags"), ">", 0),
+    ]),
+  );
+```
+
+Comparing an expression against a subquery:
+
+```ts
+const activeIds = db
+  .selectFrom("event_logs as e")
+  .select("e.user_id")
+  .where("e.event_type", "=", "signup");
+
+db
+  .selectFrom("users as u")
+  .where((eb) => eb.cmp("u.id", "in", activeIds));
+```
+
+Operators allowed: `=`, `!=`, `>`, `>=`, `<`, `<=`, `in`, `not in`. When the
+operator is `in` / `not in`, the right side must be an array, a `param`
+wrapping an array, or a subquery.
+
+### `eb.cmpRef(left, operator, right)`
+
+Compares two column references. Both must resolve to columns in the current
+scope. Use this when both sides are columns &mdash; for everything else use
+[`eb.cmp`](#ebcmpleft-operator-right).
+
+```ts
+db
+  .selectFrom("users as a")
+  .innerJoin("users as b", (eb) =>
+    eb.and([
+      eb.cmpRef("a.id", "=", "b.id"),
+      eb.cmpRef("a.email", "=", "b.email"),
+    ]),
+  );
+```
+
+Operators allowed for `cmpRef` are restricted to equality and ordering
+(`=`, `!=`, `<`, `<=`, `>`, `>=`).
+
+## Combining expressions
+
+### `eb.and(expressions)`
+
+Wraps an array of expressions in a logical `AND`.
+
+```ts
+db
+  .selectFrom("users as u")
+  .where((eb) =>
+    eb.and([
+      eb.fn.has("u.tags", "premium"),
+      eb.fn.notEmpty("u.email"),
+    ]),
+  );
+```
+
+### `eb.or(expressions)`
+
+Same shape, logical `OR`.
+
+```ts
+db
+  .selectFrom("users as u")
+  .where((eb) =>
+    eb.or([
+      eb.fn.has("u.tags", "premium"),
+      eb.fn.has("u.tags", "trial"),
+    ]),
+  );
+```
+
+`and` and `or` can be nested freely:
+
+```ts
+db
+  .selectFrom("users as u")
+  .where((eb) =>
+    eb.and([
+      eb.fn.notEmpty("u.email"),
+      eb.or([
+        eb.fn.has("u.tags", "premium"),
+        eb.fn.has("u.tags", "trial"),
+      ]),
+    ]),
+  );
+```
+
+## Functions: `eb.fn`
+
+Every helper under `eb.fn.*` returns an `Expression<T>` where `T` is the
+**runtime** TypeScript type for the value, not the ClickHouse type. See
+[runtime semantics](/docs/concepts/runtime-semantics) for why some 64-bit
+types come back as `string`.
+
+You can chain `.as("alias")` on any `Expression` to give it a name in the
+projection.
+
+### Aggregates
+
+Every aggregate returns an `Expression<T>` where `T` follows the
+[runtime-honest typing](/docs/concepts/runtime-semantics) rules: 64-bit
+integer results (`count`, `uniq`, `sum` of `UInt64`) come back as `string`;
+`avg` always returns `number` because ClickHouse produces `Float64` for it;
+`min` / `max` / `any` / `anyLast` preserve the input type; `groupArray`
+preserves the input type except that `NULL` elements are dropped from nullable
+inputs.
+
+#### Count and numeric
+
+| Helper                              | Returns                          | Notes                                                             |
+| ----------------------------------- | -------------------------------- | ----------------------------------------------------------------- |
+| `eb.fn.count()`                     | `Expression<string>`             | `count(*)`. UInt64 → `string`.                                    |
+| `eb.fn.countIf(condition)`          | `Expression<string>`             | Counts only rows where `condition` is truthy.                     |
+| `eb.fn.sum(value)`                  | `Expression<number \| string>`   | Returns `string` for 64-bit integer columns, `number` otherwise.  |
+| `eb.fn.sumIf(value, condition)`     | `Expression<number \| string>`   | Sums only rows where `condition` is truthy.                       |
+| `eb.fn.avg(value)`                  | `Expression<number>`             | Always returns `number` (ClickHouse produces `Float64`).          |
+| `eb.fn.avgIf(value, condition)`     | `Expression<number>`             | Average over rows where `condition` is truthy.                    |
+| `eb.fn.min(value)`                  | `Expression<T>`                  | Minimum. Return type matches the input column type.               |
+| `eb.fn.max(value)`                  | `Expression<T>`                  | Maximum. Return type matches the input column type.               |
+
+#### Distinct
+
+| Helper                                  | Returns              | Notes                                                   |
+| ---------------------------------------- | -------------------- | ------------------------------------------------------- |
+| `eb.fn.uniq(value)`                      | `Expression<string>` | Approximate distinct count (HyperLogLog). UInt64 → `string`. |
+| `eb.fn.uniqExact(value)`                 | `Expression<string>` | Exact distinct count. Slower than `uniq`.               |
+| `eb.fn.uniqIf(value, condition)`         | `Expression<string>` | Approximate distinct count over filtered rows.          |
+
+#### Collection and first-value
+
+| Helper                    | Returns              | Notes                                                                 |
+| ------------------------- | -------------------- | --------------------------------------------------------------------- |
+| `eb.fn.groupArray(value)` | `Expression<T[]>`    | Collects all values in the group into an array. For nullable inputs, `NULL` values are dropped, so `Nullable(T)` becomes `T[]`. |
+| `eb.fn.any(value)`        | `Expression<T>`      | Returns any value from the group. Nondeterministic which one.         |
+| `eb.fn.anyLast(value)`    | `Expression<T>`      | Returns the last value seen in the group in insertion order.          |
+
+#### Example: combining aggregates
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+const stats = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    "e.user_id",
+    eb.fn.count().as("total_events"),
+    eb.fn.countIf(eb.cmp("e.event_type", "=", "signup")).as("signups"),
+    eb.fn.sum("e.amount").as("total_amount"),
+    eb.fn
+      .avgIf("e.amount", eb.cmp("e.event_type", "=", "purchase"))
+      .as("avg_purchase"),
+    eb.fn.uniqExact("e.session_id").as("unique_sessions"),
+    eb.fn.groupArray("e.event_type").as("all_event_types"),
+  ])
+  .groupBy("e.user_id")
+  .having("total_events", ">", param(0, "UInt64"))
+  .execute();
+```
+
+<Callout type="info">
+**The `-If` combinator pattern.** ClickHouse supports an `-If` combinator on
+most aggregates: `sumIf`, `avgIf`, `countIf`, `uniqIf`, and so on. The `-If`
+variant takes an extra condition and only includes rows where that condition
+is truthy. One query can then return, say, `count(*)`, `countIf(signup)`,
+`countIf(purchase)`, and `sumIf(amount, purchase)` in a single pass &mdash;
+something standard SQL needs `CASE WHEN ... END` inside each aggregate to
+approximate. Quarry exposes typed helpers for the most common `-If`
+variants; for any you need that we do not yet wrap, you can fall through to
+`eb.raw(...)`.
+</Callout>
+
+### Type conversions
+
+These mirror the ClickHouse `toX` family. The result type follows the
+[runtime semantics](/docs/concepts/runtime-semantics): 64-bit ints come back
+as `string`, decimals come back as `number`, dates come back as `string`.
+
+| Helper                                 | Returns              | ClickHouse type produced |
+| -------------------------------------- | -------------------- | ------------------------ |
+| `eb.fn.toInt32(value)`                 | `Expression<number>` | `Int32`                  |
+| `eb.fn.toInt64(value)`                 | `Expression<string>` | `Int64`                  |
+| `eb.fn.toUInt32(value)`                | `Expression<number>` | `UInt32`                 |
+| `eb.fn.toUInt64(value)`                | `Expression<string>` | `UInt64`                 |
+| `eb.fn.toFloat32(value)`               | `Expression<number>` | `Float32`                |
+| `eb.fn.toFloat64(value)`               | `Expression<number>` | `Float64`                |
+| `eb.fn.toDate(value)`                  | `Expression<string>` | `Date`                   |
+| `eb.fn.toDateTime(value)`              | `Expression<string>` | `DateTime`               |
+| `eb.fn.toDateTime64(value, precision)` | `Expression<string>` | `DateTime64(precision)`  |
+| `eb.fn.toString(value)`                | `Expression<string>` | `String`                 |
+| `eb.fn.toDecimal64(value, scale)`      | `Expression<number>` | `Decimal64(scale)`       |
+| `eb.fn.toDecimal128(value, scale)`     | `Expression<number>` | `Decimal128(scale)`      |
+
+`precision` for `toDateTime64` must be an integer between `0` and `9`
+(inclusive). `scale` for `toDecimal64` must be `0..18`, and for
+`toDecimal128` must be `0..38`. Out-of-range values throw at build time.
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    eb.fn.toDate("e.created_at").as("event_date"),
+    eb.fn.toDateTime64("e.created_at", 3).as("event_time_ms"),
+  ]);
+```
+
+### JSON helpers
+
+| Helper                                  | Returns              |
+| --------------------------------------- | -------------------- |
+| `eb.fn.jsonExtractString(column, key)`  | `Expression<string>` |
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    eb.fn.jsonExtractString("e.properties", "campaign").as("campaign"),
+  ]);
+```
+
+The `key` argument is escaped for use as a single-quoted string literal.
+More JSON helpers will be added &mdash; see the
+[roadmap](/docs/roadmap#1-more-clickhouse-functions).
+
+### Array helpers
+
+| Helper                            | Returns              | Notes                                                   |
+| --------------------------------- | -------------------- | ------------------------------------------------------- |
+| `eb.fn.has(array, element)`       | `Expression<number>` | `1` if `element` is in `array`, `0` otherwise.          |
+| `eb.fn.hasAny(array, elements)`   | `Expression<number>` | `1` if any of `elements` is in `array`.                 |
+| `eb.fn.hasAll(array, elements)`   | `Expression<number>` | `1` if all of `elements` are in `array`.                |
+| `eb.fn.length(array)`             | `Expression<string>` | UInt64 → `string`.                                       |
+| `eb.fn.empty(value)`              | `Expression<number>` | Works on arrays **and** strings (returns `1` if empty). |
+| `eb.fn.notEmpty(value)`           | `Expression<number>` | Works on arrays **and** strings.                        |
+
+`empty` and `notEmpty` accept any "emptyable" value &mdash; arrays, strings,
+or nullable strings. ClickHouse uses `0`/`1` for booleans, hence the
+`number` return type.
+
+```ts
+db
+  .selectFrom("users as u")
+  .where((eb) => eb.fn.hasAny("u.tags", ["premium", "trial"]))
+  .selectExpr((eb) => [
+    "u.id",
+    eb.fn.length("u.tags").as("tag_count"),
+  ]);
+```
+
+### String helpers
+
+| Helper                                       | Returns              |
+| -------------------------------------------- | -------------------- |
+| `eb.fn.like(value, pattern)`                 | `Expression<number>` |
+| `eb.fn.ilike(value, pattern)`                | `Expression<number>` |
+| `eb.fn.concat(part1, part2, ...rest)`        | `Expression<string>` |
+| `eb.fn.lower(value)`                         | `Expression<string>` |
+| `eb.fn.upper(value)`                         | `Expression<string>` |
+| `eb.fn.substring(value, offset, length)`     | `Expression<string>` |
+| `eb.fn.trimBoth(value)`                      | `Expression<string>` |
+| `eb.fn.trimLeft(value)`                      | `Expression<string>` |
+| `eb.fn.trimRight(value)`                     | `Expression<string>` |
+
+`concat` requires **at least two** parts. The `pattern` for `like` /
+`ilike` follows the ClickHouse `LIKE` syntax (`%` and `_` wildcards).
+
+```ts
+db
+  .selectFrom("users as u")
+  .where((eb) => eb.fn.ilike("u.email", "%@example.com"))
+  .selectExpr((eb) => [
+    "u.id",
+    eb.fn.lower("u.email").as("email_normalized"),
+    eb.fn.concat(eb.fn.upper("u.status"), " - ", "u.email").as("label"),
+  ]);
+```
+
+`lower`, `upper`, and the `trim*` helpers accept either a column reference
+or a string-typed `Expression`. `like`, `ilike`, and `substring` accept the
+same on the value side and `ParamLike<string>` on the pattern/length side
+(so you can pass a literal string, a `param(...)`, or another expression).
+
+## The `Expression<T>` and `AliasedExpression<T, Alias>` classes
+
+`eb.*` always returns an `Expression<T>`. You can give it a name with
+`.as("alias")`, which produces an `AliasedExpression<T, Alias>`. Both are
+accepted by `selectExpr` and similar APIs:
+
+```ts
+const id = (eb: any) => eb.ref("u.id");           // Expression<number>
+const idText = (eb: any) =>
+  eb.fn.toString("u.id").as("id_text");           // AliasedExpression<string, "id_text">
+```
+
+In normal usage you do not need to construct these classes directly &mdash;
+they are returned to you by the builder.

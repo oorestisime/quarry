@@ -1,6 +1,12 @@
-# Quarry
+<p align="center">
+  <img src="./.github/assets/logo.png" width="120" alt="Quarry logo" />
+</p>
 
-[![npm version](https://img.shields.io/npm/v/%40oorestisime%2Fquarry)](https://www.npmjs.com/package/@oorestisime/quarry)
+<h1 align="center">Quarry</h1>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@oorestisime/quarry"><img src="https://img.shields.io/npm/v/%40oorestisime%2Fquarry" alt="npm version" /></a>
+</p>
 
 Experimental ClickHouse-native query builder for TypeScript.
 
@@ -8,9 +14,22 @@ Quarry is a query builder first. It is not trying to be an ORM or hide ClickHous
 
 ## Docs
 
-- [Approach](./docs/approach.md)
-- [Roadmap](./docs/roadmap.md)
-- [Usage](./docs/usage.md)
+The full documentation site lives in [`docs/`](./docs) and is built with
+[Fumadocs](https://fumadocs.dev). To run it locally:
+
+```bash
+cd docs
+pnpm install
+pnpm dev
+```
+
+The site will be available on http://localhost:3000.
+
+Highlights:
+
+- [Approach](./docs/content/docs/concepts/approach.mdx) &mdash; what Quarry is and is not
+- [Getting started](./docs/content/docs/guides/getting-started.mdx) &mdash; install and run your first query
+- [Roadmap](./docs/content/docs/roadmap.mdx) &mdash; what is likely to land next
 
 ## Status
 
@@ -23,7 +42,7 @@ This package is still in the early alpha stage. The current API is already valid
 - `FINAL`, `PREWHERE`, `GROUP BY`, and `HAVING`
 - `toSQL()` and `execute()`
 
-See [Usage](./docs/usage.md) for the current supported API and runtime semantics.
+See the [docs site](./docs) for the full supported API, runtime semantics, and concept guides.
 
 ## Example
 

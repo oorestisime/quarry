@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  aggregateFunctionsCase,
   cteLeftJoinBaseTableCase,
   cteJoinCase,
   finalPrewhereSettingsCase,
@@ -21,6 +22,7 @@ import {
   selectAllCase,
   selectAllForAliasCase,
   simpleSelectCase,
+  stringFunctionsCase,
   typeCastFunctionsCase,
   whereRefCase,
 } from "./cases";
@@ -191,5 +193,21 @@ describe("query corpus spike", () => {
 
     expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
     expect(compiled.params).toEqual(arrayFunctionsCase.expectedParams);
+  });
+
+  it(stringFunctionsCase.name, () => {
+    const expectedSql = readFileSync(resolve(queriesDir, stringFunctionsCase.file), "utf8");
+    const compiled = stringFunctionsCase.build().toSQL();
+
+    expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
+    expect(compiled.params).toEqual(stringFunctionsCase.expectedParams);
+  });
+
+  it(aggregateFunctionsCase.name, () => {
+    const expectedSql = readFileSync(resolve(queriesDir, aggregateFunctionsCase.file), "utf8");
+    const compiled = aggregateFunctionsCase.build().toSQL();
+
+    expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
+    expect(compiled.params).toEqual(aggregateFunctionsCase.expectedParams);
   });
 });

@@ -1,0 +1,44 @@
+---
+title: Inserts
+description: Insert one or many rows into a table with full type checking.
+---
+
+Inserts always take an array of rows. Each row is type-checked against the
+target table's row type from the schema you passed to `createClickHouseDB`.
+
+```ts
+await db
+  .insertInto("users")
+  .values([
+    {
+      id: 1,
+      email: "alice@example.com",
+      status: "active",
+    },
+    {
+      id: 2,
+      email: "bob@example.com",
+      status: "active",
+    },
+  ])
+  .execute();
+```
+
+The compiled SQL uses ClickHouse's `INSERT ... FORMAT JSONEachRow` shape under
+the hood, so you do not have to think about column ordering &mdash; the keys
+in your object literal map to columns by name.
+
+## Inspecting before executing
+
+Just like select queries, insert queries can be compiled with `toSQL()`
+without running:
+
+```ts
+const compiled = db
+  .insertInto("users")
+  .values([{ id: 1, email: "alice@example.com", status: "active" }])
+  .toSQL();
+
+compiled.query;
+compiled.params;
+```

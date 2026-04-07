@@ -1,0 +1,183 @@
+---
+title: Scopes and aliases
+description: How Quarry tracks which columns are in scope as you chain selectFrom, joins, CTEs, and subqueries.
+---
+
+When you chain `db.selectFrom(...).innerJoin(...).where(...)`, Quarry has to
+know &mdash; at the type level &mdash; which columns you can legally
+reference at each step. That bookkeeping is what we call the **scope**, and
+it is the reason your column refs and aliases are checked at compile time.
+
+## The mental model
+
+Think of the scope as a `{ alias → row type }` map.
+
+After `db.selectFrom("event_logs as e")`, the scope is:
+
+```ts
+{
+  e: { user_id: number; event_type: string; created_at: string; /* ... */ }
+}
+```
+
+After also doing `.innerJoin("users as u", "u.id", "e.user_id")`, the scope
+becomes:
+
+```ts
+{
+  e: { user_id: number; event_type: string; /* ... */ },
+  u: { id: number; email: string; /* ... */ }
+}
+```
+
+Every method that takes a column ref &mdash; `select`, `where`, `having`,
+`orderBy`, `groupBy`, `whereRef`, `eb.cmpRef`, etc. &mdash; is type-checked
+against this scope. Passing `"u.id"` is fine after the join. Passing
+`"u.id"` *before* the join is a compile error.
+
+## Source expressions
+
+There are three forms of source you can pass to `selectFrom` or to
+`innerJoin` / `leftJoin`:
+
+### 1. The string form
+
+```ts
+db.selectFrom("event_logs as e")
+db.selectFrom("event_logs")               // alias defaults to the table name
+```
+
+The `as alias` is parsed by a tiny case-insensitive regex in
+[`parseTableExpression`](https://github.com/oorestisime/quarry/blob/main/src/query/helpers.ts).
+When the alias is omitted, the alias defaults to the table name (so
+`selectFrom("users")` puts `users` in scope).
+
+### 2. The explicit table source builder
+
+```ts
+db.table("event_logs").as("e").final()
+```
+
+This is the form you reach for when you need source-level options that the
+string form cannot express &mdash; primarily `final()`, but it would also be
+the path for any future source-level features.
+
+### 3. An aliased subquery
+
+```ts
+const downloads = db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
+  .groupBy("e.user_id")
+  .as("downloads");
+
+db
+  .selectFrom("users as u")
+  .leftJoin(downloads, "downloads.user_id", "u.id")
+  .select("u.id", "downloads.event_count");
+```
+
+The aliased subquery contributes its **selected output type** as a row type
+under its alias, so `"downloads.event_count"` is checked exactly like a real
+column.
+
+## Column references
+
+Once you have a scope, you can refer to columns in two ways.
+
+**Qualified** (always allowed):
+
+```ts
+"u.email"
+"e.user_id"
+"downloads.event_count"
+```
+
+**Unqualified** (only allowed when the scope has exactly one source):
+
+```ts
+db.selectFrom("users as u").select("email"); // OK -- single source
+```
+
+The single-source rule is enforced by a type called `OnlyScopeAlias<Scope>`,
+which evaluates to the alias when there is exactly one and to `never`
+otherwise. Once you join, unqualified refs become a type error and you have
+to write `"u.email"` instead.
+
+## `selectAll()` rules
+
+`selectAll()` and `selectAll(alias)` follow the same single-source rule:
+
+| Form | Meaning | When it's allowed |
+| --- | --- | --- |
+| `selectAll()` | `SELECT *` &mdash; expand every column from the only source | Only when scope has exactly one source |
+| `selectAll(alias)` | `SELECT alias.*` &mdash; expand every column from a specific alias | Always (as long as the alias is in scope) |
+
+In a joined query you almost always want the second form, because the first
+will be a compile error after the first `join`.
+
+```ts
+// single source -- both work
+db.selectFrom("users as u").selectAll();
+db.selectFrom("users as u").selectAll("u");
+
+// joined -- only the qualified form works
+db
+  .selectFrom("users as u")
+  .innerJoin("event_logs as e", "u.id", "e.user_id")
+  .selectAll("u");                            // OK
+//.selectAll();                               // type error
+```
+
+The two cases compile to slightly different SQL: `*` vs `u.*`.
+
+## How the result type is built
+
+The result type for `execute()` is a separate type parameter on the builder
+called `Output`. It starts empty and grows each time you add to the
+projection:
+
+- `select("u.id", "u.email")` adds `{ id: number; email: string }`
+- `select("u.id as user_id")` adds `{ user_id: number }`
+- `selectExpr((eb) => [eb.fn.count().as("c")])` adds `{ c: string }`
+- `selectAll("u")` adds the full row type for `u`
+
+Multiple `select` calls intersect, which is how chains like
+`.select("u.id").select("u.email")` produce a `{ id; email }` row type.
+
+For aliases coming out of `selectExpr`, the alias name becomes the property
+name in the result type. The alias is also visible later in the chain to
+`having(...)` and `orderBy(...)` &mdash; this is one place where Quarry's
+type-level state mirrors ClickHouse's actual SQL behavior, since ClickHouse
+allows referencing select-list aliases in `HAVING` and `ORDER BY`.
+
+## CTEs add to `Sources`, not `Scope`
+
+`db.with(name, callback)` is slightly different from `selectFrom`. It adds
+the CTE to the database's known sources rather than putting it in scope
+directly:
+
+```ts
+const result = await db
+  .with("active_users", (db) =>
+    db.selectFrom("event_logs as e")
+      .select("e.user_id")
+      .where("e.event_type", "=", "signup"),
+  )
+  .selectFrom("active_users as au")     // now you can selectFrom the CTE
+  .innerJoin("users as u", "u.id", "au.user_id")
+  .select("u.id", "u.email");
+```
+
+After `.with(...)`, the CTE name is part of the schema available to the
+next `selectFrom`. You can chain multiple `.with` calls to define more than
+one CTE.
+
+## Why this matters
+
+The whole point of carrying scope information at the type level is so that
+typos, missing joins, and wrong-table column refs become compile errors
+instead of runtime errors. When you hover a query in your editor and the
+result type shows exactly the columns you projected, that is the scope and
+output system doing its job &mdash; the same information your editor sees
+is what the compiler uses to generate the right SQL.

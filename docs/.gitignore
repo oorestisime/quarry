@@ -1,0 +1,25 @@
+# Next.js
+.next/
+out/
+
+# Fumadocs MDX generated source
+.source/
+
+# Dependencies (already covered by root .gitignore but be explicit here)
+node_modules/
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts.bak

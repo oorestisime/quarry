@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createClickHouseDB, type InferResult } from "../../src";
+import { createClickHouseDB, param, type InferResult } from "../../src";
 import { startClickHouse, stopClickHouse, type ClickHouseTestContext } from "./clickhouse";
 
 interface TypedSamplesDB {
@@ -78,6 +78,76 @@ function buildArrayFunctionQuery() {
     .orderBy("t.id", "asc");
 }
 
+function buildStringFunctionQuery() {
+  return db
+    .selectFrom("typed_samples as t")
+    .selectExpr((eb) => [
+      "t.id",
+      eb.fn.like("t.label", "%ph%").as("has_ph"),
+      eb.fn.ilike("t.label", "%AL%").as("has_al_insensitive"),
+      eb.fn.empty("t.label").as("label_is_empty"),
+      eb.fn.notEmpty("t.label").as("label_is_not_empty"),
+      eb.fn.concat(eb.ref("t.label"), "-", eb.fn.toString("t.id")).as("label_key"),
+      eb.fn.lower("t.label").as("label_lower"),
+      eb.fn.upper("t.label").as("label_upper"),
+      eb.fn.substring("t.label", 2, 3).as("label_slice"),
+      eb.fn.trimBoth(eb.fn.concat("  ", eb.ref("t.label"), "  ")).as("label_trimmed"),
+      eb.fn.trimLeft(eb.fn.concat("  ", eb.ref("t.label"), "  ")).as("label_left_trimmed"),
+      eb.fn.trimRight(eb.fn.concat("  ", eb.ref("t.label"), "  ")).as("label_right_trimmed"),
+    ])
+    .where((eb) => eb.fn.notEmpty("t.label"))
+    .orderBy("t.id", "asc");
+}
+
+function buildNullableStringFunctionQuery() {
+  return db
+    .selectFrom("typed_samples as t")
+    .selectExpr((eb) => [
+      "t.id",
+      eb.fn.like("t.nickname", "%e%").as("nickname_has_e"),
+      eb.fn
+        .ilike("t.label", param<string | null>(null, "Nullable(String)"))
+        .as("label_matches_maybe"),
+      eb.fn.empty("t.nickname").as("nickname_is_empty"),
+      eb.fn.notEmpty("t.nickname").as("nickname_is_not_empty"),
+      eb.fn.concat(eb.ref("t.nickname"), "-", eb.ref("t.label")).as("nickname_key"),
+      eb.fn.lower("t.nickname").as("nickname_lower"),
+      eb.fn.upper("t.nickname").as("nickname_upper"),
+      eb.fn.substring("t.nickname", 1, 1).as("nickname_slice"),
+      eb.fn.trimBoth(eb.fn.concat("  ", eb.ref("t.nickname"), "  ")).as("nickname_trimmed"),
+      eb.fn.trimLeft(eb.fn.concat("  ", eb.ref("t.nickname"), "  ")).as("nickname_left_trimmed"),
+      eb.fn.trimRight(eb.fn.concat("  ", eb.ref("t.nickname"), "  ")).as("nickname_right_trimmed"),
+    ])
+    .orderBy("t.id", "asc");
+}
+
+function buildAggregateFunctionQuery() {
+  return db.selectFrom("typed_samples as t").selectExpr((eb) => {
+    const isActive = eb.cmp("t.status", "=", "active");
+
+    return [
+      eb.fn.count().as("sample_count"),
+      eb.fn.countIf(isActive).as("active_samples"),
+      eb.fn.sum("t.amount").as("amount_sum"),
+      eb.fn.sum("t.big_user_id").as("big_user_id_sum"),
+      eb.fn.sumIf("t.amount", isActive).as("active_amount_sum"),
+      eb.fn.sumIf("t.big_user_id", isActive).as("active_big_user_id_sum"),
+      eb.fn.avg("t.amount").as("amount_avg"),
+      eb.fn.avg("t.big_user_id").as("big_user_id_avg"),
+      eb.fn.avgIf("t.amount", isActive).as("active_amount_avg"),
+      eb.fn.min("t.label").as("min_label"),
+      eb.fn.max("t.label").as("max_label"),
+      eb.fn.uniq("t.status").as("uniq_statuses"),
+      eb.fn.uniqExact("t.status").as("uniq_statuses_exact"),
+      eb.fn.uniqIf("t.status", isActive).as("uniq_active_statuses"),
+      eb.fn.groupArray("t.label").as("labels"),
+      eb.fn.groupArray("t.nickname").as("nicknames"),
+      eb.fn.any("t.label").as("any_label"),
+      eb.fn.anyLast("t.label").as("any_last_label"),
+    ];
+  });
+}
+
 function buildJsonSamplesQuery() {
   return db.selectFrom("json_samples").selectAll().orderBy("id", "asc");
 }
@@ -85,6 +155,9 @@ function buildJsonSamplesQuery() {
 type TypedSampleRow = InferResult<ReturnType<typeof buildTypedSamplesQuery>>;
 type TypeCastRow = InferResult<ReturnType<typeof buildTypeCastQuery>>;
 type ArrayFunctionRow = InferResult<ReturnType<typeof buildArrayFunctionQuery>>;
+type StringFunctionRow = InferResult<ReturnType<typeof buildStringFunctionQuery>>;
+type NullableStringFunctionRow = InferResult<ReturnType<typeof buildNullableStringFunctionQuery>>;
+type AggregateFunctionRow = InferResult<ReturnType<typeof buildAggregateFunctionQuery>>;
 type JsonSampleRow = InferResult<ReturnType<typeof buildJsonSamplesQuery>>;
 
 const expectedRows: TypedSampleRow[] = [
@@ -193,6 +266,91 @@ const expectedArrayFunctionRows: ArrayFunctionRow[] = [
   },
 ];
 
+const expectedStringFunctionRows: StringFunctionRow[] = [
+  {
+    id: 1,
+    has_ph: 1,
+    has_al_insensitive: 1,
+    label_is_empty: 0,
+    label_is_not_empty: 1,
+    label_key: "alpha-1",
+    label_lower: "alpha",
+    label_upper: "ALPHA",
+    label_slice: "lph",
+    label_trimmed: "alpha",
+    label_left_trimmed: "alpha  ",
+    label_right_trimmed: "  alpha",
+  },
+  {
+    id: 2,
+    has_ph: 0,
+    has_al_insensitive: 0,
+    label_is_empty: 0,
+    label_is_not_empty: 1,
+    label_key: "beta-2",
+    label_lower: "beta",
+    label_upper: "BETA",
+    label_slice: "eta",
+    label_trimmed: "beta",
+    label_left_trimmed: "beta  ",
+    label_right_trimmed: "  beta",
+  },
+];
+
+const expectedNullableStringFunctionRows: NullableStringFunctionRow[] = [
+  {
+    id: 1,
+    nickname_has_e: null,
+    label_matches_maybe: null,
+    nickname_is_empty: null,
+    nickname_is_not_empty: null,
+    nickname_key: null,
+    nickname_lower: null,
+    nickname_upper: null,
+    nickname_slice: null,
+    nickname_trimmed: null,
+    nickname_left_trimmed: null,
+    nickname_right_trimmed: null,
+  },
+  {
+    id: 2,
+    nickname_has_e: 1,
+    label_matches_maybe: null,
+    nickname_is_empty: 0,
+    nickname_is_not_empty: 1,
+    nickname_key: "bee-beta",
+    nickname_lower: "bee",
+    nickname_upper: "BEE",
+    nickname_slice: "b",
+    nickname_trimmed: "bee",
+    nickname_left_trimmed: "bee  ",
+    nickname_right_trimmed: "  bee",
+  },
+];
+
+const expectedAggregateFunctionRows: AggregateFunctionRow[] = [
+  {
+    sample_count: "2",
+    active_samples: "1",
+    amount_sum: 123.55,
+    big_user_id_sum: "9007199254741035",
+    active_amount_sum: 123.45,
+    active_big_user_id_sum: "9007199254740993",
+    amount_avg: 61.775,
+    big_user_id_avg: 4503599627370518,
+    active_amount_avg: 123.45,
+    min_label: "alpha",
+    max_label: "beta",
+    uniq_statuses: "2",
+    uniq_statuses_exact: "2",
+    uniq_active_statuses: "1",
+    labels: ["alpha", "beta"],
+    nicknames: ["bee"],
+    any_label: "alpha",
+    any_last_label: "beta",
+  },
+];
+
 let context: ClickHouseTestContext | undefined;
 
 describe("clickhouse runtime types", () => {
@@ -270,5 +428,74 @@ describe("clickhouse runtime types", () => {
     expect(typeof rows[0].tag_count).toBe("string");
     expect(typeof rows[0].is_empty).toBe("number");
     expect(typeof rows[0].is_not_empty).toBe("number");
+  });
+
+  it("returns runtime-honest values for string function helpers", async () => {
+    const rows = await buildStringFunctionQuery().execute(getContext().client);
+
+    expect(rows).toEqual(expectedStringFunctionRows);
+    expect(typeof rows[0].has_ph).toBe("number");
+    expect(typeof rows[0].has_al_insensitive).toBe("number");
+    expect(typeof rows[0].label_is_empty).toBe("number");
+    expect(typeof rows[0].label_is_not_empty).toBe("number");
+    expect(typeof rows[0].label_key).toBe("string");
+    expect(typeof rows[0].label_lower).toBe("string");
+    expect(typeof rows[0].label_upper).toBe("string");
+    expect(typeof rows[0].label_slice).toBe("string");
+    expect(typeof rows[0].label_trimmed).toBe("string");
+    expect(typeof rows[0].label_left_trimmed).toBe("string");
+    expect(typeof rows[0].label_right_trimmed).toBe("string");
+  });
+
+  it("propagates nulls through nullable string helpers", async () => {
+    const rows = await buildNullableStringFunctionQuery().execute(getContext().client);
+
+    expect(rows).toEqual(expectedNullableStringFunctionRows);
+    expect(rows[0].nickname_has_e).toBeNull();
+    expect(rows[0].label_matches_maybe).toBeNull();
+    expect(rows[0].nickname_is_empty).toBeNull();
+    expect(rows[0].nickname_is_not_empty).toBeNull();
+    expect(rows[0].nickname_key).toBeNull();
+    expect(rows[0].nickname_lower).toBeNull();
+    expect(rows[0].nickname_upper).toBeNull();
+    expect(rows[0].nickname_slice).toBeNull();
+    expect(rows[0].nickname_trimmed).toBeNull();
+    expect(rows[0].nickname_left_trimmed).toBeNull();
+    expect(rows[0].nickname_right_trimmed).toBeNull();
+    expect(typeof rows[1].nickname_has_e).toBe("number");
+    expect(rows[1].label_matches_maybe).toBeNull();
+    expect(typeof rows[1].nickname_is_empty).toBe("number");
+    expect(typeof rows[1].nickname_is_not_empty).toBe("number");
+    expect(typeof rows[1].nickname_key).toBe("string");
+    expect(typeof rows[1].nickname_lower).toBe("string");
+    expect(typeof rows[1].nickname_upper).toBe("string");
+    expect(typeof rows[1].nickname_slice).toBe("string");
+    expect(typeof rows[1].nickname_trimmed).toBe("string");
+    expect(typeof rows[1].nickname_left_trimmed).toBe("string");
+    expect(typeof rows[1].nickname_right_trimmed).toBe("string");
+  });
+
+  it("returns runtime-honest values for aggregate helpers", async () => {
+    const rows = await buildAggregateFunctionQuery().execute(getContext().client);
+
+    expect(rows).toEqual(expectedAggregateFunctionRows);
+    expect(typeof rows[0].sample_count).toBe("string");
+    expect(typeof rows[0].active_samples).toBe("string");
+    expect(typeof rows[0].amount_sum).toBe("number");
+    expect(typeof rows[0].big_user_id_sum).toBe("string");
+    expect(typeof rows[0].active_amount_sum).toBe("number");
+    expect(typeof rows[0].active_big_user_id_sum).toBe("string");
+    expect(typeof rows[0].amount_avg).toBe("number");
+    expect(typeof rows[0].big_user_id_avg).toBe("number");
+    expect(typeof rows[0].active_amount_avg).toBe("number");
+    expect(typeof rows[0].min_label).toBe("string");
+    expect(typeof rows[0].max_label).toBe("string");
+    expect(typeof rows[0].uniq_statuses).toBe("string");
+    expect(typeof rows[0].uniq_statuses_exact).toBe("string");
+    expect(typeof rows[0].uniq_active_statuses).toBe("string");
+    expect(Array.isArray(rows[0].labels)).toBe(true);
+    expect(rows[0].nicknames).toEqual(["bee"]);
+    expect(typeof rows[0].any_label).toBe("string");
+    expect(typeof rows[0].any_last_label).toBe("string");
   });
 });

@@ -1,0 +1,22 @@
+---
+title: Concepts
+description: Background reading on what Quarry is, why it exists, and how it behaves at runtime.
+---
+
+These pages explain the design choices behind Quarry. They are background
+reading rather than reference material, and they should help you understand
+*why* the API looks the way it does.
+
+- [Approach](/docs/concepts/approach) &mdash; what Quarry is and is not, and
+  why it is not a Kysely dialect or Drizzle adapter.
+- [Architecture](/docs/concepts/architecture) &mdash; the four-stage pipeline
+  from chained builder calls to ClickHouse SQL, and where to read the source
+  if you want to go deeper.
+- [Scopes and aliases](/docs/concepts/scopes-and-aliases) &mdash; how Quarry
+  tracks which columns are in scope at every step of a chained query, and the
+  rules around `selectAll()` and column references.
+- [ClickHouse quirks](/docs/concepts/clickhouse-quirks) &mdash; a supported
+  clauses matrix, plus the ClickHouse-specific behaviors you need to know
+  about (`LEFT JOIN` nulls, `PREWHERE`, `FINAL`, typed parameters, ...).
+- [Runtime semantics](/docs/concepts/runtime-semantics) &mdash; the parts of
+  ClickHouse you need to know about to read query results correctly.

@@ -1,0 +1,5 @@
+{
+  "title": "Reference",
+  "description": "Generated and hand-curated API reference",
+  "pages": ["index", "db", "select", "insert", "expressions"]
+}

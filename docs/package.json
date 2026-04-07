@@ -1,0 +1,38 @@
+{
+  "name": "@oorestisime/quarry-docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Documentation site for @oorestisime/quarry, built with Fumadocs.",
+  "type": "module",
+  "scripts": {
+    "predev": "pnpm --dir .. build",
+    "prebuild": "pnpm --dir .. build",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fumadocs-core": "^16.7.10",
+    "fumadocs-mdx": "^14.2.11",
+    "fumadocs-twoslash": "^3.1.15",
+    "fumadocs-typescript": "^5.2.1",
+    "fumadocs-ui": "^16.7.10",
+    "next": "^16.2.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "twoslash": "^0.3.6"
+  },
+  "devDependencies": {
+    "@clickhouse/client": "^1.18.2",
+    "@oorestisime/quarry": "file:..",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/mdx": "^2.0.13",
+    "@types/node": "^25.5.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "~5.9.3"
+  }
+}
