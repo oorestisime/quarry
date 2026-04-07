@@ -67,6 +67,23 @@ const rows = await db
   .execute();
 ```
 
+## Use Type Conversion Helpers
+
+Common ClickHouse casting functions are available through `eb.fn` in expression callbacks.
+
+```ts
+const rows = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    eb.fn.toInt32("e.user_id").as("user_id_i32"),
+    eb.fn.toDate("e.created_at").as("event_date"),
+    eb.fn.toDateTime64("e.created_at", 3).as("event_time_ms"),
+    eb.fn.toString("e.user_id").as("user_id_text"),
+  ])
+  .where((eb) => eb.fn.toUInt32("e.user_id"), ">", 0)
+  .execute();
+```
+
 ## Null Checks
 
 Use the dedicated helpers instead of comparing against `null` directly.
@@ -86,6 +103,36 @@ const rows = await db
   .whereNotNull("u.email")
   .execute();
 ```
+
+## Array Functions
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .where((eb) => eb.fn.has("u.tags", "premium"))
+  .execute();
+```
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .selectExpr((eb) => ["u.id", eb.fn.length("u.tags").as("tag_count")])
+  .where((eb) => eb.fn.hasAny("u.tags", ["premium", "trial"]))
+  .where((eb) => eb.fn.length("u.tags"), ">", param(0, "UInt64"))
+  .execute();
+```
+
+Available helpers:
+
+- `has(array, element)`
+- `hasAny(array, elements)`
+- `hasAll(array, elements)`
+- `length(array)`
+- `empty(array)`
+- `notEmpty(array)`
+
+`length()` returns a ClickHouse `UInt64`, so under `JSONEachRow` it comes back as a `string` at runtime.
 
 ## Joins
 

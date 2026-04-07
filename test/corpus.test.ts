@@ -17,9 +17,11 @@ import {
   havingSubqueryCase,
   multiConditionJoinCase,
   multipleCtesCase,
+  arrayFunctionsCase,
   selectAllCase,
   selectAllForAliasCase,
   simpleSelectCase,
+  typeCastFunctionsCase,
   whereRefCase,
 } from "./cases";
 
@@ -173,5 +175,21 @@ describe("query corpus spike", () => {
 
     expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
     expect(compiled.params).toEqual(jsonExtractCase.expectedParams);
+  });
+
+  it(typeCastFunctionsCase.name, () => {
+    const expectedSql = readFileSync(resolve(queriesDir, typeCastFunctionsCase.file), "utf8");
+    const compiled = typeCastFunctionsCase.build().toSQL();
+
+    expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
+    expect(compiled.params).toEqual(typeCastFunctionsCase.expectedParams);
+  });
+
+  it(arrayFunctionsCase.name, () => {
+    const expectedSql = readFileSync(resolve(queriesDir, arrayFunctionsCase.file), "utf8");
+    const compiled = arrayFunctionsCase.build().toSQL();
+
+    expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
+    expect(compiled.params).toEqual(arrayFunctionsCase.expectedParams);
   });
 });

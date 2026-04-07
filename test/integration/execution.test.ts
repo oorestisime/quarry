@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createClickHouseDB } from "../../src";
 import { startClickHouse, stopClickHouse, type ClickHouseTestContext } from "./clickhouse";
 import {
   cteLeftJoinBaseTableCase,
@@ -15,11 +16,30 @@ import {
   havingSubqueryCase,
   multiConditionJoinCase,
   multipleCtesCase,
+  arrayFunctionsCase,
   selectAllCase,
   selectAllForAliasCase,
   simpleSelectCase,
+  typeCastFunctionsCase,
   whereRefCase,
 } from "../cases";
+
+interface ExecutionTestDB {
+  event_logs: {
+    user_id: number;
+    event_type: string;
+    created_at: string;
+    event_date: string;
+    properties: string;
+    version: number;
+  };
+  typed_samples: {
+    id: number;
+    tags: string[];
+  };
+}
+
+const db = createClickHouseDB<ExecutionTestDB>();
 
 let context: ClickHouseTestContext | undefined;
 
@@ -128,5 +148,56 @@ describe("clickhouse integration", () => {
   it(jsonExtractCase.name, async () => {
     const rows = await jsonExtractCase.build().execute(getContext().client);
     expect(rows).toEqual(jsonExtractCase.expectedRows);
+  });
+
+  it(typeCastFunctionsCase.name, async () => {
+    const rows = await typeCastFunctionsCase.build().execute(getContext().client);
+    expect(rows).toEqual(typeCastFunctionsCase.expectedRows);
+  });
+
+  it(arrayFunctionsCase.name, async () => {
+    const rows = await arrayFunctionsCase.build().execute(getContext().client);
+    expect(rows).toEqual(arrayFunctionsCase.expectedRows);
+  });
+
+  it("executes unary where expression predicates", async () => {
+    const rows = await db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => ["t.id", eb.fn.length("t.tags").as("tag_count")])
+      .where((eb) => eb.fn.notEmpty("t.tags"))
+      .orderBy("t.id", "asc")
+      .execute(getContext().client);
+
+    expect(rows).toEqual([{ id: 1, tag_count: "2" }]);
+  });
+
+  it("executes unary prewhere expression predicates", async () => {
+    const rows = await db
+      .selectFrom("event_logs as e")
+      .select("e.user_id", "e.event_type")
+      .prewhere((eb) => eb.raw<number>("e.event_type = 'signup'"))
+      .orderBy("e.user_id", "asc")
+      .execute(getContext().client);
+
+    expect(rows).toEqual([
+      { user_id: 1, event_type: "signup" },
+      { user_id: 3, event_type: "signup" },
+    ]);
+  });
+
+  it("executes unary having expression predicates", async () => {
+    const rows = await db
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
+      .groupBy("e.user_id")
+      .having((eb) => eb.raw<number>("count() > 0"))
+      .orderBy("e.user_id", "asc")
+      .execute(getContext().client);
+
+    expect(rows).toEqual([
+      { user_id: 1, event_count: "2" },
+      { user_id: 2, event_count: "1" },
+      { user_id: 3, event_count: "1" },
+    ]);
   });
 });

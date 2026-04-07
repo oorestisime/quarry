@@ -128,6 +128,38 @@ const selectFromJoinSubquerySettingsQuery = db
   .limit(20)
   .offset(40)
   .settings({ join_algorithm: "grace_hash" });
+const typeCastQuery = db
+  .selectFrom("typed_samples as t")
+  .selectExpr((eb) => [
+    "t.id",
+    eb.fn.toInt32("t.id").as("id_i32"),
+    eb.fn.toInt64("t.id").as("id_i64"),
+    eb.fn.toUInt32("t.id").as("id_u32"),
+    eb.fn.toUInt64("t.big_user_id").as("big_user_id_u64"),
+    eb.fn.toFloat32("t.id").as("id_f32"),
+    eb.fn.toFloat64("t.amount").as("amount_f64"),
+    eb.fn.toDate("t.created_at").as("created_date"),
+    eb.fn.toDateTime("t.created_at").as("created_at_dt"),
+    eb.fn.toDateTime64("t.created_at", 3).as("created_at_dt64"),
+    eb.fn.toString("t.id").as("id_text"),
+    eb.fn.toDecimal64("t.amount", 2).as("amount_d64"),
+    eb.fn.toDecimal128("t.amount", 2).as("amount_d128"),
+  ])
+  .where((eb) => eb.fn.toUInt32("t.id"), ">", 0)
+  .orderBy("t.id", "asc");
+const arrayFunctionQuery = db
+  .selectFrom("typed_samples as t")
+  .selectExpr((eb) => [
+    "t.id",
+    eb.fn.has("t.tags", "trial").as("has_trial"),
+    eb.fn.hasAny("t.tags", ["vip", "trial"]).as("has_overlap"),
+    eb.fn.hasAll("t.tags", ["new", "trial"]).as("has_required"),
+    eb.fn.length("t.tags").as("tag_count"),
+    eb.fn.empty("t.tags").as("is_empty"),
+    eb.fn.notEmpty("t.tags").as("is_not_empty"),
+  ])
+  .where((eb) => eb.fn.notEmpty("t.tags"))
+  .orderBy("t.id", "asc");
 
 type BasicRow = InferResult<typeof basicQuery>;
 type SelectAllRow = InferResult<typeof selectAllQuery>;
@@ -138,6 +170,8 @@ type SelectFromCteRow = InferResult<typeof selectFromCteQuery>;
 type SelectFromMultipleCtesRow = InferResult<typeof selectFromMultipleCtesQuery>;
 type GroupedRow = InferResult<typeof groupedQuery>;
 type SelectFromJoinSubquerySettingsRow = InferResult<typeof selectFromJoinSubquerySettingsQuery>;
+type TypeCastRow = InferResult<typeof typeCastQuery>;
+type ArrayFunctionRow = InferResult<typeof arrayFunctionQuery>;
 
 const validRow: BasicRow = {
   user_id: 1,
@@ -187,6 +221,32 @@ const validSelectFromJoinSubquerySettingsRow: SelectFromJoinSubquerySettingsRow 
   id: 42,
   email: "user42@example.com",
   inquiries_count: "0",
+};
+
+const validTypeCastRow: TypeCastRow = {
+  id: 1,
+  id_i32: 1,
+  id_i64: "1",
+  id_u32: 1,
+  big_user_id_u64: "9007199254740993",
+  id_f32: 1,
+  amount_f64: 123.45,
+  created_date: "2025-01-01",
+  created_at_dt: "2025-01-01 10:11:12",
+  created_at_dt64: "2025-01-01 10:11:12.123",
+  id_text: "1",
+  amount_d64: 123.45,
+  amount_d128: 123.45,
+};
+
+const validArrayFunctionRow: ArrayFunctionRow = {
+  id: 1,
+  has_trial: 1,
+  has_overlap: 1,
+  has_required: 1,
+  tag_count: "2",
+  is_empty: 0,
+  is_not_empty: 1,
 };
 
 const validRowsPromise: Promise<BasicRow[]> = basicQuery.execute(client);
@@ -251,6 +311,8 @@ void validSelectFromCteRow;
 void validSelectFromMultipleCtesRow;
 void validGroupedRow;
 void validSelectFromJoinSubquerySettingsRow;
+void validTypeCastRow;
+void validArrayFunctionRow;
 void validRowsPromise;
 void validFirstRowPromise;
 void validFirstOrThrowRowPromise;
@@ -366,6 +428,21 @@ db.insertInto("users").values([
 
 db.selectFrom("typed_samples").where("status", "=", "active");
 
+db.selectFrom("typed_samples as t")
+  .selectExpr((eb) => [eb.fn.toString("t.id").as("id_text")])
+  .where((eb) => eb.fn.toUInt32("t.id"), ">", 0);
+
+db.selectFrom("typed_samples as t")
+  .selectExpr((eb) => [
+    "t.id",
+    eb.fn.has("t.tags", "trial").as("has_trial"),
+    eb.fn.length("t.tags").as("tag_count"),
+  ])
+  .prewhere((eb) => eb.fn.notEmpty("t.tags"))
+  .where((eb) => eb.fn.hasAny("t.tags", ["vip", "trial"]))
+  .where((eb) => eb.fn.length("t.tags"), ">", param(0, "UInt64"))
+  .orderBy("t.id", "asc");
+
 // @ts-expect-error invalid selection column
 db.selectFrom("event_logs as e").select("e.missing_column");
 
@@ -426,6 +503,23 @@ db.selectFrom("event_logs as e").where("e.user_id", "=", "signup");
 
 // @ts-expect-error invalid enum literal
 db.selectFrom("typed_samples").where("status", "=", "paused");
+
+// @ts-expect-error array helpers reject non-array columns
+db.selectFrom("typed_samples").selectExpr((eb) => [eb.fn.length("nickname").as("bad_length")]);
+
+// @ts-expect-error array helpers reject tuple columns
+db.selectFrom("typed_samples").selectExpr((eb) => [eb.fn.empty("location").as("bad_empty")]);
+
+// @ts-expect-error wrong has() element type
+db.selectFrom("typed_samples").where((eb) => eb.fn.has("tags", 1));
+
+// @ts-expect-error wrong hasAny() element type
+db.selectFrom("typed_samples").where((eb) => eb.fn.hasAny("tags", [1]));
+
+db.selectFrom("typed_samples as t").selectExpr((eb) => [
+  // @ts-expect-error scale must be numeric
+  eb.fn.toDecimal64("t.amount", "2").as("amount_d64"),
+]);
 
 db.insertInto("typed_samples").values([
   {

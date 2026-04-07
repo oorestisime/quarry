@@ -13,6 +13,7 @@ import {
 import { AliasedQuery } from "./source-builder";
 import type {
   ColumnRef,
+  ExpressionPredicateValue,
   HavingValue,
   HavingRef,
   OrderByRef,
@@ -137,6 +138,9 @@ export class SelectQueryBuilder<
     return this.select(...selectionFactory(new ExpressionBuilder<Scope>()));
   }
 
+  where(
+    predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
+  ): SelectQueryBuilder<Sources, Scope, Output>;
   where<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
@@ -150,7 +154,7 @@ export class SelectQueryBuilder<
   where<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
-    value: PredicateValue<Value, Operator>,
+    value: ExpressionPredicateValue<Value, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   where<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
@@ -161,10 +165,17 @@ export class SelectQueryBuilder<
     input:
       | ColumnRef<Scope>
       | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
-    operator: PredicateOperator,
-    value: unknown,
+    operator?: PredicateOperator,
+    value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output> {
-    return this.addPredicate("where", input, operator, value);
+    if (arguments.length === 1) {
+      return this.addExpressionCondition(
+        "where",
+        input as (eb: ExpressionBuilder<Scope>) => Expression<unknown>,
+      );
+    }
+
+    return this.addPredicate("where", input, operator!, value);
   }
 
   whereRef<Left extends ColumnRef<Scope>, Right extends ColumnRef<Scope>>(
@@ -183,6 +194,9 @@ export class SelectQueryBuilder<
     });
   }
 
+  prewhere(
+    predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
+  ): SelectQueryBuilder<Sources, Scope, Output>;
   prewhere<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
@@ -196,7 +210,7 @@ export class SelectQueryBuilder<
   prewhere<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
-    value: PredicateValue<Value, Operator>,
+    value: ExpressionPredicateValue<Value, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   prewhere<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
@@ -207,10 +221,17 @@ export class SelectQueryBuilder<
     input:
       | ColumnRef<Scope>
       | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
-    operator: PredicateOperator,
-    value: unknown,
+    operator?: PredicateOperator,
+    value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output> {
-    return this.addPredicate("prewhere", input, operator, value);
+    if (arguments.length === 1) {
+      return this.addExpressionCondition(
+        "prewhere",
+        input as (eb: ExpressionBuilder<Scope>) => Expression<unknown>,
+      );
+    }
+
+    return this.addPredicate("prewhere", input, operator!, value);
   }
 
   prewhereRef<Left extends ColumnRef<Scope>, Right extends ColumnRef<Scope>>(
@@ -255,6 +276,9 @@ export class SelectQueryBuilder<
     });
   }
 
+  having(
+    predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
+  ): SelectQueryBuilder<Sources, Scope, Output>;
   having<Ref extends HavingRef<Scope, Output>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
@@ -279,9 +303,16 @@ export class SelectQueryBuilder<
     input:
       | HavingRef<Scope, Output>
       | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
-    operator: PredicateOperator,
-    value: unknown,
+    operator?: PredicateOperator,
+    value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output> {
+    if (arguments.length === 1) {
+      return this.addExpressionCondition(
+        "having",
+        input as (eb: ExpressionBuilder<Scope>) => Expression<unknown>,
+      );
+    }
+
     const expressionBuilder = new ExpressionBuilder<Scope>();
     const leftExpr =
       typeof input === "function"
@@ -293,7 +324,7 @@ export class SelectQueryBuilder<
       having: appendCondition(this.node.having, {
         kind: "binary",
         left: leftExpr,
-        op: operator.toUpperCase(),
+        op: operator!.toUpperCase(),
         right: isQueryLike(value) ? toSubqueryExpr(value) : createValueNode(value),
       }),
     });
@@ -316,7 +347,7 @@ export class SelectQueryBuilder<
     input:
       | ColumnRef<Scope>
       | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
-    operator: PredicateOperator,
+    operator: PredicateOperator | undefined,
     value: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output> {
     const expressionBuilder = new ExpressionBuilder<Scope>();
@@ -330,13 +361,26 @@ export class SelectQueryBuilder<
     const nextCondition = {
       kind: "binary",
       left: leftExpr,
-      op: operator.toUpperCase(),
+      op: operator!.toUpperCase(),
       right: rightExpr,
     } as const;
 
     return this.next({
       ...this.node,
       [key]: appendCondition(this.node[key], nextCondition),
+    });
+  }
+
+  private addExpressionCondition(
+    key: "where" | "prewhere" | "having",
+    expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
+  ): SelectQueryBuilder<Sources, Scope, Output> {
+    return this.next({
+      ...this.node,
+      [key]: appendCondition(
+        this.node[key],
+        expressionFactory(new ExpressionBuilder<Scope>()).node,
+      ),
     });
   }
 

@@ -99,6 +99,21 @@ export type ResolveColumnType<
       : never
     : never;
 
+type NonTupleArray<T> = T extends readonly unknown[]
+  ? number extends T["length"]
+    ? T
+    : never
+  : never;
+
+export type ArrayColumnRef<Scope extends ScopeMap> = {
+  [Ref in ColumnRef<Scope>]: NonTupleArray<ResolveColumnType<Scope, Ref>> extends never
+    ? never
+    : Ref;
+}[ColumnRef<Scope>];
+
+export type ResolveArrayElementType<Scope extends ScopeMap, Ref extends ColumnRef<Scope>> =
+  NonTupleArray<ResolveColumnType<Scope, Ref>> extends readonly (infer Item)[] ? Item : never;
+
 type SelectionAlias<T extends string> = ParseSelectionExpression<T>["alias"];
 
 type SelectionOutputKey<T extends string> = [SelectionAlias<T>] extends [never]
@@ -176,6 +191,11 @@ export type PredicateValue<Value, Operator extends PredicateOperator> = Operator
   ? readonly NonNullish<Value>[] | ClickHouseParam<readonly Value[]>
   : NonNullish<Value> | ClickHouseParam<Value>;
 
-export type HavingValue<Value, Operator extends PredicateOperator> =
+export type ExpressionPredicateValue<Value, Operator extends PredicateOperator> =
   | PredicateValue<Value, Operator>
   | ClickHouseParam<unknown>;
+
+export type HavingValue<Value, Operator extends PredicateOperator> = ExpressionPredicateValue<
+  Value,
+  Operator
+>;

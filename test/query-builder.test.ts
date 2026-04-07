@@ -8,6 +8,7 @@ interface QueryBuilderTestDB {
   };
   typed_samples: {
     nickname: string | null;
+    tags: string[];
   };
 }
 
@@ -58,6 +59,34 @@ describe("query builder validation", () => {
     expect(whereNullQuery.params).toEqual({});
     expect(whereNotNullQuery.query).toBe("SELECT * FROM typed_samples WHERE nickname IS NOT NULL");
     expect(whereNotNullQuery.params).toEqual({});
+  });
+
+  it("compiles unary where and prewhere expression predicates", () => {
+    const query = db
+      .selectFrom("typed_samples")
+      .selectExpr((eb) => ["tags", eb.fn.length("tags").as("tag_count")])
+      .prewhere((eb) => eb.fn.has("tags", "vip"))
+      .where((eb) => eb.fn.notEmpty("tags"))
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT tags, length(tags) AS tag_count FROM typed_samples PREWHERE has(tags, {p0:String}) WHERE notEmpty(tags)",
+    );
+    expect(query.params).toEqual({ p0: "vip" });
+  });
+
+  it("compiles unary having expression predicates", () => {
+    const query = db
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
+      .groupBy("e.user_id")
+      .having((eb) => eb.raw<number>("count() > 0"))
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT e.user_id, count() AS event_count FROM event_logs AS e GROUP BY e.user_id HAVING count() > 0",
+    );
+    expect(query.params).toEqual({});
   });
 
   it("rejects bare null predicate values at runtime", () => {
