@@ -195,6 +195,18 @@ const nullableStringFunctionQuery = db
     eb.fn.trimBoth(eb.fn.concat("  ", eb.ref("t.nickname"), "  ")).as("nickname_trimmed"),
   ])
   .orderBy("t.id", "asc");
+const nullFunctionQuery = db
+  .selectFrom("typed_samples as t")
+  .selectExpr((eb) => [
+    "t.id",
+    eb.fn.isNull("t.nickname").as("nickname_is_null"),
+    eb.fn.isNotNull("t.nickname").as("nickname_is_not_null"),
+    eb.fn.nullIf("t.label", "beta").as("maybe_label"),
+    eb.fn.coalesce("t.nickname", eb.ref("t.label")).as("display_name"),
+    eb.fn.coalesce("t.nickname", eb.val("Unknown")).as("display_name_with_literal"),
+    eb.fn.ifNull("t.nickname", param("Unknown", "String")).as("nickname_or_default"),
+  ])
+  .orderBy("t.id", "asc");
 const aggregateFunctionQuery = db.selectFrom("typed_samples as t").selectExpr((eb) => {
   const isActive = eb.cmp("t.status", "=", "active");
 
@@ -236,6 +248,7 @@ type TypeCastRow = InferResult<typeof typeCastQuery>;
 type ArrayFunctionRow = InferResult<typeof arrayFunctionQuery>;
 type StringFunctionRow = InferResult<typeof stringFunctionQuery>;
 type NullableStringFunctionRow = InferResult<typeof nullableStringFunctionQuery>;
+type NullFunctionRow = InferResult<typeof nullFunctionQuery>;
 type AggregateFunctionRow = InferResult<typeof aggregateFunctionQuery>;
 type NullableGroupArrayRow = InferResult<typeof nullableGroupArrayQuery>;
 
@@ -343,6 +356,16 @@ const validNullableStringFunctionRow: NullableStringFunctionRow = {
   nickname_trimmed: null,
 };
 
+const validNullFunctionRow: NullFunctionRow = {
+  id: 2,
+  nickname_is_null: 0,
+  nickname_is_not_null: 1,
+  maybe_label: null,
+  display_name: "bee",
+  display_name_with_literal: "bee",
+  nickname_or_default: "bee",
+};
+
 const validAggregateFunctionRow: AggregateFunctionRow = {
   sample_count: "2",
   active_samples: "1",
@@ -434,6 +457,7 @@ void validTypeCastRow;
 void validArrayFunctionRow;
 void validStringFunctionRow;
 void validNullableStringFunctionRow;
+void validNullFunctionRow;
 void validAggregateFunctionRow;
 void validNullableGroupArrayRow;
 void validRowsPromise;
@@ -595,6 +619,41 @@ db.selectFrom("typed_samples as t")
   ])
   .orderBy("t.id", "asc");
 
+db.selectFrom("typed_samples as t")
+  .selectExpr((eb) => [
+    eb.fn.now().as("current_time"),
+    eb.fn.today().as("current_date"),
+    eb.fn.toStartOfMonth("t.created_at").as("month_start"),
+    eb.fn.toStartOfWeek("t.created_at").as("week_start"),
+    eb.fn.toStartOfDay("t.created_at").as("day_start"),
+    eb.fn.toStartOfYear("t.created_at").as("year_start"),
+    eb.fn.formatDateTime("t.created_at", "%Y-%m-%d").as("created_date_text"),
+    eb.fn
+      .dateDiff("day", eb.fn.toDate("t.created_at"), eb.val(param("2025-01-03", "Date")))
+      .as("days_until_cutoff"),
+    eb.fn.dateAdd("day", 5, "t.created_at").as("plus_five_days"),
+    eb.fn.dateSub("hour", 2, "t.created_at").as("minus_two_hours"),
+    eb.fn.toYYYYMM("t.created_at").as("created_yyyymm"),
+    eb.fn.toYYYYMMDD("t.created_at").as("created_yyyymmdd"),
+  ])
+  .where((eb) => eb.fn.toYYYYMM("t.created_at"), "=", 202501)
+  .orderBy("t.id", "asc");
+
+db.selectFrom("typed_samples as a")
+  .innerJoin("typed_samples as b", (eb) =>
+    eb.cmp(
+      eb.fn.coalesce("a.nickname", eb.ref("a.label")),
+      "=",
+      eb.fn.coalesce("b.nickname", eb.ref("b.label")),
+    ),
+  )
+  .select("a.label");
+
+db.selectFrom("typed_samples as t")
+  .selectExpr((eb) => ["t.label", eb.fn.count().as("match_count")])
+  .groupBy("t.label", "t.nickname")
+  .having((eb) => eb.fn.isNull(eb.fn.nullIf("t.nickname", "bee")));
+
 db.selectFrom("typed_samples as t").selectExpr((eb) => {
   const isActive = eb.cmp("t.status", "=", "active");
 
@@ -694,6 +753,29 @@ db.selectFrom("typed_samples").selectExpr((eb) => [eb.fn.lower("id").as("bad_low
 
 // @ts-expect-error string helpers reject array columns
 db.selectFrom("typed_samples").selectExpr((eb) => [eb.fn.like("tags", "%vip%").as("bad_like")]);
+
+db.selectFrom("typed_samples as t").selectExpr((eb) => [
+  // @ts-expect-error formatDateTime() requires a string format literal
+  eb.fn.formatDateTime("t.created_at", param("%Y-%m-%d", "String")).as("bad_format"),
+]);
+
+db.selectFrom("typed_samples as t").selectExpr((eb) => [
+  // @ts-expect-error dateAdd() rejects unsupported date/time units
+  eb.fn.dateAdd("decade", 1, "t.created_at").as("bad_add"),
+]);
+
+// @ts-expect-error nullIf() compare values must match the input type
+db.selectFrom("typed_samples").selectExpr((eb) => [eb.fn.nullIf("label", 1).as("bad_null_if")]);
+
+// @ts-expect-error ifNull() fallback values must match the input type
+db.selectFrom("typed_samples").selectExpr((eb) => [eb.fn.ifNull("nickname", 1).as("bad_if_null")]);
+
+db.selectFrom("typed_samples").selectExpr((eb) => {
+  // @ts-expect-error coalesce() string literals should use eb.val() to avoid ref ambiguity
+  const badCoalesce = eb.fn.coalesce("nickname", "Unknown").as("bad_coalesce");
+
+  return [badCoalesce];
+});
 
 // @ts-expect-error groupArray() drops null elements from nullable inputs
 ({ nicknames: [null] }) satisfies NullableGroupArrayRow;

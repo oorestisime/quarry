@@ -302,6 +302,59 @@ db
   ]);
 ```
 
+### Date and time helpers
+
+These helpers cover the common ClickHouse date/time patterns that show up in
+analytics queries: current timestamps, bucket boundaries, formatting, relative
+diffs, relative offsets, and compact integer date keys.
+
+| Helper                                 | Returns              | Notes                                                          |
+| -------------------------------------- | -------------------- | -------------------------------------------------------------- |
+| `eb.fn.now()`                          | `Expression<string>` | Current `DateTime` at query analysis time.                     |
+| `eb.fn.today()`                        | `Expression<string>` | Current `Date`.                                                |
+| `eb.fn.toStartOfMonth(value)`          | `Expression<string>` | Start of the month.                                            |
+| `eb.fn.toStartOfWeek(value)`           | `Expression<string>` | Start of the week.                                             |
+| `eb.fn.toStartOfDay(value)`            | `Expression<string>` | Start of the day.                                              |
+| `eb.fn.toStartOfYear(value)`           | `Expression<string>` | Start of the year.                                             |
+| `eb.fn.formatDateTime(value, format)`  | `Expression<string>` | `format` is a literal format string.                           |
+| `eb.fn.dateDiff(unit, start, end)`     | `Expression<string>` | Returns ClickHouse `Int64`, so Quarry types it as `string`.    |
+| `eb.fn.dateAdd(unit, amount, value)`   | `Expression<string>` | Adds a unit-specific offset (`day`, `hour`, `month`, etc.).    |
+| `eb.fn.dateSub(unit, amount, value)`   | `Expression<string>` | Subtracts a unit-specific offset.                              |
+| `eb.fn.toYYYYMM(value)`                | `Expression<number>` | Compact `UInt32` year/month key.                               |
+| `eb.fn.toYYYYMMDD(value)`              | `Expression<number>` | Compact `UInt32` year/month/day key.                           |
+
+Accepted units for `dateDiff`, `dateAdd`, and `dateSub` are:
+`nanosecond`, `microsecond`, `millisecond`, `second`, `minute`, `hour`,
+`day`, `week`, `month`, `quarter`, and `year`. Uppercase forms such as
+`"DAY"` also work.
+
+Quarry does not yet model ClickHouse `INTERVAL` as a first-class expression.
+Use `dateAdd(...)` / `dateSub(...)` for typed relative offsets, or the raw
+expression escape hatch when you specifically need literal `INTERVAL ...`
+syntax.
+
+If one side of `dateDiff` is a literal date/time rather than a column or
+expression, wrap it with `eb.val(param(...))` so Quarry does not treat the
+string as a column reference.
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    eb.fn.now().as("query_time"),
+    eb.fn.today().as("query_date"),
+    eb.fn.toStartOfMonth("e.created_at").as("month_start"),
+    eb.fn.formatDateTime("e.created_at", "%Y-%m-%d").as("event_day"),
+    eb.fn
+      .dateDiff("day", eb.fn.toDate("e.created_at"), eb.val(param("2025-01-03", "Date")))
+      .as("days_until_cutoff"),
+    eb.fn.dateAdd("day", 7, "e.created_at").as("plus_week"),
+    eb.fn.toYYYYMM("e.created_at").as("event_yyyymm"),
+  ]);
+```
+
 ### JSON helpers
 
 | Helper                                  | Returns              |
@@ -319,6 +372,35 @@ db
 The `key` argument is escaped for use as a single-quoted string literal.
 More JSON helpers will be added &mdash; see the
 [roadmap](/docs/roadmap#1-more-clickhouse-functions).
+
+### Null helpers
+
+| Helper                             | Returns                | Notes                                                                              |
+| ---------------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| `eb.fn.isNull(value)`              | `Expression<number>`   | Returns `1` when `value` is `NULL`, `0` otherwise.                                 |
+| `eb.fn.isNotNull(value)`           | `Expression<number>`   | Returns `1` when `value` is not `NULL`, `0` otherwise.                             |
+| `eb.fn.nullIf(value, nullValue)`   | `Expression<T \| null>` | Returns `NULL` when `value = nullValue`; otherwise preserves the original type.    |
+| `eb.fn.coalesce(v1, v2, ...rest)`  | `Expression<T>`        | Returns the first non-`NULL` expression. Accepts at least two expression inputs.   |
+| `eb.fn.ifNull(value, defaultValue)`| `Expression<T>`        | Replaces `NULL` with `defaultValue`, so the result is typed as non-null.           |
+
+`isNull` / `isNotNull` follow ClickHouse boolean semantics, so Quarry types
+them as `number` (`0` / `1`).
+
+`coalesce(...)` is expression-oriented: bare strings are treated as column
+references, not string literals. Use `eb.val(...)` when you want a literal
+fallback, and `eb.val(param(...))` if that literal needs an explicit
+ClickHouse type.
+
+```ts
+db
+  .selectFrom("users as u")
+  .selectExpr((eb) => [
+    eb.fn.nullIf("u.email", "").as("email_or_null"),
+    eb.fn.coalesce("u.nickname", "u.email").as("display_name"),
+    eb.fn.coalesce("u.nickname", eb.val("Unknown")).as("display_name_with_fallback"),
+    eb.fn.ifNull("u.nickname", "Unknown").as("nickname_or_default"),
+  ]);
+```
 
 ### Array helpers
 

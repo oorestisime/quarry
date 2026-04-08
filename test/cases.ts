@@ -674,3 +674,97 @@ export const aggregateFunctionsCase = defineQueryCase({
       ];
     }),
 });
+
+export const nullFunctionsCase = defineQueryCase({
+  name: "25 null functions",
+  file: "25_null_functions.sql",
+  expectedParams: {
+    p0: "beta",
+    p1: "Unknown",
+    p2: "Unknown",
+  },
+  expectedRows: [
+    {
+      id: 1,
+      nickname_is_null: 1,
+      nickname_is_not_null: 0,
+      maybe_label: "alpha",
+      display_name: "alpha",
+      display_name_with_literal: "Unknown",
+      nickname_or_default: "Unknown",
+    },
+    {
+      id: 2,
+      nickname_is_null: 0,
+      nickname_is_not_null: 1,
+      maybe_label: null,
+      display_name: "bee",
+      display_name_with_literal: "bee",
+      nickname_or_default: "bee",
+    },
+  ],
+  build: () =>
+    db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        "t.id",
+        eb.fn.isNull("t.nickname").as("nickname_is_null"),
+        eb.fn.isNotNull("t.nickname").as("nickname_is_not_null"),
+        eb.fn.nullIf("t.label", "beta").as("maybe_label"),
+        eb.fn.coalesce("t.nickname", eb.ref("t.label")).as("display_name"),
+        eb.fn.coalesce("t.nickname", eb.val("Unknown")).as("display_name_with_literal"),
+        eb.fn.ifNull("t.nickname", param("Unknown", "String")).as("nickname_or_default"),
+      ])
+      .orderBy("t.id", "asc"),
+});
+
+export const dateTimeFunctionsCase = defineQueryCase({
+  name: "26 date/time functions",
+  file: "26_date_time_functions.sql",
+  expectedParams: {
+    p0: "2025-01-03",
+    p1: 5,
+    p2: 2,
+  },
+  expectedRows: [
+    {
+      id: 1,
+      month_start: "2025-01-01",
+      year_start: "2025-01-01",
+      created_date_text: "2025-01-01",
+      days_until_cutoff: "2",
+      plus_five_days: "2025-01-06 10:11:12.123",
+      minus_two_hours: "2025-01-01 08:11:12.123",
+      created_yyyymm: 202501,
+      created_yyyymmdd: 20250101,
+    },
+    {
+      id: 2,
+      month_start: "2025-01-01",
+      year_start: "2025-01-01",
+      created_date_text: "2025-01-02",
+      days_until_cutoff: "1",
+      plus_five_days: "2025-01-07 03:04:05.678",
+      minus_two_hours: "2025-01-02 01:04:05.678",
+      created_yyyymm: 202501,
+      created_yyyymmdd: 20250102,
+    },
+  ],
+  build: () =>
+    db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        "t.id",
+        eb.fn.toStartOfMonth("t.created_at").as("month_start"),
+        eb.fn.toStartOfYear("t.created_at").as("year_start"),
+        eb.fn.formatDateTime("t.created_at", "%Y-%m-%d").as("created_date_text"),
+        eb.fn
+          .dateDiff("day", eb.fn.toDate("t.created_at"), eb.val(param("2025-01-03", "Date")))
+          .as("days_until_cutoff"),
+        eb.fn.dateAdd("day", 5, "t.created_at").as("plus_five_days"),
+        eb.fn.dateSub("hour", 2, "t.created_at").as("minus_two_hours"),
+        eb.fn.toYYYYMM("t.created_at").as("created_yyyymm"),
+        eb.fn.toYYYYMMDD("t.created_at").as("created_yyyymmdd"),
+      ])
+      .orderBy("t.id", "asc"),
+});

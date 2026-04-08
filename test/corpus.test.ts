@@ -19,6 +19,8 @@ import {
   multiConditionJoinCase,
   multipleCtesCase,
   arrayFunctionsCase,
+  dateTimeFunctionsCase,
+  nullFunctionsCase,
   selectAllCase,
   selectAllForAliasCase,
   simpleSelectCase,
@@ -209,5 +211,21 @@ describe("query corpus spike", () => {
 
     expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
     expect(compiled.params).toEqual(aggregateFunctionsCase.expectedParams);
+  });
+
+  it(nullFunctionsCase.name, () => {
+    const expectedSql = readFileSync(resolve(queriesDir, nullFunctionsCase.file), "utf8");
+    const compiled = nullFunctionsCase.build().toSQL();
+
+    expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
+    expect(compiled.params).toEqual(nullFunctionsCase.expectedParams);
+  });
+
+  it(dateTimeFunctionsCase.name, () => {
+    const expectedSql = readFileSync(resolve(queriesDir, dateTimeFunctionsCase.file), "utf8");
+    const compiled = dateTimeFunctionsCase.build().toSQL();
+
+    expect(normalizeSql(compiled.query)).toBe(normalizeSql(expectedSql));
+    expect(compiled.params).toEqual(dateTimeFunctionsCase.expectedParams);
   });
 });

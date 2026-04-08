@@ -49,6 +49,66 @@ type StringValueInput =
   | Expression<string>
   | Expression<string | null>;
 type NumericValueInput = ParamLike<number> | Expression<number>;
+type ExpressionInput<Scope extends ScopeMap> = ColumnRef<Scope> | Expression<unknown>;
+const DATE_TIME_UNITS = {
+  NANOSECOND: {
+    literal: "nanosecond",
+    add: "addNanoseconds",
+    subtract: "subtractNanoseconds",
+  },
+  MICROSECOND: {
+    literal: "microsecond",
+    add: "addMicroseconds",
+    subtract: "subtractMicroseconds",
+  },
+  MILLISECOND: {
+    literal: "millisecond",
+    add: "addMilliseconds",
+    subtract: "subtractMilliseconds",
+  },
+  SECOND: {
+    literal: "second",
+    add: "addSeconds",
+    subtract: "subtractSeconds",
+  },
+  MINUTE: {
+    literal: "minute",
+    add: "addMinutes",
+    subtract: "subtractMinutes",
+  },
+  HOUR: {
+    literal: "hour",
+    add: "addHours",
+    subtract: "subtractHours",
+  },
+  DAY: {
+    literal: "day",
+    add: "addDays",
+    subtract: "subtractDays",
+  },
+  WEEK: {
+    literal: "week",
+    add: "addWeeks",
+    subtract: "subtractWeeks",
+  },
+  MONTH: {
+    literal: "month",
+    add: "addMonths",
+    subtract: "subtractMonths",
+  },
+  QUARTER: {
+    literal: "quarter",
+    add: "addQuarters",
+    subtract: "subtractQuarters",
+  },
+  YEAR: {
+    literal: "year",
+    add: "addYears",
+    subtract: "subtractYears",
+  },
+} as const;
+type DateTimeUnit = keyof typeof DATE_TIME_UNITS;
+type DateTimeUnitInput = DateTimeUnit | Lowercase<DateTimeUnit>;
 type ValueInput<Scope extends ScopeMap, Value = unknown> = ColumnRef<Scope> | Expression<Value>;
 type ResolveValueInput<Scope extends ScopeMap, Value extends ValueInput<Scope>> =
   Value extends ColumnRef<Scope>
@@ -76,10 +136,28 @@ type MaybeNullableFromStringValues<Values extends readonly unknown[], Output> = 
   Output
 >;
 type NonNullValue<T> = Exclude<T, null>;
+type ComparableValueInput<Value> = NonNullValue<Value> | ClickHouseParam<Value> | Expression<Value>;
+type FallbackValueInput<Value> = ParamLike<NonNullValue<Value>> | Expression<NonNullValue<Value>>;
+type ResolveValueInputs<Scope extends ScopeMap, Values extends readonly ValueInput<Scope>[]> = {
+  [Index in keyof Values]: ResolveValueInput<Scope, Values[Index]>;
+};
+type AllNullable<Types extends readonly unknown[]> = Types extends readonly [
+  infer Head,
+  ...infer Tail,
+]
+  ? null extends Head
+    ? AllNullable<Tail>
+    : false
+  : true;
+type CoalesceResult<Types extends readonly unknown[]> =
+  | Exclude<Types[number], null>
+  | (AllNullable<Types> extends true ? null : never);
 
 interface ExpressionBuilderFunctions<Scope extends ScopeMap> {
   count(): Expression<string>;
   countIf(condition: Expression<unknown>): Expression<string>;
+  now(): Expression<string>;
+  today(): Expression<string>;
   jsonExtractString(
     column: ColumnRef<Scope> | Expression<unknown>,
     key: string,
@@ -112,6 +190,28 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap> {
     value: ColumnRef<Scope> | Expression<unknown>,
     precision: number,
   ): Expression<string>;
+  toStartOfMonth(value: ExpressionInput<Scope>): Expression<string>;
+  toStartOfWeek(value: ExpressionInput<Scope>): Expression<string>;
+  toStartOfDay(value: ExpressionInput<Scope>): Expression<string>;
+  toStartOfYear(value: ExpressionInput<Scope>): Expression<string>;
+  formatDateTime(value: ExpressionInput<Scope>, format: string): Expression<string>;
+  dateDiff(
+    unit: DateTimeUnitInput,
+    start: ExpressionInput<Scope>,
+    end: ExpressionInput<Scope>,
+  ): Expression<string>;
+  dateAdd(
+    unit: DateTimeUnitInput,
+    amount: NumericValueInput,
+    value: ExpressionInput<Scope>,
+  ): Expression<string>;
+  dateSub(
+    unit: DateTimeUnitInput,
+    amount: NumericValueInput,
+    value: ExpressionInput<Scope>,
+  ): Expression<string>;
+  toYYYYMM(value: ExpressionInput<Scope>): Expression<number>;
+  toYYYYMMDD(value: ExpressionInput<Scope>): Expression<number>;
   toString(value: ColumnRef<Scope> | Expression<unknown>): Expression<string>;
   toDecimal64(value: ColumnRef<Scope> | Expression<unknown>, scale: number): Expression<number>;
   toDecimal128(value: ColumnRef<Scope> | Expression<unknown>, scale: number): Expression<number>;
@@ -147,6 +247,19 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap> {
   ): Expression<number>;
   length<Ref extends ArrayColumnRef<Scope>>(array: Ref): Expression<string>;
   length<Element>(array: Expression<readonly Element[]>): Expression<string>;
+  isNull<Value extends ValueInput<Scope>>(value: Value): Expression<number>;
+  isNotNull<Value extends ValueInput<Scope>>(value: Value): Expression<number>;
+  nullIf<Value extends ValueInput<Scope>>(
+    value: Value,
+    nullValue: ComparableValueInput<ResolveValueInput<Scope, Value>>,
+  ): Expression<ResolveValueInput<Scope, Value> | null>;
+  coalesce<Values extends readonly [ValueInput<Scope>, ValueInput<Scope>, ...ValueInput<Scope>[]]>(
+    ...values: Values
+  ): Expression<CoalesceResult<ResolveValueInputs<Scope, Values>>>;
+  ifNull<Value extends ValueInput<Scope>>(
+    value: Value,
+    defaultValue: FallbackValueInput<ResolveValueInput<Scope, Value>>,
+  ): Expression<NonNullValue<ResolveValueInput<Scope, Value>>>;
   empty<Value extends EmptyableInput<Scope>>(
     value: Value,
   ): Expression<MaybeNullable<ResolveRefOrExpressionInput<Scope, Value>, number>>;
@@ -239,10 +352,12 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     count: () => this.callFunction<string>("count"),
     countIf: (condition: Expression<unknown>) =>
       this.callFunction<string>("countIf", [condition.node]),
+    now: () => this.callFunction<string>("now"),
+    today: () => this.callFunction<string>("today"),
     jsonExtractString: (column: ColumnRef<Scope> | Expression<unknown>, key: string) =>
       this.callFunction<string>("JSONExtractString", [
         this.toExpr(column),
-        { kind: "raw", sql: `'${escapeSingleQuotedString(key)}'` },
+        this.toStringLiteral(key),
       ]),
     sum: (value: ValueInput<Scope>) =>
       this.callFunction<number | string>("sum", [this.toExpr(value)]),
@@ -289,6 +404,43 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
         this.toExpr(value),
         this.toIntegerLiteral(precision, "DateTime64 precision", 9),
       ]),
+    toStartOfMonth: (value: ExpressionInput<Scope>) =>
+      this.callFunction<string>("toStartOfMonth", [this.toExpr(value)]),
+    toStartOfWeek: (value: ExpressionInput<Scope>) =>
+      this.callFunction<string>("toStartOfWeek", [this.toExpr(value)]),
+    toStartOfDay: (value: ExpressionInput<Scope>) =>
+      this.callFunction<string>("toStartOfDay", [this.toExpr(value)]),
+    toStartOfYear: (value: ExpressionInput<Scope>) =>
+      this.callFunction<string>("toStartOfYear", [this.toExpr(value)]),
+    formatDateTime: (value: ExpressionInput<Scope>, format: string) =>
+      this.callFunction<string>("formatDateTime", [
+        this.toExpr(value),
+        this.toStringLiteral(format),
+      ]),
+    dateDiff: (
+      unit: DateTimeUnitInput,
+      start: ExpressionInput<Scope>,
+      end: ExpressionInput<Scope>,
+    ) =>
+      this.callFunction<string>("dateDiff", [
+        this.toDateTimeUnitLiteral(unit),
+        this.toExpr(start),
+        this.toExpr(end),
+      ]),
+    dateAdd: (unit: DateTimeUnitInput, amount: NumericValueInput, value: ExpressionInput<Scope>) =>
+      this.callFunction<string>(this.toDateTimeUnit(unit).add, [
+        this.toExpr(value),
+        this.toValueExpr(amount),
+      ]),
+    dateSub: (unit: DateTimeUnitInput, amount: NumericValueInput, value: ExpressionInput<Scope>) =>
+      this.callFunction<string>(this.toDateTimeUnit(unit).subtract, [
+        this.toExpr(value),
+        this.toValueExpr(amount),
+      ]),
+    toYYYYMM: (value: ExpressionInput<Scope>) =>
+      this.callFunction<number>("toYYYYMM", [this.toExpr(value)]),
+    toYYYYMMDD: (value: ExpressionInput<Scope>) =>
+      this.callFunction<number>("toYYYYMMDD", [this.toExpr(value)]),
     toString: (value: ColumnRef<Scope> | Expression<unknown>) =>
       this.callFunction<string>("toString", [this.toExpr(value)]),
     toDecimal64: (value: ColumnRef<Scope> | Expression<unknown>, scale: number) =>
@@ -312,6 +464,35 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
       elements: ParamLike<readonly unknown[]> | Expression<readonly unknown[]>,
     ) => this.callFunction<number>("hasAll", [this.toExpr(array), this.toValueExpr(elements)]),
     length: (array: ArrayInput<Scope>) => this.callFunction<string>("length", [this.toExpr(array)]),
+    isNull: <Value extends ValueInput<Scope>>(value: Value) =>
+      this.callFunction<number>("isNull", [this.toExpr(value)]),
+    isNotNull: <Value extends ValueInput<Scope>>(value: Value) =>
+      this.callFunction<number>("isNotNull", [this.toExpr(value)]),
+    nullIf: <Value extends ValueInput<Scope>>(
+      value: Value,
+      nullValue: ComparableValueInput<ResolveValueInput<Scope, Value>>,
+    ) =>
+      this.callFunction<ResolveValueInput<Scope, Value> | null>("nullIf", [
+        this.toExpr(value),
+        this.toValueExpr(nullValue),
+      ]),
+    coalesce: <
+      Values extends readonly [ValueInput<Scope>, ValueInput<Scope>, ...ValueInput<Scope>[]],
+    >(
+      ...values: Values
+    ) =>
+      this.callFunction<CoalesceResult<ResolveValueInputs<Scope, Values>>>(
+        "coalesce",
+        values.map((value) => this.toExpr(value)),
+      ),
+    ifNull: <Value extends ValueInput<Scope>>(
+      value: Value,
+      defaultValue: FallbackValueInput<ResolveValueInput<Scope, Value>>,
+    ) =>
+      this.callFunction<NonNullValue<ResolveValueInput<Scope, Value>>>("ifNull", [
+        this.toExpr(value),
+        this.toValueExpr(defaultValue),
+      ]),
     empty: <Value extends EmptyableInput<Scope>>(value: Value) =>
       this.callFunction<MaybeNullable<ResolveRefOrExpressionInput<Scope, Value>, number>>("empty", [
         this.toExpr(value),
@@ -426,7 +607,29 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     };
   }
 
-  private toExpr(value: ColumnRef<Scope> | Expression<unknown>): ExprNode {
+  private toStringLiteral(value: string): ExprNode {
+    return {
+      kind: "raw",
+      sql: `'${escapeSingleQuotedString(value)}'`,
+    };
+  }
+
+  private toDateTimeUnit(unit: DateTimeUnitInput): (typeof DATE_TIME_UNITS)[DateTimeUnit] {
+    const normalizedUnit = unit.toUpperCase() as DateTimeUnit;
+    const resolvedUnit = DATE_TIME_UNITS[normalizedUnit];
+
+    if (!resolvedUnit) {
+      throw new Error(`Unsupported date/time unit: ${unit}`);
+    }
+
+    return resolvedUnit;
+  }
+
+  private toDateTimeUnitLiteral(unit: DateTimeUnitInput): ExprNode {
+    return this.toStringLiteral(this.toDateTimeUnit(unit).literal);
+  }
+
+  private toExpr(value: ExpressionInput<Scope>): ExprNode {
     if (value instanceof Expression) {
       return value.node;
     }

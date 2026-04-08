@@ -31,6 +31,9 @@ meaningfully.
   `avgIf`, `uniqIf`
 - string helpers: `like`, `ilike`, `concat`, `lower`, `upper`, `substring`,
   `trimBoth`, `trimLeft`, `trimRight`
+- date/time helpers: `now`, `today`, `toStartOfMonth` / `Week` / `Day` /
+  `Year`, `formatDateTime`, `dateDiff`, `dateAdd`, `dateSub`, `toYYYYMM`,
+  `toYYYYMMDD`
 - array helpers: `has`, `hasAny`, `hasAll`, `length`, `empty`, `notEmpty`
 - type conversion helpers: the full `toInt*` / `toUInt*` / `toFloat*` /
   `toDate` / `toDateTime` / `toDateTime64` / `toDecimal*` / `toString` set
@@ -39,8 +42,8 @@ meaningfully.
 **Likely next:**
 
 - more JSON helpers (`jsonExtractInt`, `jsonExtract`, typed variants)
-- date/time helpers (`now`, `today`, `dateDiff`, `toStartOfMonth` / `Day` / ...)
-- conditional helpers (`if`, `multiIf`, `coalesce`, `isNotNull`)
+- richer date/time syntax (`INTERVAL`, timezone-aware variants, more truncation helpers)
+- conditional helpers (`if`, `multiIf`)
 - the `quantile*` family
 - more string helpers as real queries ask for them
 

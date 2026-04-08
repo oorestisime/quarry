@@ -121,6 +121,44 @@ function buildNullableStringFunctionQuery() {
     .orderBy("t.id", "asc");
 }
 
+function buildDateTimeFunctionQuery() {
+  return db
+    .selectFrom("typed_samples as t")
+    .selectExpr((eb) => [
+      "t.id",
+      eb.fn.now().as("current_time"),
+      eb.fn.today().as("current_date"),
+      eb.fn.toStartOfMonth("t.created_at").as("month_start"),
+      eb.fn.toStartOfWeek("t.created_at").as("week_start"),
+      eb.fn.toStartOfDay("t.created_at").as("day_start"),
+      eb.fn.toStartOfYear("t.created_at").as("year_start"),
+      eb.fn.formatDateTime("t.created_at", "%Y-%m-%d").as("created_date_text"),
+      eb.fn
+        .dateDiff("day", eb.fn.toDate("t.created_at"), eb.val(param("2025-01-03", "Date")))
+        .as("days_until_cutoff"),
+      eb.fn.dateAdd("day", 5, "t.created_at").as("plus_five_days"),
+      eb.fn.dateSub("hour", 2, "t.created_at").as("minus_two_hours"),
+      eb.fn.toYYYYMM("t.created_at").as("created_yyyymm"),
+      eb.fn.toYYYYMMDD("t.created_at").as("created_yyyymmdd"),
+    ])
+    .orderBy("t.id", "asc");
+}
+
+function buildNullFunctionQuery() {
+  return db
+    .selectFrom("typed_samples as t")
+    .selectExpr((eb) => [
+      "t.id",
+      eb.fn.isNull("t.nickname").as("nickname_is_null"),
+      eb.fn.isNotNull("t.nickname").as("nickname_is_not_null"),
+      eb.fn.nullIf("t.label", "beta").as("maybe_label"),
+      eb.fn.coalesce("t.nickname", eb.ref("t.label")).as("display_name"),
+      eb.fn.coalesce("t.nickname", eb.val("Unknown")).as("display_name_with_literal"),
+      eb.fn.ifNull("t.nickname", param("Unknown", "String")).as("nickname_or_default"),
+    ])
+    .orderBy("t.id", "asc");
+}
+
 function buildAggregateFunctionQuery() {
   return db.selectFrom("typed_samples as t").selectExpr((eb) => {
     const isActive = eb.cmp("t.status", "=", "active");
@@ -157,6 +195,8 @@ type TypeCastRow = InferResult<ReturnType<typeof buildTypeCastQuery>>;
 type ArrayFunctionRow = InferResult<ReturnType<typeof buildArrayFunctionQuery>>;
 type StringFunctionRow = InferResult<ReturnType<typeof buildStringFunctionQuery>>;
 type NullableStringFunctionRow = InferResult<ReturnType<typeof buildNullableStringFunctionQuery>>;
+type DateTimeFunctionRow = InferResult<ReturnType<typeof buildDateTimeFunctionQuery>>;
+type NullFunctionRow = InferResult<ReturnType<typeof buildNullFunctionQuery>>;
 type AggregateFunctionRow = InferResult<ReturnType<typeof buildAggregateFunctionQuery>>;
 type JsonSampleRow = InferResult<ReturnType<typeof buildJsonSamplesQuery>>;
 
@@ -328,6 +368,49 @@ const expectedNullableStringFunctionRows: NullableStringFunctionRow[] = [
   },
 ];
 
+const expectedDateTimeFunctionRows: Array<
+  Pick<
+    DateTimeFunctionRow,
+    "id" | "created_date_text" | "days_until_cutoff" | "created_yyyymm" | "created_yyyymmdd"
+  >
+> = [
+  {
+    id: 1,
+    created_date_text: "2025-01-01",
+    days_until_cutoff: "2",
+    created_yyyymm: 202501,
+    created_yyyymmdd: 20250101,
+  },
+  {
+    id: 2,
+    created_date_text: "2025-01-02",
+    days_until_cutoff: "1",
+    created_yyyymm: 202501,
+    created_yyyymmdd: 20250102,
+  },
+];
+
+const expectedNullFunctionRows: NullFunctionRow[] = [
+  {
+    id: 1,
+    nickname_is_null: 1,
+    nickname_is_not_null: 0,
+    maybe_label: "alpha",
+    display_name: "alpha",
+    display_name_with_literal: "Unknown",
+    nickname_or_default: "Unknown",
+  },
+  {
+    id: 2,
+    nickname_is_null: 0,
+    nickname_is_not_null: 1,
+    maybe_label: null,
+    display_name: "bee",
+    display_name_with_literal: "bee",
+    nickname_or_default: "bee",
+  },
+];
+
 const expectedAggregateFunctionRows: AggregateFunctionRow[] = [
   {
     sample_count: "2",
@@ -473,6 +556,57 @@ describe("clickhouse runtime types", () => {
     expect(typeof rows[1].nickname_trimmed).toBe("string");
     expect(typeof rows[1].nickname_left_trimmed).toBe("string");
     expect(typeof rows[1].nickname_right_trimmed).toBe("string");
+  });
+
+  it("returns runtime-honest values for date/time helpers", async () => {
+    const rows = await buildDateTimeFunctionQuery().execute(getContext().client);
+
+    expect(
+      rows.map(
+        ({ id, created_date_text, days_until_cutoff, created_yyyymm, created_yyyymmdd }) => ({
+          id,
+          created_date_text,
+          days_until_cutoff,
+          created_yyyymm,
+          created_yyyymmdd,
+        }),
+      ),
+    ).toEqual(expectedDateTimeFunctionRows);
+
+    expect(typeof rows[0].current_time).toBe("string");
+    expect(typeof rows[0].current_date).toBe("string");
+    expect(rows[0].current_time.startsWith(rows[0].current_date)).toBe(true);
+    expect(rows[0].current_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(rows[0].month_start).toMatch(/^2025-01-01/);
+    expect(rows[0].week_start).toMatch(/^202[45]-\d{2}-\d{2}/);
+    expect(rows[0].week_start).toBe(rows[1].week_start);
+    expect(rows[0].day_start).toMatch(/^2025-01-01/);
+    expect(rows[1].day_start).toMatch(/^2025-01-02/);
+    expect(rows[0].year_start).toMatch(/^2025-01-01/);
+    expect(typeof rows[0].created_date_text).toBe("string");
+    expect(typeof rows[0].days_until_cutoff).toBe("string");
+    expect(rows[0].plus_five_days).toMatch(/^2025-01-06 10:11:12/);
+    expect(rows[1].plus_five_days).toMatch(/^2025-01-07 03:04:05/);
+    expect(rows[0].minus_two_hours).toMatch(/^2025-01-01 08:11:12/);
+    expect(rows[1].minus_two_hours).toMatch(/^2025-01-02 01:04:05/);
+    expect(typeof rows[0].created_yyyymm).toBe("number");
+    expect(typeof rows[0].created_yyyymmdd).toBe("number");
+  });
+
+  it("returns runtime-honest values for null helpers", async () => {
+    const rows = await buildNullFunctionQuery().execute(getContext().client);
+
+    expect(rows).toEqual(expectedNullFunctionRows);
+    expect(typeof rows[0].nickname_is_null).toBe("number");
+    expect(typeof rows[0].nickname_is_not_null).toBe("number");
+    expect(typeof rows[0].maybe_label).toBe("string");
+    expect(typeof rows[0].display_name).toBe("string");
+    expect(typeof rows[0].display_name_with_literal).toBe("string");
+    expect(typeof rows[0].nickname_or_default).toBe("string");
+    expect(rows[1].maybe_label).toBeNull();
+    expect(typeof rows[1].display_name).toBe("string");
+    expect(typeof rows[1].display_name_with_literal).toBe("string");
+    expect(typeof rows[1].nickname_or_default).toBe("string");
   });
 
   it("returns runtime-honest values for aggregate helpers", async () => {

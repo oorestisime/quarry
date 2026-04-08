@@ -76,6 +76,60 @@ The result types reflect the
 [runtime-honest typing](/docs/concepts/runtime-semantics) story: 64-bit ints
 return as `string` because that is what `@clickhouse/client` actually returns.
 
+## Date and time helpers
+
+Common ClickHouse date/time helpers are also exposed under `eb.fn`:
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+const rows = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => [
+    eb.fn.now().as("query_time"),
+    eb.fn.today().as("query_date"),
+    eb.fn.toStartOfMonth("e.created_at").as("month_start"),
+    eb.fn.toStartOfWeek("e.created_at").as("week_start"),
+    eb.fn.formatDateTime("e.created_at", "%Y-%m-%d").as("event_day"),
+    eb.fn
+      .dateDiff("day", eb.fn.toDate("e.created_at"), eb.val(param("2025-01-03", "Date")))
+      .as("days_until_cutoff"),
+    eb.fn.dateAdd("day", 7, "e.created_at").as("plus_week"),
+    eb.fn.dateSub("hour", 1, "e.created_at").as("minus_one_hour"),
+    eb.fn.toYYYYMM("e.created_at").as("event_yyyymm"),
+  ])
+  .execute();
+```
+
+Available date/time helpers:
+
+| Helper                                | Description                                                      |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| `eb.fn.now()`                         | Current query-time `DateTime`.                                   |
+| `eb.fn.today()`                       | Current query-time `Date`.                                       |
+| `eb.fn.toStartOfMonth(value)`         | Bucket to the start of the month.                                |
+| `eb.fn.toStartOfWeek(value)`          | Bucket to the start of the week.                                 |
+| `eb.fn.toStartOfDay(value)`           | Bucket to the start of the day.                                  |
+| `eb.fn.toStartOfYear(value)`          | Bucket to the start of the year.                                 |
+| `eb.fn.formatDateTime(value, format)` | Format with ClickHouse's MySQL-style datetime placeholders.      |
+| `eb.fn.dateDiff(unit, start, end)`    | Difference between two dates/times. Returns `string` (`Int64`).  |
+| `eb.fn.dateAdd(unit, amount, value)`  | Add a relative offset without dropping to raw SQL.               |
+| `eb.fn.dateSub(unit, amount, value)`  | Subtract a relative offset.                                      |
+| `eb.fn.toYYYYMM(value)`               | Compact integer `YYYYMM` key.                                    |
+| `eb.fn.toYYYYMMDD(value)`             | Compact integer `YYYYMMDD` key.                                  |
+
+Accepted units are `nanosecond`, `microsecond`, `millisecond`, `second`,
+`minute`, `hour`, `day`, `week`, `month`, `quarter`, and `year`. Uppercase
+forms such as `"DAY"` also work.
+
+Quarry does not yet have first-class `INTERVAL` expression nodes. For now,
+prefer `dateAdd(...)` and `dateSub(...)`; drop to raw SQL only when you need
+the literal ClickHouse `INTERVAL ...` form itself.
+
+`formatDateTime(...)` intentionally takes a literal format string. For
+literal date/time arguments in `dateDiff(...)`, use `eb.val(param(...))`
+because bare strings are interpreted as column references in these APIs.
+
 ## Null checks
 
 ClickHouse `NULL` semantics are not the same as ANSI SQL when joins are
@@ -198,6 +252,35 @@ The `pattern` argument for `like` / `ilike` and the parts of `concat` accept
 a literal JS string, a `param(...)`, or another expression &mdash; you do
 not need to wrap them in `eb.val(...)` yourself. ClickHouse string predicates
 return `0`/`1`, hence the `number` return type.
+
+## Null helpers
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .selectExpr((eb) => [
+    "u.id",
+    eb.fn.nullIf("u.email", "").as("email_or_null"),
+    eb.fn.coalesce("u.nickname", "u.email").as("display_name"),
+    eb.fn.coalesce("u.nickname", eb.val("Unknown")).as("display_name_with_fallback"),
+    eb.fn.ifNull("u.nickname", "Unknown").as("nickname_or_default"),
+  ])
+  .execute();
+```
+
+Available null helpers:
+
+| Helper                              | Description                                                       |
+| ----------------------------------- | ----------------------------------------------------------------- |
+| `eb.fn.isNull(value)`               | `1` if `value` is `NULL`, `0` otherwise.                          |
+| `eb.fn.isNotNull(value)`            | `1` if `value` is not `NULL`, `0` otherwise.                      |
+| `eb.fn.nullIf(value, nullValue)`    | Returns `NULL` when `value = nullValue`.                          |
+| `eb.fn.coalesce(v1, v2, ...rest)`   | Returns the first non-`NULL` expression. **At least two args.**   |
+| `eb.fn.ifNull(value, defaultValue)` | Replaces `NULL` with `defaultValue`.                              |
+
+`coalesce(...)` is the one helper here that is expression-oriented: bare
+strings are treated as column references. If you want a literal fallback,
+wrap it with `eb.val(...)`.
 
 ## JSON helpers
 

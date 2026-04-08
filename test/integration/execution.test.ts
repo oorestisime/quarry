@@ -18,6 +18,8 @@ import {
   multiConditionJoinCase,
   multipleCtesCase,
   arrayFunctionsCase,
+  dateTimeFunctionsCase,
+  nullFunctionsCase,
   selectAllCase,
   selectAllForAliasCase,
   simpleSelectCase,
@@ -170,6 +172,16 @@ describe("clickhouse integration", () => {
   it(aggregateFunctionsCase.name, async () => {
     const rows = await aggregateFunctionsCase.build().execute(getContext().client);
     expect(rows).toEqual(aggregateFunctionsCase.expectedRows);
+  });
+
+  it(nullFunctionsCase.name, async () => {
+    const rows = await nullFunctionsCase.build().execute(getContext().client);
+    expect(rows).toEqual(nullFunctionsCase.expectedRows);
+  });
+
+  it(dateTimeFunctionsCase.name, async () => {
+    const rows = await dateTimeFunctionsCase.build().execute(getContext().client);
+    expect(rows).toEqual(dateTimeFunctionsCase.expectedRows);
   });
 
   it("executes unary where expression predicates", async () => {
