@@ -5,16 +5,22 @@ description: Reference for every method on InsertQueryBuilder.
 
 `InsertQueryBuilder` is what you get back from `db.insertInto(table)`. It is
 much smaller than [`SelectQueryBuilder`](/docs/reference/select) because
-inserts in Quarry have a deliberately narrow shape:
+inserts in Quarry still have a deliberately narrow shape:
 
 - you pick a table,
-- you set rows,
+- you optionally pick target columns,
+- you choose one source,
 - you execute.
 
-There are no joins, no `WHERE`, no expressions. The compiled query is always
-`INSERT INTO <table> FORMAT JSONEachRow` and the actual values are streamed
-to the driver via its native `insert()` API rather than going through query
-parameters.
+That source can be either:
+
+- a batch of rows via `values([...])`, or
+- a select query via `fromSelect(...)`.
+
+For row inserts, the compiled query is `INSERT INTO <table> FORMAT JSONEachRow`
+and the actual values are sent to the driver via its native `insert()` API.
+For `fromSelect(...)`, the compiled query is `INSERT INTO <table> SELECT ...`
+and executes through the driver's command API.
 
 ## How you get one
 
@@ -41,6 +47,22 @@ const insert = db.insertInto("users");
 passing a table name that does not exist on `DB` is a compile error, and the
 returned builder is parameterised by that table's row type.
 
+## `columns(...columns)`
+
+Narrows the target columns for the insert.
+
+```ts
+db.insertInto("users").columns("id", "email");
+```
+
+This works with both insert shapes:
+
+- with `values([...])`, it narrows the accepted row shape at the type level
+- with `fromSelect(...)`, it defines the target-side column list in the
+  generated `INSERT INTO table (col, col, ...) SELECT ...` statement
+
+You can call `columns(...)` before either `values(...)` or `fromSelect(...)`.
+
 ## `values(rows)`
 
 Sets the rows to be inserted. Accepts a `readonly Row[]` and returns a new
@@ -57,15 +79,38 @@ db
 ```
 
 <Callout type="warn">
-`values()` can only be called **once** per insert query. Calling it twice on
-the same builder throws:
+`values()` and `fromSelect()` are mutually exclusive. Once either one has set
+the insert source, trying to set it again throws:
 
-> values() can only be called once per insert query.
+> Insert source has already been set for this query.
 
-This is intentional &mdash; insert builders model a single insert operation,
-not an accumulating buffer. If you want to insert two batches, build two
-queries.
+Insert builders model one insert operation, not an accumulating buffer. If you
+want to insert two batches, or use both patterns, build two queries.
 </Callout>
+
+## `fromSelect(query)`
+
+Uses a select query as the insert source.
+
+```ts
+db
+  .insertInto("daily_aggregates")
+  .columns("user_id", "event_date", "event_count")
+  .fromSelect(
+    db
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => [
+        "e.user_id",
+        eb.fn.toDate("e.created_at").as("event_date"),
+        eb.fn.count().as("event_count"),
+      ])
+      .where("e.created_at", ">=", param("2025-01-01", "Date"))
+      .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
+  );
+```
+
+`fromSelect(...)` accepts a normal `SelectQueryBuilder`, so the source query
+can use CTEs, joins, filters, aggregates, and query parameters.
 
 ## `toSQL()`
 
@@ -79,25 +124,30 @@ const compiled = db
 
 compiled.query;
 // INSERT INTO users FORMAT JSONEachRow
+compiled.params;
+// {}
 compiled.values;
 // [{ id: 1, email: "alice@example.com", status: "active" }]
 ```
 
-The returned object shape:
+For `fromSelect(...)`, `compiled.values` is `undefined` and `compiled.params`
+contains any bound parameters from the nested select query.
 
-<auto-type-table path="../../../../src/query/insert-query-builder.ts" name="CompiledInsertQuery" />
+The returned object shape is:
 
-Notice that the `query` string never contains the row data &mdash; the values
-travel separately through the driver's `insert()` API. This is how Quarry
-keeps inserts efficient even for large batches.
+<auto-type-table path="../../../../src/compiler/query-compiler.ts" name="CompiledInsertQuery" />
 
-`toSQL()` throws if no values have been set:
+For `values(...)`, the `query` string never contains the row data &mdash; the
+values travel separately through the driver's `insert()` API. This is how
+Quarry keeps large batch inserts efficient.
 
-> Cannot compile an insert without any values
+`toSQL()` throws if no source has been set:
+
+> Cannot compile an insert without a source
 
 ## `execute(client?)`
 
-Runs the insert and returns the driver's `ClickHouseInsertResult`.
+Runs the insert and returns a `ClickHouseInsertResult`.
 
 ```ts
 const result = await db
@@ -113,31 +163,37 @@ used by default. You can pass a different client per call when needed:
 await insertBuilder.execute(otherClient);
 ```
 
-`execute()` throws in two cases:
+Execution depends on the insert source:
+
+- `values(...)` uses the driver's `insert()` method with `format: "JSONEachRow"`
+- `fromSelect(...)` uses the driver's `command()` method with the compiled
+  `INSERT INTO ... SELECT ...` SQL and parameter map
+
+`execute()` throws in these cases:
 
 | Error message | When it happens |
 | ------------- | --------------- |
-| `Cannot execute an insert without any values` | You called `execute()` before `values()`. |
-| `No ClickHouse insert client configured. Pass one to execute() or createClickHouseDB().` | No client is set on the builder and none was passed to `execute()`. |
+| `Cannot execute an insert without a source` | You called `execute()` before `values()` or `fromSelect()`. |
+| `No ClickHouse insert client configured. Pass one to execute() or createClickHouseDB().` | The insert uses `values(...)`, but no insert-capable client is available. |
+| `No ClickHouse command client configured. Pass one to execute() or createClickHouseDB().` | The insert uses `fromSelect(...)`, but no command-capable client is available. |
 
-The driver call uses `format: "JSONEachRow"` &mdash; values are sent as
-newline-delimited JSON objects, which means you do not have to think about
-column ordering. The keys in your row objects map to columns by name.
+### `toAST()`
+
+Returns a structured clone of the internal insert AST node. This is an escape
+hatch for tooling and tests &mdash; you do not need it for normal use.
 
 ## What `InsertQueryBuilder` is **not**
 
 It does not have:
 
 - a `where(...)` method &mdash; ClickHouse inserts cannot be conditional at
-  the query level. If you need conditional inserts, do the filtering in
-  application code before calling `values(...)`.
+  the query level. If you need filtering or transformations, build them into
+  the select you pass to `fromSelect(...)`.
 - a `returning(...)` method &mdash; ClickHouse does not support
   `INSERT ... RETURNING`.
 - an `as(...)` method &mdash; insert queries cannot be used as subqueries.
 - an `executeTakeFirst(...)` variant &mdash; inserts return a single
   `ClickHouseInsertResult`, not a row list.
-- a `toAST()` method &mdash; inserts do not go through the AST/compiler
-  pipeline that select queries use; the SQL is constructed directly.
 
 If you need any of those, you are reaching for the wrong builder &mdash;
 either use [`SelectQueryBuilder`](/docs/reference/select) for query work, or

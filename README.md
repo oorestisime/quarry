@@ -14,7 +14,9 @@ Quarry is a query builder first. It is not trying to be an ORM or hide ClickHous
 
 ## Docs
 
-The full documentation site lives in [`docs/`](./docs) and is built with
+Public docs are available at [ch-quarry.vercel.app](https://ch-quarry.vercel.app).
+
+The docs source lives in [`docs/`](./docs) and is built with
 [Fumadocs](https://fumadocs.dev). To run it locally:
 
 ```bash
@@ -27,9 +29,10 @@ The site will be available on http://localhost:3000.
 
 Highlights:
 
-- [Approach](./docs/content/docs/concepts/approach.mdx) &mdash; what Quarry is and is not
-- [Getting started](./docs/content/docs/guides/getting-started.mdx) &mdash; install and run your first query
-- [Roadmap](./docs/content/docs/roadmap.mdx) &mdash; what is likely to land next
+- [Approach](https://ch-quarry.vercel.app/docs/concepts/approach) &mdash; what Quarry is and is not
+- [Getting started](https://ch-quarry.vercel.app/docs/guides/getting-started) &mdash; install and run your first query
+- [Inserts](https://ch-quarry.vercel.app/docs/guides/inserts) &mdash; value inserts and `INSERT INTO ... SELECT`
+- [Roadmap](https://ch-quarry.vercel.app/docs/roadmap) &mdash; what is likely to land next
 
 ## Status
 
@@ -37,12 +40,12 @@ This package is still in the early alpha stage. The current API is already valid
 
 ## Current Scope
 
-- typed selects and inserts
+- typed selects and inserts, including `INSERT INTO ... SELECT`
 - joins, subqueries, and CTEs
 - `FINAL`, `PREWHERE`, `GROUP BY`, and `HAVING`
 - `toSQL()` and `execute()`
 
-See the [docs site](./docs) for the full supported API, runtime semantics, and concept guides.
+See the [docs site](https://ch-quarry.vercel.app) for the full supported API, runtime semantics, and concept guides.
 
 ## Example
 

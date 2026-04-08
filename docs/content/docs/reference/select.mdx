@@ -221,17 +221,25 @@ db
 
 `having` accepts the same callback overloads as `where`.
 
-## `groupBy(...columns)`
+## `groupBy(...expressions)`
 
-Adds columns to the `GROUP BY` clause. All arguments must be column references
-in scope; aliases from `selectExpr` are not accepted here (use the real column
-ref instead).
+Adds expressions to the `GROUP BY` clause. Each argument can be either:
+
+- a column reference in scope, or
+- a callback that receives the expression builder and returns an expression.
+
+Aliases from `selectExpr` are still not accepted here; use the real column ref
+or expression instead.
 
 ```ts
 db
   .selectFrom("event_logs as e")
-  .selectExpr((eb) => ["e.event_type", eb.fn.count().as("c")])
-  .groupBy("e.event_type");
+  .selectExpr((eb) => [
+    "e.user_id",
+    eb.fn.toDate("e.created_at").as("event_date"),
+    eb.fn.count().as("c"),
+  ])
+  .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at"));
 ```
 
 ## Joins

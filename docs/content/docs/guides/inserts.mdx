@@ -1,10 +1,17 @@
 ---
 title: Inserts
-description: Insert one or many rows into a table with full type checking.
+description: Insert one or many rows, or materialize a select query into a table.
 ---
 
-Inserts always take an array of rows. Each row is type-checked against the
-target table's row type from the schema you passed to `createClickHouseDB`.
+Quarry supports two insert shapes:
+
+- value inserts with `values([...])`
+- server-side `INSERT INTO ... SELECT` with `fromSelect(...)`
+
+## Insert row values
+
+When you call `values([...])`, each row is type-checked against the target
+table's row type from the schema you passed to `createClickHouseDB`.
 
 ```ts
 await db
@@ -24,9 +31,53 @@ await db
   .execute();
 ```
 
-The compiled SQL uses ClickHouse's `INSERT ... FORMAT JSONEachRow` shape under
-the hood, so you do not have to think about column ordering &mdash; the keys
-in your object literal map to columns by name.
+This compiles to ClickHouse's `INSERT ... FORMAT JSONEachRow` shape, so you do
+not have to think about column ordering &mdash; the keys in your object literal
+map to columns by name.
+
+## Insert into explicit target columns
+
+Use `columns(...)` when you want to insert into only part of the target table.
+
+```ts
+await db
+  .insertInto("users")
+  .columns("id", "email")
+  .values([
+    { id: 1, email: "alice@example.com" },
+    { id: 2, email: "bob@example.com" },
+  ])
+  .execute();
+```
+
+For value inserts, `columns(...)` also narrows the accepted row shape at the
+type level.
+
+## Insert from a select query
+
+Use `fromSelect(...)` when the rows should be produced entirely inside
+ClickHouse.
+
+```ts
+await db
+  .insertInto("daily_aggregates")
+  .columns("user_id", "event_date", "event_count")
+  .fromSelect(
+    db
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => [
+        "e.user_id",
+        eb.fn.toDate("e.created_at").as("event_date"),
+        eb.fn.count().as("event_count"),
+      ])
+      .where("e.created_at", ">=", param("2025-01-01", "Date"))
+      .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
+  )
+  .execute();
+```
+
+This compiles to `INSERT INTO ... SELECT ...` and runs entirely server-side.
+The selected rows never pass back through your application.
 
 ## Inspecting before executing
 
@@ -41,4 +92,10 @@ const compiled = db
 
 compiled.query;
 compiled.params;
+compiled.values;
 ```
+
+For value inserts, `compiled.values` contains the row payload and
+`compiled.params` is empty. For `fromSelect(...)`, `compiled.values` is
+`undefined` and `compiled.params` contains any parameters from the select
+subquery.

@@ -34,7 +34,7 @@ For the runtime type story (UInt64 → string, etc.), see
 | `WITH cte AS (...)` (CTEs)  | ✅ | `db.with(name, callback)` |
 | `WHERE`                     | ✅ | Positional and callback forms |
 | `PREWHERE`                  | ✅ | Same shape as `where` |
-| `GROUP BY`                  | ✅ | Column refs only (not aliases) |
+| `GROUP BY`                  | ✅ | Column refs and expression callbacks (not aliases) |
 | `GROUP BY ROLLUP/CUBE`      | ❌ | Not yet |
 | `GROUP BY GROUPING SETS`    | ❌ | Not yet |
 | `HAVING`                    | ✅ | Accepts both real columns and aliases from `selectExpr` |
@@ -49,7 +49,7 @@ For the runtime type story (UInt64 → string, etc.), see
 | `INTERSECT` / `EXCEPT`      | ❌ | Not yet |
 | `WINDOW` / window functions | ❌ | Not yet |
 | `INSERT INTO`               | ✅ | `db.insertInto(table).values([...])` |
-| `INSERT INTO ... SELECT`    | ❌ | Not yet |
+| `INSERT INTO ... SELECT`    | ✅ | `db.insertInto(table).fromSelect(query)` |
 | Migrations / schema diff    | ❌ | Not in scope &mdash; see [roadmap](/docs/roadmap#out-of-scope-for-now) |
 
 The roadmap section on [more ClickHouse-specific AST and builder support](/docs/roadmap#2-more-clickhouse-specific-ast-and-builder-support)
@@ -192,13 +192,15 @@ If you fetch the same query through a different format, the runtime types
 will be different and Quarry's typed result will lie. The library is built
 around `JSONEachRow` and that is the only format it currently supports.
 
-### Inserts only via `JSONEachRow`
+### Value inserts use `JSONEachRow`
 
-Symmetrically, inserts always use `format: "JSONEachRow"`. Your row objects
-are sent to the driver's `insert()` method directly &mdash; they never get
-serialized into the SQL query. This is what makes large batch inserts
-efficient. The downside is that you cannot use Quarry to do an
-`INSERT INTO ... SELECT FROM` query yet.
+For `values([...])`, Quarry uses `format: "JSONEachRow"`. Your row objects are
+sent to the driver's `insert()` method directly &mdash; they never get serialized
+into the SQL query. This is what makes large batch inserts efficient.
+
+`fromSelect(...)` is the other insert path. It compiles to
+`INSERT INTO ... SELECT ...` and runs through the driver's command API instead,
+which keeps ETL-style transforms entirely inside ClickHouse.
 
 ## Things that are deliberately not in scope
 
