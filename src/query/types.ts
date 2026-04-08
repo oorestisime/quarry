@@ -8,7 +8,7 @@ import type {
   TableRow,
   UnionToIntersection,
 } from "../type-utils";
-import type { AliasedExpression } from "./expression-builder";
+import type { AliasedExpression, Expression, ExpressionBuilder } from "./expression-builder";
 import type { SelectQueryBuilder } from "./select-query-builder";
 import type { AliasedQuery, TableSourceBuilder } from "./source-builder";
 
@@ -159,6 +159,10 @@ export type ResolveHavingType<
 export type SelectionExpression<Scope extends ScopeMap> =
   | SelectionString<Scope>
   | AliasedExpression<unknown, string>;
+
+export type GroupByExpression<Scope extends ScopeMap> =
+  | ColumnRef<Scope>
+  | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>);
 
 type SelectionResult<Scope extends ScopeMap, Selection> = Selection extends string
   ? { [K in SelectionOutputKey<Selection>]: SelectionOutputValue<Scope, Selection> }

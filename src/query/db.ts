@@ -1,5 +1,5 @@
 import type { CteNode } from "../ast/query";
-import { createEmptySelectQueryNode } from "../ast/query";
+import { createEmptyInsertQueryNode, createEmptySelectQueryNode } from "../ast/query";
 import type { ClickHouseClient } from "../client";
 import type { DatabaseSchema, InferResult, Simplify, TableName, TableRow } from "../type-utils";
 import { parseSourceExpression } from "./helpers";
@@ -47,7 +47,7 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
   insertInto<Table extends TableName<DB>>(
     table: Table,
   ): InsertQueryBuilder<Table, TableRow<DB, Table>> {
-    return new InsertQueryBuilder(table, [], this.client);
+    return new InsertQueryBuilder(createEmptyInsertQueryNode(table), this.client);
   }
 }
 

@@ -60,6 +60,9 @@ const client: ClickHouseClient = {
     executed: true,
     query_id: "insert-query-id",
   }),
+  command: async () => ({
+    query_id: "command-query-id",
+  }),
 };
 
 const basicQuery = db.selectFrom("event_logs as e").select("e.user_id", "e.event_type");
@@ -443,6 +446,15 @@ const validJsonInsertPromise: Promise<ClickHouseInsertResult> = dbWithClient
     },
   ])
   .execute();
+const validInsertFromSelectPromise: Promise<ClickHouseInsertResult> = dbWithClient
+  .insertInto("users")
+  .columns("id", "email", "status")
+  .fromSelect(
+    dbWithClient
+      .selectFrom("users as u")
+      .selectExpr((eb) => ["u.id", "u.email", eb.val("active").as("status")]),
+  )
+  .execute();
 
 void validRow;
 void validSelectAllRow;
@@ -467,6 +479,7 @@ void validRowsWithoutPassingClient;
 void validInsertResultPromise;
 void validTypedSamplesInsertPromise;
 void validJsonInsertPromise;
+void validInsertFromSelectPromise;
 
 db.selectFrom("users as u")
   .innerJoin("event_logs as e", "u.id", "e.user_id")
@@ -573,6 +586,19 @@ db.insertInto("users").values([
   },
 ]);
 
+db.insertInto("users")
+  .columns("id", "email")
+  .values([
+    {
+      id: 1,
+      email: "alice@example.com",
+    },
+  ]);
+
+db.insertInto("users")
+  .columns("id", "email", "status")
+  .fromSelect(db.selectFrom("users as u").select("u.id", "u.email", "u.status"));
+
 db.selectFrom("typed_samples").where("status", "=", "active");
 
 db.selectFrom("typed_samples as t")
@@ -638,6 +664,10 @@ db.selectFrom("typed_samples as t")
   ])
   .where((eb) => eb.fn.toYYYYMM("t.created_at"), "=", 202501)
   .orderBy("t.id", "asc");
+
+db.selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.user_id", eb.fn.toDate("e.created_at").as("event_date")])
+  .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at"));
 
 db.selectFrom("typed_samples as a")
   .innerJoin("typed_samples as b", (eb) =>
@@ -848,6 +878,20 @@ db.insertInto("typed_samples").values([
 
 // @ts-expect-error missing insert field
 db.insertInto("users").values([{ id: 2, email: "missing@example.com" }]);
+
+// @ts-expect-error invalid insert column
+db.insertInto("users").columns("missing");
+
+db.insertInto("users")
+  .columns("id", "email")
+  .values([
+    {
+      id: 1,
+      // @ts-expect-error columns() narrows accepted insert values
+      status: "active",
+      email: "alice@example.com",
+    },
+  ]);
 
 db.selectFrom("users as u").innerJoin(
   "event_logs as e",

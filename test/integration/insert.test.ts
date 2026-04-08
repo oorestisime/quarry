@@ -1,8 +1,22 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createClickHouseDB } from "../../src";
+import { createClickHouseDB, param } from "../../src";
 import { startClickHouse, stopClickHouse, type ClickHouseTestContext } from "./clickhouse";
 
 interface InsertDB {
+  daily_aggregates: {
+    user_id: number;
+    event_date: string;
+    event_count: string;
+    total_amount: string;
+  };
+  event_logs: {
+    user_id: number;
+    event_type: string;
+    created_at: string;
+    event_date: string;
+    properties: string;
+    version: number;
+  };
   json_samples: {
     id: number;
     payload: {
@@ -129,6 +143,67 @@ describe("clickhouse insert integration", () => {
           tags: ["engaged", "priority"],
           metrics: { score: 100.5, rank: 1 },
         },
+      },
+    ]);
+  });
+
+  it("inserts transformed rows from a select query", async () => {
+    await getContext().client.command({
+      query: `
+        CREATE TABLE daily_aggregates (
+          user_id UInt32,
+          event_date Date,
+          event_count UInt64,
+          total_amount UInt64
+        )
+        ENGINE = Memory
+      `,
+    });
+
+    const insertResult = await db
+      .insertInto("daily_aggregates")
+      .columns("user_id", "event_date", "event_count", "total_amount")
+      .fromSelect(
+        db
+          .selectFrom("event_logs as e")
+          .selectExpr((eb) => [
+            "e.user_id",
+            eb.fn.toDate("e.created_at").as("event_date"),
+            eb.fn.count().as("event_count"),
+            eb.fn.sum(eb.val(1)).as("total_amount"),
+          ])
+          .where("e.created_at", ">=", param("2025-01-01", "Date"))
+          .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
+      )
+      .execute(getContext().client);
+
+    expect(insertResult.executed).toBe(true);
+
+    const rows = await db
+      .selectFrom("daily_aggregates")
+      .selectAll()
+      .orderBy("user_id", "asc")
+      .orderBy("event_date", "asc")
+      .execute(getContext().client);
+
+    expect(rows).toEqual([
+      {
+        user_id: 1,
+        event_date: "2025-01-01",
+        event_count: "1",
+        total_amount: "1",
+      },
+      {
+        user_id: 2,
+        event_date: "2025-01-02",
+        event_count: "1",
+        total_amount: "1",
+      },
+      {
+        user_id: 3,
+        event_date: "2025-01-03",
+        event_count: "1",
+        total_amount: "1",
       },
     ]);
   });

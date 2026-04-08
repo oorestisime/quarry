@@ -14,6 +14,7 @@ import { AliasedQuery } from "./source-builder";
 import type {
   ColumnRef,
   ExpressionPredicateValue,
+  GroupByExpression,
   HavingValue,
   HavingRef,
   OrderByRef,
@@ -330,14 +331,20 @@ export class SelectQueryBuilder<
     });
   }
 
-  groupBy<Refs extends readonly ColumnRef<Scope>[]>(
-    ...columns: Refs
+  groupBy<const Expressions extends readonly GroupByExpression<Scope>[]>(
+    ...expressions: Expressions
   ): SelectQueryBuilder<Sources, Scope, Output> {
     return this.next({
       ...this.node,
       groupBy: [
         ...this.node.groupBy,
-        ...columns.map((column) => ({ kind: "ref", name: column }) satisfies RefNode),
+        ...expressions.map((expression) => {
+          if (typeof expression === "function") {
+            return expression(new ExpressionBuilder<Scope>()).node;
+          }
+
+          return { kind: "ref", name: expression } satisfies RefNode;
+        }),
       ],
     });
   }

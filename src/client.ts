@@ -15,15 +15,30 @@ export interface ClickHouseInsertResult {
   query_id: string;
 }
 
+interface ClickHouseCommandResult {
+  query_id: string;
+}
+
 interface ClickHouseInsertClient {
   insert<T>(params: {
     table: string;
     values: T[];
     format: "JSONEachRow";
+    columns?: [string, ...string[]];
   }): Promise<ClickHouseInsertResult>;
 }
 
-export type ClickHouseClient = ClickHouseQueryClient & Partial<ClickHouseInsertClient>;
+interface ClickHouseCommandClient {
+  command(params: {
+    query: string;
+    query_params?: Record<string, unknown>;
+  }): Promise<ClickHouseCommandResult>;
+}
+
+export type ClickHouseClient = ClickHouseQueryClient &
+  Partial<ClickHouseInsertClient> &
+  Partial<ClickHouseCommandClient>;
 
 export type QueryCapableClickHouseClient = ClickHouseQueryClient;
 export type InsertCapableClickHouseClient = ClickHouseInsertClient;
+export type CommandCapableClickHouseClient = ClickHouseCommandClient;

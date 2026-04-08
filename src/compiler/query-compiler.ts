@@ -1,9 +1,21 @@
-import type { ExprNode, SelectQueryNode, SelectionNode, SourceNode } from "../ast/query";
+import type {
+  ExprNode,
+  InsertQueryNode,
+  SelectQueryNode,
+  SelectionNode,
+  SourceNode,
+} from "../ast/query";
 import { escapeSingleQuotedString } from "../utils/string";
 
 export interface CompiledQuery {
   query: string;
   params: Record<string, unknown>;
+}
+
+export interface CompiledInsertQuery<Row> {
+  query: string;
+  params: Record<string, unknown>;
+  values?: Row[];
 }
 
 function inferClickHouseType(value: unknown): string {
@@ -168,5 +180,30 @@ export function compileSelectQuery(query: SelectQueryNode): CompiledQuery {
   return {
     query: compileQuerySql(query, context),
     params: context.params,
+  };
+}
+
+export function compileInsertQuery<Row extends object>(
+  query: InsertQueryNode,
+): CompiledInsertQuery<Row> {
+  if (!query.source) {
+    throw new Error("Cannot compile an insert without a source");
+  }
+
+  const columns = query.columns?.length ? ` (${query.columns.join(", ")})` : "";
+
+  if (query.source.kind === "values") {
+    return {
+      query: `INSERT INTO ${query.table}${columns} FORMAT JSONEachRow`,
+      params: {},
+      values: structuredClone(query.source.rows as Row[]),
+    };
+  }
+
+  const compiledSelect = compileSelectQuery(query.source.query);
+
+  return {
+    query: `INSERT INTO ${query.table}${columns} ${compiledSelect.query}`,
+    params: compiledSelect.params,
   };
 }

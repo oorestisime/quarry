@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { createClickHouseDB } from "../src";
+import { createClickHouseDB, param } from "../src";
 
 interface InsertTestDB {
+  event_logs: {
+    user_id: number;
+    created_at: string;
+    amount: number;
+  };
+  daily_aggregates: {
+    user_id: number;
+    event_date: string;
+    total_amount: number;
+  };
   typed_samples: {
     id: number;
     big_user_id: string;
@@ -43,6 +53,7 @@ describe("insert builder", () => {
       .toSQL();
 
     expect(compiled.query).toBe("INSERT INTO typed_samples FORMAT JSONEachRow");
+    expect(compiled.params).toEqual({});
     expect(compiled.values).toEqual([
       {
         id: 3,
@@ -97,9 +108,34 @@ describe("insert builder", () => {
       .toSQL();
 
     expect(compiled.query).toBe("INSERT INTO typed_samples FORMAT JSONEachRow");
+    expect(compiled.params).toEqual({});
     expect(compiled.values).toHaveLength(2);
-    expect(compiled.values[0]?.id).toBe(4);
-    expect(compiled.values[1]?.id).toBe(5);
+    expect(compiled.values?.[0]?.id).toBe(4);
+    expect(compiled.values?.[1]?.id).toBe(5);
+  });
+
+  it("compiles insert into select queries with target columns and params", () => {
+    const compiled = db
+      .insertInto("daily_aggregates")
+      .columns("user_id", "event_date", "total_amount")
+      .fromSelect(
+        db
+          .selectFrom("event_logs as e")
+          .selectExpr((eb) => [
+            "e.user_id",
+            eb.fn.toDate("e.created_at").as("event_date"),
+            eb.fn.sum("e.amount").as("total_amount"),
+          ])
+          .where("e.created_at", ">=", param("2025-01-01", "Date"))
+          .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
+      )
+      .toSQL();
+
+    expect(compiled.query).toBe(
+      "INSERT INTO daily_aggregates (user_id, event_date, total_amount) SELECT e.user_id, toDate(e.created_at) AS event_date, sum(e.amount) AS total_amount FROM event_logs AS e WHERE e.created_at >= {p0:Date} GROUP BY e.user_id, toDate(e.created_at)",
+    );
+    expect(compiled.params).toEqual({ p0: "2025-01-01" });
+    expect(compiled.values).toBeUndefined();
   });
 
   it("rejects duplicate values calls", () => {
@@ -137,6 +173,37 @@ describe("insert builder", () => {
           "metrics.score": [2],
         },
       ]),
-    ).toThrow("values() can only be called once per insert query.");
+    ).toThrow("Insert source has already been set for this query.");
+  });
+
+  it("rejects switching from values to fromSelect", () => {
+    const query = db.insertInto("typed_samples").values([
+      {
+        id: 6,
+        big_user_id: "102",
+        label: "zeta",
+        status: "active",
+        nickname: null,
+        tags: [],
+        amount: 1,
+        created_at: "2025-01-06 00:00:00.000",
+        location: [0, 0],
+        attributes: {},
+        "metrics.name": ["opens"],
+        "metrics.score": [1],
+      },
+    ]);
+
+    expect(() =>
+      query.fromSelect(
+        db.selectFrom("event_logs").selectExpr((eb) => [eb.fn.sum("amount").as("amount")]),
+      ),
+    ).toThrow("Insert source has already been set for this query.");
+  });
+
+  it("rejects compiling inserts without a source", () => {
+    expect(() => db.insertInto("typed_samples").toSQL()).toThrow(
+      "Cannot compile an insert without a source",
+    );
   });
 });

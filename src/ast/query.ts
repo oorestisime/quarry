@@ -83,6 +83,24 @@ export interface CteNode {
   query: SelectQueryNode;
 }
 
+export interface InsertValuesNode {
+  kind: "values";
+  rows: object[];
+}
+
+export interface InsertSelectNode {
+  kind: "select";
+  query: SelectQueryNode;
+}
+
+export type InsertSourceNode = InsertValuesNode | InsertSelectNode;
+
+export interface InsertQueryNode {
+  table: string;
+  columns?: string[];
+  source?: InsertSourceNode;
+}
+
 export interface SelectQueryNode {
   with: CteNode[];
   from?: SourceNode;
@@ -107,4 +125,8 @@ export function createEmptySelectQueryNode(): SelectQueryNode {
     orderBy: [],
     settings: {},
   };
+}
+
+export function createEmptyInsertQueryNode(table: string): InsertQueryNode {
+  return { table };
 }
