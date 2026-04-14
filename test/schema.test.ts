@@ -42,6 +42,29 @@ const schema = defineSchema({
 
 const db = createClickHouseDB({ schema });
 
+const engineSchema = defineSchema({
+  memory_events: table.memory({
+    id: UInt32(),
+  }),
+  merge_events: table.mergeTree({
+    id: UInt32(),
+  }),
+  summing_events: table.summingMergeTree({
+    id: UInt32(),
+  }),
+  aggregating_events: table.aggregatingMergeTree({
+    id: UInt32(),
+  }),
+  collapsing_events: table.collapsingMergeTree({
+    id: UInt32(),
+  }),
+  versioned_collapsing_events: table.versionedCollapsingMergeTree({
+    id: UInt32(),
+  }),
+});
+
+const engineDb = createClickHouseDB({ schema: engineSchema });
+
 describe("schema-first mode", () => {
   it("compiles queries against schema-defined tables and inherited views", () => {
     const tableQuery = db
@@ -90,6 +113,28 @@ describe("schema-first mode", () => {
     expect(finalTableQuery.query).toBe("SELECT u.id FROM users AS u FINAL");
     expect(() => db.selectFrom("final_users as f").select("f.id").final()).toThrow(
       "FINAL is not supported for source 'final_users'.",
+    );
+  });
+
+  it("supports FINAL only for the ClickHouse engine families that allow it", () => {
+    expect(engineDb.selectFrom("summing_events as s").select("s.id").final().toSQL().query).toBe(
+      "SELECT s.id FROM summing_events AS s FINAL",
+    );
+    expect(engineDb.selectFrom("aggregating_events as a").select("a.id").final().toSQL().query).toBe(
+      "SELECT a.id FROM aggregating_events AS a FINAL",
+    );
+    expect(engineDb.selectFrom("collapsing_events as c").select("c.id").final().toSQL().query).toBe(
+      "SELECT c.id FROM collapsing_events AS c FINAL",
+    );
+    expect(
+      engineDb.selectFrom("versioned_collapsing_events as v").select("v.id").final().toSQL().query,
+    ).toBe("SELECT v.id FROM versioned_collapsing_events AS v FINAL");
+
+    expect(() => engineDb.table("memory_events").final()).toThrow(
+      "FINAL is not supported for source 'memory_events'.",
+    );
+    expect(() => engineDb.selectFrom("merge_events as m").select("m.id").final()).toThrow(
+      "FINAL is not supported for source 'merge_events'.",
     );
   });
 });

@@ -153,19 +153,39 @@ function createQueryViewSource<
 }
 
 type TableFactory = (<Columns extends SchemaColumns>(columns: Columns) => QuarryTableSource<Columns>) & {
+  memory<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
   mergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
   replacingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
+  summingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
+  aggregatingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
+  collapsingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
+  versionedCollapsingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
 };
 
 export const table: TableFactory = Object.assign(
   <Columns extends SchemaColumns>(columns: Columns) =>
     createTableSource(columns, { name: "Table", finalCapable: false }),
   {
+    memory<Columns extends SchemaColumns>(columns: Columns) {
+      return createTableSource(columns, { name: "Memory", finalCapable: false });
+    },
     mergeTree<Columns extends SchemaColumns>(columns: Columns) {
       return createTableSource(columns, { name: "MergeTree", finalCapable: false });
     },
     replacingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
       return createTableSource(columns, { name: "ReplacingMergeTree", finalCapable: true });
+    },
+    summingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
+      return createTableSource(columns, { name: "SummingMergeTree", finalCapable: true });
+    },
+    aggregatingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
+      return createTableSource(columns, { name: "AggregatingMergeTree", finalCapable: true });
+    },
+    collapsingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
+      return createTableSource(columns, { name: "CollapsingMergeTree", finalCapable: true });
+    },
+    versionedCollapsingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
+      return createTableSource(columns, { name: "VersionedCollapsingMergeTree", finalCapable: true });
     },
   },
 );
