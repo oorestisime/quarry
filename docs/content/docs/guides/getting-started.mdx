@@ -45,6 +45,49 @@ const db = createClickHouseDB<DB>({ client });
 That `db` value is now strongly typed against your schema. Table names,
 columns, and aliases are all checked.
 
+## Or create a schema-backed DB
+
+If you want runtime schema metadata, engine-aware tables, or query-backed views,
+define a richer schema and pass it directly.
+
+```ts
+import { createClient } from "@clickhouse/client";
+import {
+  DateTime64,
+  String,
+  UInt32,
+  createClickHouseDB,
+  defineSchema,
+  table,
+  view,
+} from "@oorestisime/quarry";
+
+const client = createClient({
+  url: "http://localhost:8123",
+});
+
+const schema = defineSchema({
+  event_logs: table.replacingMergeTree({
+    user_id: UInt32(),
+    event_type: String(),
+    created_at: DateTime64(3),
+  }),
+}).views((db) => ({
+  signup_events: view.as(
+    db
+      .selectFrom("event_logs as e")
+      .select("e.user_id", "e.created_at")
+      .where("e.event_type", "=", "signup")
+  ),
+}));
+
+const db = createClickHouseDB({ client, schema });
+```
+
+The returned `db` still uses the same query builder surface. The difference is
+that schema mode carries richer ClickHouse metadata into typing and view
+definitions.
+
 ## Build and execute a query
 
 ```ts twoslash

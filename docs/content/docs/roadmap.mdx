@@ -14,6 +14,8 @@ The current alpha already covers:
 - joins, subqueries, and CTEs
 - `FINAL`, `PREWHERE`, `GROUP BY`, and `HAVING`
 - `toSQL()` and `execute()`
+- plain TypeScript mode and richer schema mode
+- staged query-backed schema views
 - integration tests against a real ClickHouse instance
 
 ## 1. More ClickHouse functions
@@ -64,21 +66,20 @@ ClickHouse feature up front.
 
 ## 3. Schema structure
 
-The next larger system after the query builder is a richer schema model.
+Initial schema mode is now in place.
 
-That schema work should support:
+It currently supports:
 
-- runtime schema metadata
-- introspection
-- code generation
-- migration support
+- ClickHouse-aware table definitions
+- richer column helpers for `select` / `insert` / `where` typing
+- staged query-backed views via `.views((db) => ({ ... }))`
 
-The likely direction is:
+The next schema work should focus on:
 
-- keep query-only usage lightweight
-- add a richer schema-first path later
-- let schema definitions feed into query typing, not replace the plain
-  interface-based mode
+- broadening output metadata inference for more expressions and functions
+- making query-backed views more robust
+- adding a local expression annotation escape hatch only where inference is not enough
+- keeping plain query-only usage lightweight alongside schema mode
 
 ## 4. Introspection and migrations
 
@@ -86,6 +87,7 @@ Schema work should eventually lead to:
 
 - introspecting existing ClickHouse databases
 - generating TypeScript-facing schema definitions
+- DDL generation from schema-backed definitions such as query-backed views
 - migration support
 
 The current expectation is that migration support should be ClickHouse-aware
@@ -99,7 +101,7 @@ should add:
 - fuller API reference material
 - more end-to-end examples
 - more ClickHouse-specific examples
-- clearer guidance around runtime semantics and typed parameters
+- clearer guidance around runtime semantics, schema mode, and typed parameters
 
 ## Out of scope (for now)
 

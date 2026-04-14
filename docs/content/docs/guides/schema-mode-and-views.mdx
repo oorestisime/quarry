@@ -1,0 +1,160 @@
+---
+title: Schema mode and views
+description: Define ClickHouse-aware tables and query-backed views with the staged schema API.
+---
+
+Schema mode is Quarry's richer path for users who want more than a plain
+TypeScript row interface.
+
+It adds:
+
+- runtime table metadata
+- ClickHouse-aware column helpers
+- query-backed views
+
+## Define tables
+
+```ts
+import {
+  Date,
+  DateTime64,
+  String,
+  UInt32,
+  createClickHouseDB,
+  defineSchema,
+  table,
+  view,
+} from "@oorestisime/quarry";
+
+const schema = defineSchema({
+  users: table.mergeTree({
+    id: UInt32(),
+    email: String(),
+    signup_date: Date(),
+  }),
+  event_logs: table.replacingMergeTree({
+    user_id: UInt32(),
+    event_type: String(),
+    created_at: DateTime64(3),
+  }),
+});
+```
+
+The table helpers are explicit about engine families. That matters for things
+like `FINAL`.
+
+## Add query-backed views
+
+Views are staged after the base tables so that the `db` inside the callback
+already knows the base schema.
+
+```ts
+const schema = defineSchema({
+  users: table.mergeTree({
+    id: UInt32(),
+    email: String(),
+    signup_date: Date(),
+  }),
+  event_logs: table.replacingMergeTree({
+    user_id: UInt32(),
+    event_type: String(),
+    created_at: DateTime64(3),
+  }),
+}).views((db) => ({
+  signup_events: view.as(
+    db
+      .selectFrom("event_logs as e")
+      .select("e.user_id", "e.created_at")
+      .where("e.event_type", "=", "signup")
+  ),
+
+  daily_signups: view.as(
+    db
+      .selectFrom("users as u")
+      .selectExpr((eb) => ["u.signup_date", eb.fn.count().as("total_users")])
+      .groupBy("u.signup_date")
+  ),
+}));
+```
+
+Then pass that schema to `createClickHouseDB`:
+
+```ts
+const db = createClickHouseDB({ client, schema });
+```
+
+## Query from views
+
+Once defined, query-backed views behave like normal selectable sources.
+
+```ts
+const rows = await db
+  .selectFrom("daily_signups as d")
+  .select("d.signup_date", "d.total_users")
+  .orderBy("d.signup_date", "asc")
+  .execute();
+```
+
+## Projected views expose only projected columns
+
+This is one of the most important properties of schema-backed views.
+
+If the view only selects:
+
+- `signup_date`
+- `total_users`
+
+then source columns that were not projected are not visible through the view.
+
+```ts
+db.selectFrom("daily_signups as d").select("d.signup_date", "d.total_users");
+
+// type error
+db.selectFrom("daily_signups as d").select("d.email");
+```
+
+That keeps the view definition as the single source of truth for what is
+selectable.
+
+## Query builder features still apply inside views
+
+Because views are defined with the same query builder, you can use things like:
+
+- `db.table("...").final()`
+- joins
+- `selectExpr(...)`
+- common `eb.fn.*` helpers
+- grouping and aggregation
+
+Example:
+
+```ts
+const schema = defineSchema({
+  event_logs: table.replacingMergeTree({
+    user_id: UInt32(),
+    created_at: DateTime64(3),
+  }),
+}).views((db) => ({
+  formatted_events: view.as(
+    db
+      .selectFrom(db.table("event_logs").final().as("e"))
+      .selectExpr((eb) => [
+        "e.user_id",
+        eb.fn.toString("e.user_id").as("user_id_text"),
+        eb.fn.formatDateTime("e.created_at", "%Y-%m-%d").as("created_date_text"),
+      ])
+  ),
+}));
+```
+
+## Current limits
+
+Schema-backed views are still early. Today Quarry supports a useful first pass
+of output metadata inference, but not every possible ClickHouse expression is
+covered yet.
+
+The broad rule is:
+
+- direct refs and `selectAll` work well
+- common cast/date/string/aggregate helpers work well
+- more unusual expressions may need more inference support later

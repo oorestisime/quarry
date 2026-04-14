@@ -103,8 +103,11 @@ Examples:
 
 ## Schema story today
 
-Today, the query builder uses a plain TypeScript interface for the database
-shape.
+Quarry now supports two schema modes.
+
+### Plain TypeScript mode
+
+This is still the lightest way to use the query builder.
 
 ```ts
 interface DB {
@@ -114,9 +117,46 @@ interface DB {
     created_at: string;
   };
 }
+
+const db = createClickHouseDB<DB>({ client });
 ```
 
-That means the schema is type-only for now.
+This mode is great when you want:
 
-A richer schema/runtime metadata system may come later, but it should feed into
-the query builder rather than replace this query-first mode.
+- typed table and column names
+- typed query results
+- minimal setup
+
+### Schema mode
+
+Schema mode adds runtime metadata for table engines, column ClickHouse types,
+and query-backed views.
+
+```ts
+const schema = defineSchema({
+  event_logs: table.replacingMergeTree({
+    user_id: UInt32(),
+    event_type: String(),
+    created_at: DateTime64(3),
+  }),
+}).views((db) => ({
+  signup_events: view.as(
+    db
+      .selectFrom("event_logs as e")
+      .select("e.user_id", "e.created_at")
+      .where("e.event_type", "=", "signup")
+  ),
+}));
+
+const db = createClickHouseDB({ client, schema });
+```
+
+This mode is the right fit when you want:
+
+- engine-aware table metadata
+- more precise `select` / `insert` / `where` typing
+- query-backed schema views
+- a future path toward richer introspection and migration tooling
+
+The important design point is that schema mode feeds into the same query
+builder. It does not replace the query-first path.
