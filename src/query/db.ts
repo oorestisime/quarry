@@ -1,7 +1,13 @@
 import type { CteNode } from "../ast/query";
 import { createEmptyInsertQueryNode, createEmptySelectQueryNode } from "../ast/query";
 import type { ClickHouseClient } from "../client";
-import { normalizeSchema, type NormalizedSchema, type SchemaDefinition } from "../schema";
+import {
+  normalizeSchema,
+  resolveSchemaDefinition,
+  type NormalizedSchema,
+  type SchemaBuilder,
+  type SchemaDefinition,
+} from "../schema";
 import type {
   DatabaseSchema,
   InferResult,
@@ -10,7 +16,7 @@ import type {
   Simplify,
   TableName,
 } from "../type-utils";
-import { parseSourceExpression } from "./helpers";
+import { parseSourceExpression, resolveSourceColumns } from "./helpers";
 import { InsertQueryBuilder } from "./insert-query-builder";
 import { SelectQueryBuilder } from "./select-query-builder";
 import { TableSourceBuilder } from "./source-builder";
@@ -18,7 +24,7 @@ import type { ScopeFromSourceExpression, SourceExpression } from "./types";
 
 export interface CreateClickHouseDBOptions {
   client?: ClickHouseClient;
-  schema?: SchemaDefinition;
+  schema?: SchemaDefinition | SchemaBuilder<SchemaDefinition>;
 }
 
 export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSchema = DB> {
@@ -32,7 +38,7 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
     return new TableSourceBuilder<DB, Table>(table, undefined, false, this.schema?.[table]);
   }
 
-  with<Name extends string, Query extends SelectQueryBuilder<any, any, any>>(
+  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any>>(
     name: Name,
     callback: (db: ClickHouseDB<DB, Sources>) => Query,
   ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>> {
@@ -47,19 +53,16 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
 
   selectFrom<Source extends SourceExpression<Sources>>(
     source: Source,
-  ): SelectQueryBuilder<Sources, ScopeFromSourceExpression<Sources, Source>, {}> {
+  ): SelectQueryBuilder<Sources, ScopeFromSourceExpression<Sources, Source>, {}, {}> {
     const node = createEmptySelectQueryNode();
     node.with = structuredClone(this.withs);
     node.from = parseSourceExpression(source);
+    const resolvedSource = resolveSourceColumns(source, this.schema);
+    const scopeColumns = resolvedSource
+      ? { [resolvedSource.alias]: resolvedSource.columns }
+      : undefined;
 
-    const schemaName =
-      typeof source === "string"
-        ? source.split(/\s+as\s+/i)[0]?.trim()
-        : source instanceof TableSourceBuilder
-          ? source.table
-          : undefined;
-
-    return new SelectQueryBuilder(node, this.client, schemaName ? this.schema?.[schemaName] : undefined);
+    return new SelectQueryBuilder(node, this.client, this.schema, scopeColumns, {});
   }
 
   insertInto<Table extends InsertableSourceName<DB>>(
@@ -80,9 +83,14 @@ export function createClickHouseDB<const Schema extends SchemaDefinition>(option
   client?: ClickHouseClient;
   schema: Schema;
 }): ClickHouseDB<Schema>;
+export function createClickHouseDB<const Schema extends SchemaDefinition>(options: {
+  client?: ClickHouseClient;
+  schema: SchemaBuilder<Schema>;
+}): ClickHouseDB<Schema>;
 export function createClickHouseDB<DB extends DatabaseSchema>(options?: CreateClickHouseDBOptions) {
   if (options?.schema) {
-    return new ClickHouseDB(options.client, [], normalizeSchema(options.schema));
+    const definition = resolveSchemaDefinition(options.schema);
+    return new ClickHouseDB(options.client, [], normalizeSchema(definition));
   }
 
   return new ClickHouseDB<DB>(options?.client);

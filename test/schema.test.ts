@@ -19,12 +19,26 @@ const schema = defineSchema({
     created_at: DateTime64(3),
     signup_date: CHDate(),
   }),
-  final_users: view.from("users"),
-  daily_users: view({
-    signup_date: CHDate(),
-    total_users: UInt64(),
-  }),
-});
+}).views((db) => ({
+  final_users: view.as(db.selectFrom(db.table("users").final().as("u")).selectAll("u")),
+  daily_users: view.as(
+    db
+      .selectFrom("users as u")
+      .selectExpr((eb) => ["u.signup_date", eb.fn.count().as("total_users")])
+      .groupBy("u.signup_date"),
+  ),
+  formatted_users: view.as(
+    db
+      .selectFrom("users as u")
+      .selectExpr((eb) => [
+        "u.id",
+        eb.fn.toString("u.id").as("id_text"),
+        eb.fn.lower("u.email").as("email_lower"),
+        eb.fn.formatDateTime("u.created_at", "%Y-%m-%d").as("created_date_text"),
+        eb.fn.toYYYYMM("u.created_at").as("created_yyyymm"),
+      ]),
+  ),
+}));
 
 const db = createClickHouseDB({ schema });
 
@@ -57,6 +71,17 @@ describe("schema-first mode", () => {
     expect(inheritedViewQuery.params).toEqual({
       p0: "2025-01-01",
     });
+
+    const formattedViewQuery = db
+      .selectFrom("formatted_users as f")
+      .select("f.id", "f.id_text", "f.email_lower", "f.created_date_text", "f.created_yyyymm")
+      .orderBy("f.id", "asc")
+      .toSQL();
+
+    expect(formattedViewQuery.query).toBe(
+      "SELECT f.id, f.id_text, f.email_lower, f.created_date_text, f.created_yyyymm FROM formatted_users AS f ORDER BY f.id ASC",
+    );
+    expect(formattedViewQuery.params).toEqual({});
   });
 
   it("allows FINAL for final-capable tables and rejects it for views", () => {

@@ -1,8 +1,7 @@
 import type {
   QuarryColumn,
-  QuarryDerivedViewSource,
+  QuarryQueryViewSource,
   QuarryTableSource,
-  QuarryViewSource,
 } from "./schema";
 
 export type DatabaseSchema = object;
@@ -26,21 +25,15 @@ export type WhereValue<T> = T extends QuarryColumn<any, any, infer Where> ? Wher
 
 type SourceColumns<DB extends DatabaseSchema, Source> = Source extends QuarryTableSource<infer Columns>
   ? Columns
-  : Source extends QuarryViewSource<infer Columns>
+  : Source extends QuarryQueryViewSource<any, infer Columns>
     ? Columns
-    : Source extends QuarryDerivedViewSource<infer From>
-      ? From extends SourceName<DB>
-        ? SourceColumns<DB, DB[From]>
-        : never
-      : Source extends object
-        ? { [K in Extract<keyof Source, string>]: Source[K] }
-        : never;
+    : Source extends object
+      ? { [K in Extract<keyof Source, string>]: Source[K] }
+      : never;
 
 export type TableName<DB extends DatabaseSchema> = Extract<
   {
-    [K in SourceName<DB>]: DB[K] extends QuarryViewSource<any> | QuarryDerivedViewSource<any>
-      ? never
-      : K;
+    [K in SourceName<DB>]: DB[K] extends QuarryQueryViewSource<any, any> ? never : K;
   }[SourceName<DB>],
   string
 >;
@@ -49,9 +42,7 @@ export type SelectableSourceName<DB extends DatabaseSchema> = SourceName<DB>;
 
 export type InsertableSourceName<DB extends DatabaseSchema> = Extract<
   {
-    [K in SourceName<DB>]: DB[K] extends QuarryViewSource<any> | QuarryDerivedViewSource<any>
-      ? never
-      : K;
+    [K in SourceName<DB>]: DB[K] extends QuarryQueryViewSource<any, any> ? never : K;
   }[SourceName<DB>],
   string
 >;

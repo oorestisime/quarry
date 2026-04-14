@@ -1,7 +1,7 @@
 import type { ExprNode, RefNode, SelectQueryNode, SelectionNode } from "../ast/query";
 import { compileSelectQuery, type CompiledQuery } from "../compiler/query-compiler";
 import type { ClickHouseClient, QueryCapableClickHouseClient } from "../client";
-import type { NormalizedSchemaSource } from "../schema";
+import type { NormalizedSchema, NormalizedSchemaColumn, SchemaColumns } from "../schema";
 import type { DatabaseSchema, ScopeMap, Simplify } from "../type-utils";
 import { Expression, AliasedExpression, ExpressionBuilder } from "./expression-builder";
 import {
@@ -9,10 +9,12 @@ import {
   createValueNode,
   isQueryLike,
   parseSourceExpression,
+  resolveSourceColumns,
   toSubqueryExpr,
 } from "./helpers";
 import { AliasedQuery } from "./source-builder";
 import type {
+  AllScopeSelectionColumns,
   ColumnRef,
   ExpressionPredicateValue,
   GroupByExpression,
@@ -32,7 +34,9 @@ import type {
   ScopeAlias,
   SelectionExpression,
   SelectionOutput,
+  SelectionOutputColumns,
   AllScopeSelectionOutput,
+  ScopeSelectionColumns,
   SourceExpression,
 } from "./types";
 
@@ -46,6 +50,32 @@ type SelectAllResult<
       ? ScopeSelectionOutput<Scope, Alias>
       : AllScopeSelectionOutput<Scope>)
 >;
+
+type SelectAllColumns<
+  Scope extends ScopeMap,
+  OutputColumns extends SchemaColumns,
+  Alias extends ScopeAlias<Scope> | undefined,
+> = Simplify<
+  OutputColumns &
+    (Alias extends ScopeAlias<Scope>
+      ? ScopeSelectionColumns<Scope, Alias>
+      : AllScopeSelectionColumns<Scope>)
+>;
+
+type ScopeColumnMap = Record<string, Record<string, NormalizedSchemaColumn>>;
+
+function parseSelectionParts(selection: string): { expr: string; alias?: string } {
+  const match = selection.match(/^(.*?)\s+as\s+(.*?)$/i);
+
+  if (!match) {
+    return { expr: selection.trim() };
+  }
+
+  return {
+    expr: match[1].trim(),
+    alias: match[2].trim(),
+  };
+}
 
 export interface ExecutableQuery<Output> {
   toSQL(): CompiledQuery;
@@ -71,28 +101,39 @@ export class SelectQueryBuilder<
   Sources extends DatabaseSchema,
   Scope extends ScopeMap,
   Output extends object,
+  OutputColumns extends SchemaColumns = {},
 > implements ExecutableQuery<Output> {
   declare readonly __resultType: Output;
+  declare readonly __outputColumns: OutputColumns;
 
   constructor(
     private readonly node: SelectQueryNode,
     private readonly client?: ClickHouseClient,
-    private readonly fromSource?: NormalizedSchemaSource,
+    private readonly catalog?: NormalizedSchema,
+    private readonly scopeColumns: ScopeColumnMap = {},
+    private readonly outputColumns?: Record<string, NormalizedSchemaColumn>,
   ) {}
 
-  private next<NextScope extends ScopeMap = Scope, NextOutput extends object = Output>(
+  private next<
+    NextScope extends ScopeMap = Scope,
+    NextOutput extends object = Output,
+    NextOutputColumns extends SchemaColumns = OutputColumns,
+  >(
     nextNode: SelectQueryNode,
-  ): SelectQueryBuilder<Sources, NextScope, NextOutput> {
-    return new SelectQueryBuilder(nextNode, this.client, this.fromSource);
+    nextScopeColumns: ScopeColumnMap = this.scopeColumns,
+    nextOutputColumns: Record<string, NormalizedSchemaColumn> | undefined = this.outputColumns,
+  ): SelectQueryBuilder<Sources, NextScope, NextOutput, NextOutputColumns> {
+    return new SelectQueryBuilder(
+      nextNode,
+      this.client,
+      this.catalog,
+      nextScopeColumns,
+      nextOutputColumns,
+    );
   }
 
   private getPredicateClickHouseType(ref: ColumnRef<Scope>): string | undefined {
-    if (!this.fromSource || this.node.from?.kind !== "table") {
-      return undefined;
-    }
-
-    const columnName = ref.includes(".") ? ref.split(".").at(-1) : ref;
-    return columnName ? this.fromSource.columns[columnName]?.clickhouseType : undefined;
+    return this.resolveScopeColumn(ref)?.clickhouseType;
   }
 
   private getBoundPredicateClickHouseType(
@@ -117,14 +158,98 @@ export class SelectQueryBuilder<
     return value instanceof globalThis.Date ? columnType : undefined;
   }
 
-  as<Alias extends string>(alias: Alias): AliasedQuery<Simplify<Output>, Alias> {
-    return new AliasedQuery(this.toAST(), alias);
+  private resolveScopeColumn(ref: ColumnRef<Scope>): NormalizedSchemaColumn | undefined {
+    if (ref.includes(".")) {
+      const [alias, column] = ref.split(".");
+      return alias && column ? this.scopeColumns[alias]?.[column] : undefined;
+    }
+
+    const aliases = Object.keys(this.scopeColumns);
+    if (aliases.length !== 1) {
+      return undefined;
+    }
+
+    return this.scopeColumns[aliases[0]]?.[ref];
+  }
+
+  private resolveSelectionColumns(
+    selections: readonly SelectionExpression<Scope>[],
+  ): Record<string, NormalizedSchemaColumn> | undefined {
+    if (this.outputColumns === undefined && this.node.selections.length > 0) {
+      return undefined;
+    }
+
+    const resolved = { ...(this.outputColumns ?? {}) };
+
+    for (const selection of selections) {
+      if (typeof selection === "string") {
+        const { expr, alias } = parseSelectionParts(selection);
+        const column = this.resolveScopeColumn(expr as ColumnRef<Scope>);
+        const outputName = alias ?? expr.split(".").at(-1);
+
+        if (!column || !outputName) {
+          return undefined;
+        }
+
+        resolved[outputName] = column;
+        continue;
+      }
+
+      if (!selection.clickhouseType) {
+        return undefined;
+      }
+
+      resolved[selection.alias] = { clickhouseType: selection.clickhouseType };
+    }
+
+    return resolved;
+  }
+
+  private resolveSelectAllColumns(table?: ScopeAlias<Scope>): Record<string, NormalizedSchemaColumn> | undefined {
+    if (this.outputColumns === undefined && this.node.selections.length > 0) {
+      return undefined;
+    }
+
+    const resolved = { ...(this.outputColumns ?? {}) };
+
+    if (table) {
+      const columns = this.scopeColumns[table];
+      if (!columns) {
+        return undefined;
+      }
+
+      Object.assign(resolved, columns);
+      return resolved;
+    }
+
+    for (const columns of Object.values(this.scopeColumns)) {
+      Object.assign(resolved, columns);
+    }
+
+    return resolved;
+  }
+
+  getOutputColumns(): Record<string, NormalizedSchemaColumn> | undefined {
+    return this.outputColumns ? { ...this.outputColumns } : undefined;
+  }
+
+  as<Alias extends string>(alias: Alias): AliasedQuery<Simplify<Output>, Alias, OutputColumns> {
+    return new AliasedQuery(this.toAST(), alias, this.getOutputColumns());
   }
 
   select<const Selections extends readonly SelectionExpression<Scope>[]>(
     ...selections: Selections
-  ): SelectQueryBuilder<Sources, Scope, Simplify<Output & SelectionOutput<Scope, Selections>>> {
-    return this.next<Scope, Simplify<Output & SelectionOutput<Scope, Selections>>>({
+  ): SelectQueryBuilder<
+    Sources,
+    Scope,
+    Simplify<Output & SelectionOutput<Scope, Selections>>,
+    Simplify<OutputColumns & SelectionOutputColumns<Scope, Selections>>
+  > {
+    return this.next<
+      Scope,
+      Simplify<Output & SelectionOutput<Scope, Selections>>,
+      Simplify<OutputColumns & SelectionOutputColumns<Scope, Selections>>
+    >({
       ...this.node,
       selections: [
         ...this.node.selections,
@@ -139,21 +264,31 @@ export class SelectQueryBuilder<
           return parseSelectionString(selection);
         }),
       ],
-    });
+    }, this.scopeColumns, this.resolveSelectionColumns(selections));
   }
 
   selectAll(): SelectQueryBuilder<
     Sources,
     Scope,
-    SelectAllResult<Scope, Output, OnlyScopeAlias<Scope>>
+    SelectAllResult<Scope, Output, OnlyScopeAlias<Scope>>,
+    SelectAllColumns<Scope, OutputColumns, OnlyScopeAlias<Scope>>
   >;
   selectAll<Alias extends ScopeAlias<Scope>>(
     table: Alias,
-  ): SelectQueryBuilder<Sources, Scope, SelectAllResult<Scope, Output, Alias>>;
+  ): SelectQueryBuilder<Sources, Scope, SelectAllResult<Scope, Output, Alias>, SelectAllColumns<Scope, OutputColumns, Alias>>;
   selectAll<Alias extends ScopeAlias<Scope> | OnlyScopeAlias<Scope> = OnlyScopeAlias<Scope>>(
     table?: Alias,
-  ): SelectQueryBuilder<Sources, Scope, SelectAllResult<Scope, Output, Alias>> {
-    return this.next<Scope, SelectAllResult<Scope, Output, Alias>>({
+  ): SelectQueryBuilder<
+    Sources,
+    Scope,
+    SelectAllResult<Scope, Output, Alias>,
+    SelectAllColumns<Scope, OutputColumns, Alias>
+  > {
+    return this.next<
+      Scope,
+      SelectAllResult<Scope, Output, Alias>,
+      SelectAllColumns<Scope, OutputColumns, Alias>
+    >({
       ...this.node,
       selections: [
         ...this.node.selections,
@@ -164,45 +299,50 @@ export class SelectQueryBuilder<
           },
         },
       ],
-    });
+    }, this.scopeColumns, this.resolveSelectAllColumns(table));
   }
 
   selectExpr<const Selections extends readonly SelectionExpression<Scope>[]>(
     selectionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Selections,
-  ): SelectQueryBuilder<Sources, Scope, Simplify<Output & SelectionOutput<Scope, Selections>>> {
-    return this.select(...selectionFactory(new ExpressionBuilder<Scope>()));
+  ): SelectQueryBuilder<
+    Sources,
+    Scope,
+    Simplify<Output & SelectionOutput<Scope, Selections>>,
+    Simplify<OutputColumns & SelectionOutputColumns<Scope, Selections>>
+  > {
+    return this.select(...selectionFactory(new ExpressionBuilder<Scope>(this.scopeColumns)));
   }
 
   where(
     predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   where<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
     value: PredicateValue<ResolvePredicateColumnType<Scope, Ref>, Operator>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   where<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
     value: QueryLike,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   where<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
     value: QueryLike,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   where<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
     value: ExpressionPredicateValue<Value, Operator>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   where(
     input:
       | ColumnRef<Scope>
       | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
     operator?: PredicateOperator,
     value?: unknown,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     if (arguments.length === 1) {
       return this.addExpressionCondition(
         "where",
@@ -217,7 +357,7 @@ export class SelectQueryBuilder<
     left: Left,
     operator: RefPredicateOperator,
     right: Right,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       where: appendCondition(this.node.where, {
@@ -231,34 +371,34 @@ export class SelectQueryBuilder<
 
   prewhere(
     predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   prewhere<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
     value: PredicateValue<ResolvePredicateColumnType<Scope, Ref>, Operator>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   prewhere<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
     value: QueryLike,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   prewhere<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
     value: QueryLike,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   prewhere<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
     value: ExpressionPredicateValue<Value, Operator>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   prewhere(
     input:
       | ColumnRef<Scope>
       | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
     operator?: PredicateOperator,
     value?: unknown,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     if (arguments.length === 1) {
       return this.addExpressionCondition(
         "prewhere",
@@ -273,7 +413,7 @@ export class SelectQueryBuilder<
     left: Left,
     operator: RefPredicateOperator,
     right: Right,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       prewhere: appendCondition(this.node.prewhere, {
@@ -285,7 +425,7 @@ export class SelectQueryBuilder<
     });
   }
 
-  whereNull<Ref extends ColumnRef<Scope>>(column: Ref): SelectQueryBuilder<Sources, Scope, Output> {
+  whereNull<Ref extends ColumnRef<Scope>>(column: Ref): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       where: appendCondition(this.node.where, {
@@ -299,7 +439,7 @@ export class SelectQueryBuilder<
 
   whereNotNull<Ref extends ColumnRef<Scope>>(
     column: Ref,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       where: appendCondition(this.node.where, {
@@ -313,34 +453,34 @@ export class SelectQueryBuilder<
 
   having(
     predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   having<Ref extends HavingRef<Scope, Output>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
     value: HavingValue<ResolveHavingType<Scope, Output, Ref>, Operator>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   having<Ref extends HavingRef<Scope, Output>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
     value: QueryLike,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   having<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
     value: QueryLike,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   having<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
     value: HavingValue<Value, Operator>,
-  ): SelectQueryBuilder<Sources, Scope, Output>;
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   having(
     input:
       | HavingRef<Scope, Output>
       | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
     operator?: PredicateOperator,
     value?: unknown,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     if (arguments.length === 1) {
       return this.addExpressionCondition(
         "having",
@@ -348,7 +488,7 @@ export class SelectQueryBuilder<
       );
     }
 
-    const expressionBuilder = new ExpressionBuilder<Scope>();
+    const expressionBuilder = new ExpressionBuilder<Scope>(this.scopeColumns);
     const leftExpr =
       typeof input === "function"
         ? input(expressionBuilder).node
@@ -367,14 +507,14 @@ export class SelectQueryBuilder<
 
   groupBy<const Expressions extends readonly GroupByExpression<Scope>[]>(
     ...expressions: Expressions
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       groupBy: [
         ...this.node.groupBy,
         ...expressions.map((expression) => {
           if (typeof expression === "function") {
-            return expression(new ExpressionBuilder<Scope>()).node;
+            return expression(new ExpressionBuilder<Scope>(this.scopeColumns)).node;
           }
 
           return { kind: "ref", name: expression } satisfies RefNode;
@@ -390,8 +530,8 @@ export class SelectQueryBuilder<
       | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
     operator: PredicateOperator | undefined,
     value: unknown,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
-    const expressionBuilder = new ExpressionBuilder<Scope>();
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
+    const expressionBuilder = new ExpressionBuilder<Scope>(this.scopeColumns);
     const leftExpr =
       typeof input === "function"
         ? input(expressionBuilder).node
@@ -422,12 +562,12 @@ export class SelectQueryBuilder<
   private addExpressionCondition(
     key: "where" | "prewhere" | "having",
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       [key]: appendCondition(
         this.node[key],
-        expressionFactory(new ExpressionBuilder<Scope>()).node,
+        expressionFactory(new ExpressionBuilder<Scope>(this.scopeColumns)).node,
       ),
     });
   }
@@ -531,11 +671,16 @@ export class SelectQueryBuilder<
   ): SelectQueryBuilder<
     Sources,
     Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
-    Output
+    Output,
+    OutputColumns
   > {
+    const resolvedSource = resolveSourceColumns(source, this.catalog);
+    const nextScopeColumns = resolvedSource
+      ? { ...this.scopeColumns, [resolvedSource.alias]: resolvedSource.columns }
+      : this.scopeColumns;
     const joinedScopeBuilder = new ExpressionBuilder<
       Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
-    >();
+    >(nextScopeColumns);
     const on: ExprNode =
       typeof leftOrCallback === "function"
         ? leftOrCallback(joinedScopeBuilder).node
@@ -546,7 +691,11 @@ export class SelectQueryBuilder<
             right: { kind: "ref", name: right! },
           };
 
-    return this.next<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>, Output>({
+    return this.next<
+      Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+      Output,
+      OutputColumns
+    >({
       ...this.node,
       joins: [
         ...this.node.joins,
@@ -556,13 +705,13 @@ export class SelectQueryBuilder<
           on,
         },
       ],
-    });
+    }, nextScopeColumns);
   }
 
   orderBy<Ref extends OrderByRef<Scope, Output>>(
     column: Ref,
     direction: "asc" | "desc" = "asc",
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       orderBy: [
@@ -575,7 +724,7 @@ export class SelectQueryBuilder<
     });
   }
 
-  limit(limit: number): SelectQueryBuilder<Sources, Scope, Output> {
+  limit(limit: number): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     assertValidPaginationValue("LIMIT", limit);
 
     return this.next({
@@ -584,7 +733,7 @@ export class SelectQueryBuilder<
     });
   }
 
-  offset(offset: number): SelectQueryBuilder<Sources, Scope, Output> {
+  offset(offset: number): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     assertValidPaginationValue("OFFSET", offset);
 
     return this.next({
@@ -595,7 +744,7 @@ export class SelectQueryBuilder<
 
   settings(
     settings: Record<string, string | number | boolean>,
-  ): SelectQueryBuilder<Sources, Scope, Output> {
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       settings: {
@@ -605,12 +754,13 @@ export class SelectQueryBuilder<
     });
   }
 
-  final(): SelectQueryBuilder<Sources, Scope, Output> {
+  final(): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     if (!this.node.from || this.node.from.kind !== "table") {
       throw new Error("FINAL can only be applied to table sources.");
     }
 
-    if (this.fromSource && !this.fromSource.finalCapable) {
+    const fromSource = this.catalog?.[this.node.from.name];
+    if (fromSource && !fromSource.finalCapable) {
       throw new Error(`FINAL is not supported for source '${this.node.from.name}'.`);
     }
 

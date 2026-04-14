@@ -965,12 +965,26 @@ const schema = defineSchema({
     created_at: DateTime64(3),
     signup_date: CHDate(),
   }),
-  final_users: view.from("users"),
-  daily_users: view({
-    signup_date: CHDate(),
-    total_users: UInt64(),
-  }),
-});
+}).views((db) => ({
+  final_users: view.as(db.selectFrom(db.table("users").final().as("u")).selectAll("u")),
+  daily_users: view.as(
+    db
+      .selectFrom("users as u")
+      .selectExpr((eb) => ["u.signup_date", eb.fn.count().as("total_users")])
+      .groupBy("u.signup_date"),
+  ),
+  formatted_users: view.as(
+    db
+      .selectFrom("users as u")
+      .selectExpr((eb) => [
+        "u.id",
+        eb.fn.toString("u.id").as("id_text"),
+        eb.fn.lower("u.email").as("email_lower"),
+        eb.fn.formatDateTime("u.created_at", "%Y-%m-%d").as("created_date_text"),
+        eb.fn.toYYYYMM("u.created_at").as("created_yyyymm"),
+      ]),
+  ),
+}));
 
 const richerSchema = defineSchema({
   schema_runtime_samples: table({
@@ -999,6 +1013,10 @@ const aggregateViewQuery = schemaDb
   .selectFrom("daily_users as d")
   .select("d.signup_date", "d.total_users")
   .orderBy("d.signup_date", "asc");
+const formattedViewQuery = schemaDb
+  .selectFrom("formatted_users as f")
+  .select("f.id", "f.id_text", "f.email_lower", "f.created_date_text", "f.created_yyyymm")
+  .orderBy("f.id", "asc");
 const richerSchemaQuery = richerSchemaDb
   .selectFrom("schema_runtime_samples as s")
   .select(
@@ -1021,6 +1039,7 @@ const richerSchemaQuery = richerSchemaDb
 type SchemaRow = InferResult<typeof schemaQuery>;
 type InheritedViewRow = InferResult<typeof inheritedViewQuery>;
 type AggregateViewRow = InferResult<typeof aggregateViewQuery>;
+type FormattedViewRow = InferResult<typeof formattedViewQuery>;
 type RicherSchemaRow = InferResult<typeof richerSchemaQuery>;
 const validSchemaRow: SchemaRow = {
   id: 1,
@@ -1035,6 +1054,26 @@ const validInheritedViewRow: InheritedViewRow = {
 const validAggregateViewRow: AggregateViewRow = {
   signup_date: "2025-01-01",
   total_users: "42",
+};
+const validFormattedViewRow: FormattedViewRow = {
+  id: 1,
+  id_text: "1",
+  email_lower: "alice@example.com",
+  created_date_text: "2025-01-01",
+  created_yyyymm: 202501,
+};
+
+// @ts-expect-error projected views should not expose source columns that are not selected
+schemaDb.selectFrom("daily_users as d").select("d.email");
+
+// @ts-expect-error projected views should not allow predicates on non-projected source columns
+schemaDb.selectFrom("daily_users as d").where("d.email", "=", "alice@example.com");
+
+const invalidAggregateViewRow: AggregateViewRow = {
+  signup_date: "2025-01-01",
+  total_users: "42",
+  // @ts-expect-error projected view result types should not contain hidden source columns
+  email: "alice@example.com",
 };
 const validRicherSchemaRow: RicherSchemaRow = {
   id: 1,
@@ -1076,7 +1115,9 @@ const richerSchemaInsertResultPromise: Promise<ClickHouseInsertResult> = richerS
 void validSchemaRow;
 void validInheritedViewRow;
 void validAggregateViewRow;
+void validFormattedViewRow;
 void validRicherSchemaRow;
+void invalidAggregateViewRow;
 void schemaInsertResultPromise;
 void richerSchemaInsertResultPromise;
 
@@ -1090,9 +1131,13 @@ schemaDb.table("final_users");
 schemaDb.selectFrom("users as u").where("u.id", "=", "1");
 
 defineSchema({
-  // @ts-expect-error missing derived view source should fail schema validation
-  bad_view: view.from("missing_source"),
-});
+  users: table({
+    id: UInt32(),
+  }),
+}).views((db) => ({
+  // @ts-expect-error missing sources should fail in the staged view builder
+  bad_view: view.as(db.selectFrom("missing_source as m").selectAll("m")),
+}));
 
 richerSchemaDb.insertInto("schema_runtime_samples").values([
   {

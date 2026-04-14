@@ -1,5 +1,5 @@
 import type { SelectQueryNode, TableNode } from "../ast/query";
-import type { NormalizedSchemaSource } from "../schema";
+import type { NormalizedSchemaColumn, NormalizedSchemaSource } from "../schema";
 import type { DatabaseSchema, TableName } from "../type-utils";
 
 export class TableSourceBuilder<
@@ -36,13 +36,18 @@ export class TableSourceBuilder<
   }
 }
 
-export class AliasedQuery<_Output extends object, Alias extends string> {
+export class AliasedQuery<_Output extends object, Alias extends string, _OutputColumns = {}> {
   constructor(
     private readonly query: SelectQueryNode,
     readonly alias: Alias,
+    private readonly outputColumns?: Record<string, NormalizedSchemaColumn>,
   ) {}
 
   toAST(): SelectQueryNode {
     return structuredClone(this.query);
+  }
+
+  getOutputColumns(): Record<string, NormalizedSchemaColumn> | undefined {
+    return this.outputColumns ? { ...this.outputColumns } : undefined;
   }
 }

@@ -7,6 +7,11 @@ import type {
   ValueNode,
 } from "../ast/query";
 import { isClickHouseParam } from "../param";
+import type {
+  NormalizedSchema,
+  NormalizedSchemaColumn,
+  NormalizedSchemaSource,
+} from "../schema";
 import type { DatabaseSchema } from "../type-utils";
 import type { SourceExpression } from "./types";
 
@@ -17,7 +22,14 @@ type TableSourceLike = {
 type AliasedQueryLike = {
   alias: string;
   toAST(): SelectQueryNode;
+  getOutputColumns?(): Record<string, NormalizedSchemaColumn> | undefined;
 };
+
+export interface ResolvedSourceColumns {
+  readonly alias: string;
+  readonly columns: Record<string, NormalizedSchemaColumn>;
+  readonly source?: NormalizedSchemaSource;
+}
 
 export function parseTableExpression(expression: string): TableNode {
   const match = expression.match(/^(.*?)\s+as\s+(.*?)$/i);
@@ -82,6 +94,47 @@ export function parseSourceExpression<DB extends DatabaseSchema>(
   }
 
   throw new Error("Unsupported source expression");
+}
+
+export function resolveSourceColumns<DB extends DatabaseSchema>(
+  source: SourceExpression<DB>,
+  schema?: NormalizedSchema,
+): ResolvedSourceColumns | undefined {
+  if (!schema) {
+    if (isAliasedQueryLike(source)) {
+      const columns = source.getOutputColumns?.();
+      return columns ? { alias: source.alias, columns } : undefined;
+    }
+
+    return undefined;
+  }
+
+  const tableNode =
+    typeof source === "string"
+      ? parseTableExpression(source)
+      : isTableSourceLike(source)
+        ? source.toSourceNode()
+        : undefined;
+
+  if (tableNode) {
+    const schemaSource = schema[tableNode.name];
+    if (!schemaSource) {
+      return undefined;
+    }
+
+    return {
+      alias: tableNode.alias ?? tableNode.name,
+      columns: schemaSource.columns,
+      source: schemaSource,
+    };
+  }
+
+  if (isAliasedQueryLike(source)) {
+    const columns = source.getOutputColumns?.();
+    return columns ? { alias: source.alias, columns } : undefined;
+  }
+
+  return undefined;
 }
 
 export function toSubqueryExpr(query: { toAST(): SelectQueryNode }): SubqueryExprNode {

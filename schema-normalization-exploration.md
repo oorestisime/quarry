@@ -24,7 +24,7 @@ These are the directions that seem settled enough to treat as working assumption
 - Keep the existing plain interface mode for now. Even at `0.2.0`, I do not think we need to remove it to make progress.
 - Through phases 1 to 3, the expectation should be that existing tests and `typecheck` continue to pass unchanged. New schema work should add new tests, not require rewriting the current plain-mode suite.
 - Start with tables and views. Do not make materialized views or dictionaries part of the initial public schema surface.
-- Prefer a structured engine API such as `table.rmt(...)` over opaque engine strings as the main DX.
+- Prefer explicit engine helpers such as `table.replacingMergeTree(...)` over opaque engine strings as the main DX.
 - Do not start with a metadata-overlay API on top of plain interface mode. The rich schema path should be source-of-truth based.
 
 One nuance on breaking changes: the package is early enough that internal refactors and public API iteration are fine, but I still would not spend that flexibility on dropping the lightweight plain-mode path unless maintaining both modes becomes clearly too costly.
@@ -284,45 +284,35 @@ For Quarry purposes, a normal view is best thought of as:
 
 One subtle point: views are not just a table with different permissions. They are query helpers.
 
-I think there is a strong case for supporting two view modeling styles eventually:
+At this point I think the more honest long-term direction is staged query-backed views rather than trying to grow a smaller inherited-shape DSL.
 
-- structural views, where the schema just declares the view's exposed columns
-- derived views, where the view is declared as being based on another source and inherits its column metadata by default
-
-That second form seems especially useful for cases like:
-
-```sql
-CREATE VIEW final_users AS SELECT * FROM users FINAL
-```
-
-In Quarry terms, that suggests a richer schema may want a compact form in the family of:
+In other words, the real target should be something in the family of:
 
 ```ts
-final_users: view.from("users").final()
+defineSchema({
+  users: table.replacingMergeTree({
+    id: quarry.UInt32(),
+    created_at: quarry.DateTime64(3),
+  }),
+}).views((db) => ({
+  some_view: view.as(
+    db
+      .selectFrom(db.table("users").final().as("u"))
+      .selectAll("u")
+  ),
+}))
 ```
 
-or:
+That reflects the fact that real ClickHouse views can contain:
 
-```ts
-final_users: view.query("SELECT * FROM users FINAL").inherits("users")
-```
+- `FINAL`
+- joins
+- projections
+- aliases
+- casts and formatting
+- aggregates
 
-The exact syntax is open, but the design point matters: a lot of views should probably inherit column behavior from another source rather than restating every column by hand.
-
-If Quarry supports derived views, I think the most useful extra configuration points are probably:
-
-- inherited column behavior from the base source by default
-- optional baked-in `FINAL`
-- optional baked-in `WHERE`
-- maybe optional projection / column selection
-
-That suggests something in the family of:
-
-```ts
-active_final_users: view.from("users").final().where(/* ... */)
-```
-
-or a callback-based derive form if that composes better with the query builder internals.
+I still think there may be room for convenience sugar later, but it should not be the center of the design if Quarry wants to model real view definitions.
 
 ### Materialized Views
 
@@ -498,16 +488,22 @@ Conceptually:
 
 ```ts
 const schema = defineSchema({
-  events: table.rmt({
+  events: table.replacingMergeTree({
     created_at: quarry.DateTime64(3),
     amount: quarry.UInt64(),
     user_id: quarry.UInt32(),
   }),
-  daily_view: view({
-    event_date: quarry.Date(),
-    total_amount: quarry.UInt64(),
-  }),
-});
+}).views((db) => ({
+  daily_view: view.as(
+    db
+      .selectFrom("events as e")
+      .selectExpr((eb) => [
+        eb.fn.toDate("e.created_at").as("event_date"),
+        eb.fn.sum("e.amount").as("total_amount"),
+      ])
+      .groupBy((eb) => eb.fn.toDate("e.created_at"))
+  ),
+}));
 
 const db = createClickHouseDB({ schema, client });
 ```
@@ -780,14 +776,17 @@ These are the two main public API shapes I would evaluate further.
 
 ```ts
 const schema = defineSchema({
-  events: table.rmt({
+  events: table.replacingMergeTree({
     created_at: quarry.DateTime64(3),
     amount: quarry.UInt64(),
   }),
-  signup_view: view({
-    created_at: quarry.DateTime64(3),
-  }),
-});
+}).views((db) => ({
+  signup_view: view.as(
+    db
+      .selectFrom("events as e")
+      .select("e.created_at")
+  ),
+}));
 
 const db = createClickHouseDB({ schema, client });
 ```
@@ -806,7 +805,7 @@ Cons:
 Important note:
 
 - I think this schema DSL should be compact and ClickHouse-first
-- engine helpers like `table.rmt(...)` are a better fit than forcing users to repeat engine strings and explicit column role objects
+- explicit engine helpers like `table.replacingMergeTree(...)` are a better fit than forcing users to repeat engine strings and explicit column role objects
 - column constructors like `quarry.DateTime64(3)` or `quarry.UInt64()` should infer default Quarry semantics automatically
 
 ### API Direction 2: Metadata overlay on top of plain mode
@@ -938,7 +937,7 @@ Goals:
 - add `defineSchema(...)`
 - support source kind and capabilities
 - support per-column `select` / `insert` / `where` types
-- add structured engine helpers for tables such as `table.rmt(...)`
+- add structured engine helpers for tables such as `table.replacingMergeTree(...)`
 - support both structural views and inherited/derived views
 
 At this point Quarry can address:
@@ -946,7 +945,7 @@ At this point Quarry can address:
 - `FINAL` capability checks
 - view non-insertability
 - date/time and other predicate/input typing mismatches
-- inherited view definitions such as `view.from("users").final()`
+- staged query-backed view definitions via `.views((db) => ({ some_view: view.as(...) }))`
 
 ### Phase 3: Improve insert-side typing where realistic
 
@@ -984,8 +983,8 @@ Questions that still feel meaningfully open:
 
 1. How strict should plain interface mode become when no metadata is available?
 2. Is `fromSelect(...)` exact positional typing a requirement for the first schema pass, or explicitly a later step?
-3. What is the best public shape for inherited views: chained helpers like `view.from("users").final().where(...)`, or a callback-based derive form?
-4. How much of the structured engine API should ship in the first cut beyond obvious helpers like `table.rmt(...)`?
+3. What is the best public shape for query-backed views: staged `.views((db) => ({ ... }))` only, or should there also be smaller convenience forms later?
+4. How much of the structured engine API should ship in the first cut beyond obvious helpers like `table.replacingMergeTree(...)`?
 
 ## My Current Recommendation
 
@@ -1002,7 +1001,7 @@ If I had to choose a direction today, I would do this:
 
 ```ts
 const schema = defineSchema({
-  events: table.rmt({
+  events: table.replacingMergeTree({
     created_at: quarry.DateTime64(3),
     amount: quarry.UInt64(),
   }),

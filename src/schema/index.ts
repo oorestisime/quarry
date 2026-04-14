@@ -1,3 +1,16 @@
+import type { CteNode, SelectQueryNode } from "../ast/query";
+import { createEmptySelectQueryNode } from "../ast/query";
+import { parseSourceExpression, resolveSourceColumns } from "../query/helpers";
+import { SelectQueryBuilder } from "../query/select-query-builder";
+import { TableSourceBuilder } from "../query/source-builder";
+import type { ScopeFromSourceExpression, SourceExpression } from "../query/types";
+import type {
+  DatabaseSchema,
+  InferResult,
+  Simplify,
+  TableName,
+} from "../type-utils";
+
 export interface QuarryColumn<Select, Insert = Select, Where = Select> {
   readonly __quarryColumn: true;
   readonly clickhouseType: string;
@@ -21,26 +34,33 @@ export interface QuarryTableSource<Columns extends SchemaColumns> {
   readonly engine: QuarryEngine;
 }
 
-export interface QuarryViewSource<Columns extends SchemaColumns> {
+export interface QuarryQueryViewSource<
+  Query extends SelectQueryBuilder<any, any, any, any>,
+  Columns extends SchemaColumns,
+> {
   readonly __quarrySource: true;
   readonly kind: "view";
-  readonly columns: Columns;
-}
-
-export interface QuarryDerivedViewSource<From extends string> {
-  readonly __quarrySource: true;
-  readonly kind: "view";
-  readonly deriveFrom: From;
-  readonly useFinal: boolean;
-  final(): QuarryDerivedViewSource<From>;
+  readonly query: Query;
+  readonly __columns?: Columns;
 }
 
 export type QuarrySource =
   | QuarryTableSource<SchemaColumns>
-  | QuarryViewSource<SchemaColumns>
-  | QuarryDerivedViewSource<string>;
+  | QuarryQueryViewSource<SelectQueryBuilder<any, any, any, any>, SchemaColumns>;
 
 export type SchemaDefinition = Record<string, QuarrySource>;
+export type BaseSchemaDefinition = Record<string, QuarryTableSource<SchemaColumns>>;
+
+type InferQueryColumns<Query> = Query extends SelectQueryBuilder<any, any, any, infer Columns>
+  ? Columns extends SchemaColumns
+    ? Columns
+    : never
+  : never;
+
+type QueryViewDefinitions = Record<
+  string,
+  QuarryQueryViewSource<SelectQueryBuilder<any, any, any, any>, SchemaColumns>
+>;
 
 function createColumn<Select, Insert = Select, Where = Select>(
   clickhouseType: string,
@@ -67,8 +87,16 @@ export function UInt64(): QuarryColumn<string, string | number | bigint, string 
   return createColumn("UInt64");
 }
 
+export function Int32(): QuarryColumn<number> {
+  return createColumn("Int32");
+}
+
 export function Int64(): QuarryColumn<string, string | number | bigint, string | number | bigint> {
   return createColumn("Int64");
+}
+
+export function Float32(): QuarryColumn<number> {
+  return createColumn("Float32");
 }
 
 export function Float64(): QuarryColumn<number> {
@@ -113,27 +141,15 @@ function createTableSource<Columns extends SchemaColumns>(
   };
 }
 
-function createViewSource<Columns extends SchemaColumns>(columns: Columns): QuarryViewSource<Columns> {
+function createQueryViewSource<
+  Query extends SelectQueryBuilder<any, any, any, any>,
+  Columns extends SchemaColumns,
+>(query: Query): QuarryQueryViewSource<Query, Columns> {
   return {
     __quarrySource: true,
     kind: "view",
-    columns,
-  };
-}
-
-function createDerivedViewSource<From extends string>(
-  deriveFrom: From,
-  useFinal = false,
-): QuarryDerivedViewSource<From> {
-  return {
-    __quarrySource: true,
-    kind: "view",
-    deriveFrom,
-    useFinal,
-    final() {
-      return createDerivedViewSource(deriveFrom, true);
-    },
-  };
+    query,
+  } as QuarryQueryViewSource<Query, Columns>;
 }
 
 type TableFactory = (<Columns extends SchemaColumns>(columns: Columns) => QuarryTableSource<Columns>) & {
@@ -154,39 +170,98 @@ export const table: TableFactory = Object.assign(
   },
 );
 
-type ViewFactory = (<Columns extends SchemaColumns>(columns: Columns) => QuarryViewSource<Columns>) & {
-  from<From extends string>(source: From): QuarryDerivedViewSource<From>;
+type ViewFactory = {
+  as<Query extends SelectQueryBuilder<any, any, any, any>>(
+    query: Query,
+  ): QuarryQueryViewSource<Query, InferQueryColumns<Query>>;
 };
 
-export const view: ViewFactory = Object.assign(
-  <Columns extends SchemaColumns>(columns: Columns) => createViewSource(columns),
-  {
-    from<From extends string>(source: From) {
-      return createDerivedViewSource(source);
-    },
+export const view: ViewFactory = {
+  as<Query extends SelectQueryBuilder<any, any, any, any>>(query: Query) {
+    return createQueryViewSource<Query, InferQueryColumns<Query>>(query);
   },
-);
-
-type ValidateSchema<S extends SchemaDefinition> = {
-  [K in keyof S]: S[K] extends QuarryDerivedViewSource<infer From>
-    ? From extends Extract<keyof S, string>
-      ? S[K]
-      : never
-    : S[K];
 };
-
-export function defineSchema<const S extends SchemaDefinition>(schema: S & ValidateSchema<S>): S {
-  return schema;
-}
 
 export interface NormalizedSchemaSource {
   readonly kind: "table" | "view";
   readonly insertable: boolean;
   readonly finalCapable: boolean;
   readonly columns: Record<string, NormalizedSchemaColumn>;
+  readonly query?: SelectQueryNode;
 }
 
 export type NormalizedSchema = Record<string, NormalizedSchemaSource>;
+
+export class SchemaViewDB<
+  DB extends DatabaseSchema,
+  Sources extends DatabaseSchema = DB,
+> {
+  constructor(
+    private readonly schema: NormalizedSchema,
+    private readonly withs: CteNode[] = [],
+  ) {}
+
+  table<Table extends TableName<DB>>(table: Table): TableSourceBuilder<DB, Table> {
+    return new TableSourceBuilder<DB, Table>(table, undefined, false, this.schema[table]);
+  }
+
+  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any>>(
+    name: Name,
+    callback: (db: SchemaViewDB<DB, Sources>) => Query,
+  ): SchemaViewDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>> {
+    const query = callback(new SchemaViewDB<DB, Sources>(this.schema));
+
+    return new SchemaViewDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>>(
+      this.schema,
+      [...this.withs, { name, query: query.toAST() }],
+    );
+  }
+
+  selectFrom<Source extends SourceExpression<Sources>>(
+    source: Source,
+  ): SelectQueryBuilder<Sources, ScopeFromSourceExpression<Sources, Source>, {}, {}> {
+    const node = createEmptySelectQueryNode();
+    node.with = structuredClone(this.withs);
+    node.from = parseSourceExpression(source);
+
+    const resolvedSource = resolveSourceColumns(source, this.schema);
+    const scopeColumns = resolvedSource
+      ? { [resolvedSource.alias]: resolvedSource.columns }
+      : undefined;
+
+    return new SelectQueryBuilder(node, undefined, this.schema, scopeColumns);
+  }
+}
+
+export class SchemaBuilder<Sources extends SchemaDefinition> {
+  constructor(readonly definition: Sources) {}
+
+  views<const Views extends QueryViewDefinitions>(
+    callback: (db: SchemaViewDB<Sources>) => Views,
+  ): SchemaBuilder<Simplify<Sources & Views>> {
+    const db = new SchemaViewDB<Sources>(normalizeSchema(this.definition));
+    const views = callback(db);
+
+    return new SchemaBuilder({
+      ...this.definition,
+      ...views,
+    } as Simplify<Sources & Views>);
+  }
+
+  toDefinition(): Sources {
+    return this.definition;
+  }
+}
+
+export type SchemaLike = SchemaDefinition | SchemaBuilder<SchemaDefinition>;
+
+export function defineSchema<const S extends BaseSchemaDefinition>(schema: S): SchemaBuilder<S> {
+  return new SchemaBuilder(schema);
+}
+
+export function resolveSchemaDefinition(schema: SchemaLike): SchemaDefinition {
+  return schema instanceof SchemaBuilder ? schema.toDefinition() : schema;
+}
 
 function normalizeColumns(columns: SchemaColumns): Record<string, NormalizedSchemaColumn> {
   return Object.fromEntries(
@@ -194,27 +269,8 @@ function normalizeColumns(columns: SchemaColumns): Record<string, NormalizedSche
   );
 }
 
-function resolveColumns(
-  schema: SchemaDefinition,
-  source: QuarrySource,
-  path: string[] = [],
-): Record<string, NormalizedSchemaColumn> {
-  if ("columns" in source) {
-    return normalizeColumns(source.columns);
-  }
-
-  if (!(source.deriveFrom in schema)) {
-    throw new Error(`Derived view references unknown source '${source.deriveFrom}'.`);
-  }
-
-  if (path.includes(source.deriveFrom)) {
-    throw new Error(`Derived view cycle detected: ${[...path, source.deriveFrom].join(" -> ")}.`);
-  }
-
-  return resolveColumns(schema, schema[source.deriveFrom], [...path, source.deriveFrom]);
-}
-
-export function normalizeSchema(schema: SchemaDefinition): NormalizedSchema {
+export function normalizeSchema(schemaLike: SchemaLike): NormalizedSchema {
+  const schema = resolveSchemaDefinition(schemaLike);
   const normalized: NormalizedSchema = {};
 
   for (const [name, source] of Object.entries(schema)) {
@@ -223,20 +279,24 @@ export function normalizeSchema(schema: SchemaDefinition): NormalizedSchema {
         kind: "table",
         insertable: true,
         finalCapable: source.engine.finalCapable,
-        columns: resolveColumns(schema, source, [name]),
+        columns: normalizeColumns(source.columns),
       };
       continue;
     }
 
-    if ("deriveFrom" in source && !(source.deriveFrom in schema)) {
-      throw new Error(`Derived view '${name}' references unknown source '${source.deriveFrom}'.`);
+    const columns = source.query.getOutputColumns();
+    if (!columns || Object.keys(columns).length === 0) {
+      throw new Error(
+        `Unable to infer selectable columns for view '${name}'. Ensure the view query only selects expressions with known schema metadata.`,
+      );
     }
 
     normalized[name] = {
       kind: "view",
       insertable: false,
       finalCapable: false,
-      columns: resolveColumns(schema, source, [name]),
+      columns,
+      query: source.query.toAST(),
     };
   }
 

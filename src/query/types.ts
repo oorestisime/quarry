@@ -1,5 +1,6 @@
 import type { SelectQueryNode } from "../ast/query";
 import type { ClickHouseParam } from "../param";
+import type { QuarryColumn, SchemaColumns } from "../schema";
 import type {
   DatabaseSchema,
   QueryRow,
@@ -22,7 +23,7 @@ export type TableExpression<DB extends DatabaseSchema> =
 export type SourceExpression<DB extends DatabaseSchema> =
   | TableExpression<DB>
   | TableSourceBuilder<DB, TableName<DB>, string>
-  | AliasedQuery<object, string>;
+  | AliasedQuery<object, string, any>;
 
 type ParseTableExpression<T extends string> = T extends `${infer Table} as ${infer Alias}`
   ? { table: Table; alias: Alias }
@@ -36,8 +37,13 @@ export type ScopeFromTableExpression<DB extends DatabaseSchema, TE extends Table
     ? { [K in Alias]: ScopeRow<DB, Table> }
     : never;
 
-type ScopeFromAliasedQuery<Source> =
-  Source extends AliasedQuery<infer Row, infer Alias> ? { [K in Alias]: QueryRow<Row> } : never;
+type ScopeFromAliasedQuery<Source> = Source extends AliasedQuery<
+  infer Row,
+  infer Alias,
+  infer OutputColumns
+>
+  ? { [K in Alias]: keyof OutputColumns extends never ? QueryRow<Row> : QueryRow<OutputColumns> }
+  : never;
 
 type ScopeFromTableSourceBuilder<DB extends DatabaseSchema, Source> =
   Source extends TableSourceBuilder<
@@ -87,6 +93,12 @@ type SelectionString<Scope extends ScopeMap> =
 
 type ColumnNameFromRef<T extends string> = T extends `${string}.${infer Column}` ? Column : T;
 
+type WrapOutputColumn<T> = T extends QuarryColumn<any, any, any>
+  ? T
+  : QuarryColumn<SelectValue<T>, SelectValue<T>, WhereValue<T>>;
+
+type ScopeRawValue<Row extends object, Key extends string> = Key extends keyof Row ? Row[Key] : never;
+
 type ScopeSelectedValue<Row extends object, Key extends string> = Key extends keyof Row
   ? SelectValue<Row[Key]>
   : never;
@@ -122,6 +134,21 @@ export type ResolvePredicateColumnType<
   : OnlyScopeAlias<Scope> extends infer Alias extends ScopeAlias<Scope>
     ? Ref extends keyof Scope[Alias]
       ? ScopePredicateValue<Scope[Alias], Extract<Ref, string>>
+      : never
+    : never;
+
+export type ResolveScopeColumnType<
+  Scope extends ScopeMap,
+  Ref extends string,
+> = Ref extends `${infer Alias}.${infer Column}`
+  ? Alias extends ScopeAlias<Scope>
+    ? Column extends keyof Scope[Alias]
+      ? ScopeRawValue<Scope[Alias], Extract<Column, string>>
+      : never
+    : never
+  : OnlyScopeAlias<Scope> extends infer Alias extends ScopeAlias<Scope>
+    ? Ref extends keyof Scope[Alias]
+      ? ScopeRawValue<Scope[Alias], Extract<Ref, string>>
       : never
     : never;
 
@@ -184,7 +211,7 @@ export type ResolveHavingType<
 
 export type SelectionExpression<Scope extends ScopeMap> =
   | SelectionString<Scope>
-  | AliasedExpression<unknown, string>;
+  | AliasedExpression<unknown, string, unknown>;
 
 export type GroupByExpression<Scope extends ScopeMap> =
   | ColumnRef<Scope>
@@ -192,16 +219,35 @@ export type GroupByExpression<Scope extends ScopeMap> =
 
 type SelectionResult<Scope extends ScopeMap, Selection> = Selection extends string
   ? { [K in SelectionOutputKey<Selection>]: SelectionOutputValue<Scope, Selection> }
-  : Selection extends AliasedExpression<infer Value, infer Alias>
+  : Selection extends AliasedExpression<infer Value, infer Alias, any>
     ? { [K in Alias]: Value }
     : never;
 
-export type QueryLike = { toAST(): SelectQueryNode } | AliasedQuery<object, string>;
+type SelectionColumnResult<Scope extends ScopeMap, Selection> = Selection extends string
+  ? {
+      [K in SelectionOutputKey<Selection>]: WrapOutputColumn<
+        ResolveScopeColumnType<Scope, Extract<ParseSelectionExpression<Selection>["expr"], string>>
+      >;
+    }
+  : Selection extends AliasedExpression<infer Value, infer Alias, infer Where>
+    ? { [K in Alias]: QuarryColumn<Value, Value, Where> }
+    : never;
+
+export type QueryLike = { toAST(): SelectQueryNode } | AliasedQuery<object, string, any>;
 
 export type SelectionOutput<
   Scope extends ScopeMap,
   Selections extends readonly SelectionExpression<Scope>[],
 > = Simplify<UnionToIntersection<SelectionResult<Scope, Selections[number]>>>;
+
+export type SelectionOutputColumns<
+  Scope extends ScopeMap,
+  Selections extends readonly SelectionExpression<Scope>[],
+> = Simplify<UnionToIntersection<SelectionColumnResult<Scope, Selections[number]>>> extends infer Columns
+  ? Columns extends SchemaColumns
+    ? Columns
+    : {}
+  : {};
 
 export type ScopeSelectionOutput<
   Scope extends ScopeMap,
@@ -210,6 +256,17 @@ export type ScopeSelectionOutput<
   [K in Extract<keyof Scope[Alias], string>]: ScopeSelectedValue<Scope[Alias], K>;
 }>;
 
+export type ScopeSelectionColumns<
+  Scope extends ScopeMap,
+  Alias extends ScopeAlias<Scope>,
+> = Simplify<{
+  [K in Extract<keyof Scope[Alias], string>]: WrapOutputColumn<Scope[Alias][K]>;
+}> extends infer Columns
+  ? Columns extends SchemaColumns
+    ? Columns
+    : {}
+  : {};
+
 export type AllScopeSelectionOutput<Scope extends ScopeMap> = Simplify<{
   [K in {
     [Alias in ScopeAlias<Scope>]: Extract<keyof Scope[Alias], string>;
@@ -217,6 +274,18 @@ export type AllScopeSelectionOutput<Scope extends ScopeMap> = Simplify<{
     [Alias in ScopeAlias<Scope>]: ScopeSelectedValue<Scope[Alias], Extract<K, string>>;
   }[ScopeAlias<Scope>];
 }>;
+
+export type AllScopeSelectionColumns<Scope extends ScopeMap> = Simplify<{
+  [K in {
+    [Alias in ScopeAlias<Scope>]: Extract<keyof Scope[Alias], string>;
+  }[ScopeAlias<Scope>]]: WrapOutputColumn<{
+    [Alias in ScopeAlias<Scope>]: ScopeRawValue<Scope[Alias], Extract<K, string>>;
+  }[ScopeAlias<Scope>]>
+}> extends infer Columns
+  ? Columns extends SchemaColumns
+    ? Columns
+    : {}
+  : {};
 
 export type ParamLike<T> = T | ClickHouseParam<T>;
 
