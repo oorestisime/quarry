@@ -1,9 +1,20 @@
 import {
+  Array as CHArray,
+  Date as CHDate,
+  DateTime,
+  DateTime64,
+  Nullable,
+  String as CHString,
+  UInt32,
+  UInt64,
   createClickHouseDB,
+  defineSchema,
   param,
+  table,
   type ClickHouseClient,
   type ClickHouseInsertResult,
   type InferResult,
+  view,
 } from "../src";
 
 interface TypecheckDB {
@@ -944,5 +955,189 @@ db.insertInto("json_samples").values([
       tags: ["tag1", "tag2"],
       metrics: { score: 100.5, rank: 1 },
     },
+  },
+]);
+
+const schema = defineSchema({
+  users: table.replacingMergeTree({
+    id: UInt32(),
+    email: CHString(),
+    created_at: DateTime64(3),
+    signup_date: CHDate(),
+  }),
+  final_users: view.from("users"),
+  daily_users: view({
+    signup_date: CHDate(),
+    total_users: UInt64(),
+  }),
+});
+
+const richerSchema = defineSchema({
+  schema_runtime_samples: table({
+    id: UInt32(),
+    event_date: CHDate(),
+    event_time: DateTime(),
+    created_at: DateTime64(3),
+    total_count: UInt64(),
+    note: Nullable(CHString()),
+    event_dates: CHArray(CHDate()),
+    created_history: CHArray(DateTime64(3)),
+  }),
+});
+
+const schemaDb = createClickHouseDB({ schema, client });
+const richerSchemaDb = createClickHouseDB({ schema: richerSchema, client });
+const schemaQuery = schemaDb
+  .selectFrom("users as u")
+  .select("u.id", "u.email", "u.created_at")
+  .where("u.created_at", ">=", new Date("2025-01-01T00:00:00.000Z"));
+const inheritedViewQuery = schemaDb
+  .selectFrom("final_users as f")
+  .select("f.id", "f.email", "f.created_at")
+  .where("f.signup_date", ">=", new Date("2025-01-01T00:00:00.000Z"));
+const aggregateViewQuery = schemaDb
+  .selectFrom("daily_users as d")
+  .select("d.signup_date", "d.total_users")
+  .orderBy("d.signup_date", "asc");
+const richerSchemaQuery = richerSchemaDb
+  .selectFrom("schema_runtime_samples as s")
+  .select(
+    "s.id",
+    "s.event_date",
+    "s.event_time",
+    "s.created_at",
+    "s.total_count",
+    "s.note",
+    "s.event_dates",
+    "s.created_history",
+  )
+  .where("s.event_date", ">=", new Date("2025-01-01T00:00:00.000Z"))
+  .where("s.event_time", ">=", new Date("2025-01-01T12:00:00.000Z"))
+  .where("s.created_at", ">=", new Date("2025-01-01T12:00:00.123Z"))
+  .where("s.event_date", "in", [new Date("2025-01-01T00:00:00.000Z")])
+  .where("s.total_count", "in", ["1", "2"])
+  .where("s.event_time", ">=", param(new Date("2025-01-01T12:00:00.000Z"), "DateTime"))
+  .orderBy("s.id", "asc");
+type SchemaRow = InferResult<typeof schemaQuery>;
+type InheritedViewRow = InferResult<typeof inheritedViewQuery>;
+type AggregateViewRow = InferResult<typeof aggregateViewQuery>;
+type RicherSchemaRow = InferResult<typeof richerSchemaQuery>;
+const validSchemaRow: SchemaRow = {
+  id: 1,
+  email: "alice@example.com",
+  created_at: "2025-01-01 00:00:00.000",
+};
+const validInheritedViewRow: InheritedViewRow = {
+  id: 1,
+  email: "alice@example.com",
+  created_at: "2025-01-01 00:00:00.000",
+};
+const validAggregateViewRow: AggregateViewRow = {
+  signup_date: "2025-01-01",
+  total_users: "42",
+};
+const validRicherSchemaRow: RicherSchemaRow = {
+  id: 1,
+  event_date: "2025-01-01",
+  event_time: "2025-01-01 12:00:00",
+  created_at: "2025-01-01 12:00:00.123",
+  total_count: "42",
+  note: null,
+  event_dates: ["2025-01-01", "2025-01-02"],
+  created_history: ["2025-01-01 12:00:00.123"],
+};
+const schemaInsertResultPromise: Promise<ClickHouseInsertResult> = schemaDb
+  .insertInto("users")
+  .values([
+    {
+      id: 1,
+      email: "alice@example.com",
+      created_at: new Date("2025-01-01T00:00:00.000Z"),
+      signup_date: "2025-01-01",
+    },
+  ])
+  .execute();
+const richerSchemaInsertResultPromise: Promise<ClickHouseInsertResult> = richerSchemaDb
+  .insertInto("schema_runtime_samples")
+  .values([
+    {
+      id: 1,
+      event_date: new Date("2025-01-01T00:00:00.000Z"),
+      event_time: "2025-01-01 12:00:00",
+      created_at: new Date("2025-01-01T12:00:00.123Z"),
+      total_count: 42n,
+      note: null,
+      event_dates: [new Date("2025-01-01T00:00:00.000Z"), "2025-01-02"],
+      created_history: [new Date("2025-01-01T12:00:00.123Z"), "2025-01-02 12:00:00.456"],
+    },
+  ])
+  .execute();
+
+void validSchemaRow;
+void validInheritedViewRow;
+void validAggregateViewRow;
+void validRicherSchemaRow;
+void schemaInsertResultPromise;
+void richerSchemaInsertResultPromise;
+
+// @ts-expect-error views are not insertable
+schemaDb.insertInto("final_users");
+
+// @ts-expect-error views are not table sources
+schemaDb.table("final_users");
+
+// @ts-expect-error UInt32 predicates should stay numeric
+schemaDb.selectFrom("users as u").where("u.id", "=", "1");
+
+defineSchema({
+  // @ts-expect-error missing derived view source should fail schema validation
+  bad_view: view.from("missing_source"),
+});
+
+richerSchemaDb.insertInto("schema_runtime_samples").values([
+  {
+    id: 1,
+    event_date: "2025-01-01",
+    event_time: "2025-01-01 12:00:00",
+    created_at: "2025-01-01 12:00:00.123",
+    total_count: "1",
+    note: null,
+    // @ts-expect-error Date array columns should not accept scalar Date values on insert
+    event_dates: new Date("2025-01-01T00:00:00.000Z"),
+    created_history: [],
+  },
+]);
+
+// @ts-expect-error nullable string columns should not accept numeric predicate values
+richerSchemaDb.selectFrom("schema_runtime_samples as s").where("s.note", "=", 1);
+
+// @ts-expect-error DateTime columns should not accept numeric predicate values
+richerSchemaDb.selectFrom("schema_runtime_samples as s").where("s.event_time", "=", 1);
+
+richerSchemaDb.insertInto("schema_runtime_samples").values([
+  {
+    id: 1,
+    event_date: "2025-01-01",
+    event_time: "2025-01-01 12:00:00",
+    created_at: "2025-01-01 12:00:00.123",
+    total_count: "1",
+    // @ts-expect-error nullable string columns should not accept numeric insert values
+    note: 1,
+    event_dates: [],
+    created_history: [],
+  },
+]);
+
+richerSchemaDb.insertInto("schema_runtime_samples").values([
+  {
+    id: 1,
+    event_date: "2025-01-01",
+    event_time: "2025-01-01 12:00:00",
+    created_at: "2025-01-01 12:00:00.123",
+    total_count: "1",
+    note: null,
+    event_dates: ["2025-01-01"],
+    // @ts-expect-error DateTime64 arrays should not accept numeric members
+    created_history: [1],
   },
 ]);

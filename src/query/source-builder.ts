@@ -1,4 +1,5 @@
 import type { SelectQueryNode, TableNode } from "../ast/query";
+import type { NormalizedSchemaSource } from "../schema";
 import type { DatabaseSchema, TableName } from "../type-utils";
 
 export class TableSourceBuilder<
@@ -10,14 +11,19 @@ export class TableSourceBuilder<
     readonly table: Table,
     readonly alias?: Alias,
     readonly isFinal = false,
+    private readonly schemaSource?: NormalizedSchemaSource,
   ) {}
 
   as<NextAlias extends string>(alias: NextAlias): TableSourceBuilder<DB, Table, NextAlias> {
-    return new TableSourceBuilder(this.table, alias, this.isFinal);
+    return new TableSourceBuilder(this.table, alias, this.isFinal, this.schemaSource);
   }
 
   final(): TableSourceBuilder<DB, Table, Alias> {
-    return new TableSourceBuilder(this.table, this.alias, true);
+    if (this.schemaSource && !this.schemaSource.finalCapable) {
+      throw new Error(`FINAL is not supported for source '${this.table}'.`);
+    }
+
+    return new TableSourceBuilder(this.table, this.alias, true, this.schemaSource);
   }
 
   toSourceNode(): TableNode {

@@ -5,6 +5,7 @@ import type {
   SelectionNode,
   SourceNode,
 } from "../ast/query";
+import { normalizeClickHouseInputValue } from "../schema";
 import { escapeSingleQuotedString } from "../utils/string";
 
 export interface CompiledQuery {
@@ -63,7 +64,7 @@ class CompileContext {
   bind(value: unknown, clickhouseType?: string): string {
     const name = `p${this.paramIndex++}`;
     const type = clickhouseType ?? inferClickHouseType(value);
-    this.params[name] = value;
+    this.params[name] = normalizeClickHouseInputValue(value, type);
     return `{${name}:${type}}`;
   }
 }

@@ -14,6 +14,7 @@ import type {
   RefPredicateOperator,
   ResolveArrayElementType,
   ResolveColumnType,
+  ResolvePredicateColumnType,
   StringColumnRef,
 } from "./types";
 
@@ -326,8 +327,8 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     left: Ref,
     operator: Operator,
     right:
-      | ExpressionPredicateValue<ResolveColumnType<Scope, Ref>, Operator>
-      | Expression<ResolveColumnType<Scope, Ref>>
+      | ExpressionPredicateValue<ResolvePredicateColumnType<Scope, Ref>, Operator>
+      | Expression<ResolvePredicateColumnType<Scope, Ref>>
       | QueryLike,
   ): Expression<number>;
   cmp<Value, Operator extends PredicateOperator>(

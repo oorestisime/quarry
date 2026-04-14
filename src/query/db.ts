@@ -1,7 +1,15 @@
 import type { CteNode } from "../ast/query";
 import { createEmptyInsertQueryNode, createEmptySelectQueryNode } from "../ast/query";
 import type { ClickHouseClient } from "../client";
-import type { DatabaseSchema, InferResult, Simplify, TableName, TableRow } from "../type-utils";
+import { normalizeSchema, type NormalizedSchema, type SchemaDefinition } from "../schema";
+import type {
+  DatabaseSchema,
+  InferResult,
+  InsertRow,
+  InsertableSourceName,
+  Simplify,
+  TableName,
+} from "../type-utils";
 import { parseSourceExpression } from "./helpers";
 import { InsertQueryBuilder } from "./insert-query-builder";
 import { SelectQueryBuilder } from "./select-query-builder";
@@ -10,27 +18,30 @@ import type { ScopeFromSourceExpression, SourceExpression } from "./types";
 
 export interface CreateClickHouseDBOptions {
   client?: ClickHouseClient;
+  schema?: SchemaDefinition;
 }
 
 export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSchema = DB> {
   constructor(
     private readonly client?: ClickHouseClient,
     private readonly withs: CteNode[] = [],
+    private readonly schema?: NormalizedSchema,
   ) {}
 
   table<Table extends TableName<DB>>(table: Table): TableSourceBuilder<DB, Table> {
-    return new TableSourceBuilder(table);
+    return new TableSourceBuilder<DB, Table>(table, undefined, false, this.schema?.[table]);
   }
 
   with<Name extends string, Query extends SelectQueryBuilder<any, any, any>>(
     name: Name,
     callback: (db: ClickHouseDB<DB, Sources>) => Query,
   ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>> {
-    const query = callback(new ClickHouseDB<DB, Sources>(this.client));
+    const query = callback(new ClickHouseDB<DB, Sources>(this.client, [], this.schema));
 
     return new ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>>(
       this.client,
       [...this.withs, { name, query: query.toAST() }],
+      this.schema,
     );
   }
 
@@ -41,18 +52,38 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
     node.with = structuredClone(this.withs);
     node.from = parseSourceExpression(source);
 
-    return new SelectQueryBuilder(node, this.client);
+    const schemaName =
+      typeof source === "string"
+        ? source.split(/\s+as\s+/i)[0]?.trim()
+        : source instanceof TableSourceBuilder
+          ? source.table
+          : undefined;
+
+    return new SelectQueryBuilder(node, this.client, schemaName ? this.schema?.[schemaName] : undefined);
   }
 
-  insertInto<Table extends TableName<DB>>(
+  insertInto<Table extends InsertableSourceName<DB>>(
     table: Table,
-  ): InsertQueryBuilder<Table, TableRow<DB, Table>> {
-    return new InsertQueryBuilder(createEmptyInsertQueryNode(table), this.client);
+  ): InsertQueryBuilder<Table, InsertRow<DB, Table>> {
+    if (this.schema?.[table] && !this.schema[table].insertable) {
+      throw new Error(`Source '${table}' is not insertable.`);
+    }
+
+    return new InsertQueryBuilder(createEmptyInsertQueryNode(table), this.client, this.schema?.[table]);
   }
 }
 
-export function createClickHouseDB<DB extends DatabaseSchema>(
-  options?: CreateClickHouseDBOptions,
-): ClickHouseDB<DB> {
+export function createClickHouseDB<DB extends DatabaseSchema>(options?: {
+  client?: ClickHouseClient;
+}): ClickHouseDB<DB>;
+export function createClickHouseDB<const Schema extends SchemaDefinition>(options: {
+  client?: ClickHouseClient;
+  schema: Schema;
+}): ClickHouseDB<Schema>;
+export function createClickHouseDB<DB extends DatabaseSchema>(options?: CreateClickHouseDBOptions) {
+  if (options?.schema) {
+    return new ClickHouseDB(options.client, [], normalizeSchema(options.schema));
+  }
+
   return new ClickHouseDB<DB>(options?.client);
 }

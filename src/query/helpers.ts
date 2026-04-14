@@ -91,7 +91,7 @@ export function toSubqueryExpr(query: { toAST(): SelectQueryNode }): SubqueryExp
   };
 }
 
-export function createValueNode(value: unknown): ValueNode {
+export function createValueNode(value: unknown, clickhouseType?: string): ValueNode {
   if (value === null) {
     throw new Error(
       'Bare null predicate values are not supported. Use whereNull()/whereNotNull() or param(null, "Nullable(...)").',
@@ -109,6 +109,7 @@ export function createValueNode(value: unknown): ValueNode {
   return {
     kind: "value",
     value,
+    clickhouseType,
   };
 }
 

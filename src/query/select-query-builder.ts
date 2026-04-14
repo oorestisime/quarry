@@ -1,6 +1,7 @@
 import type { ExprNode, RefNode, SelectQueryNode, SelectionNode } from "../ast/query";
 import { compileSelectQuery, type CompiledQuery } from "../compiler/query-compiler";
 import type { ClickHouseClient, QueryCapableClickHouseClient } from "../client";
+import type { NormalizedSchemaSource } from "../schema";
 import type { DatabaseSchema, ScopeMap, Simplify } from "../type-utils";
 import { Expression, AliasedExpression, ExpressionBuilder } from "./expression-builder";
 import {
@@ -23,6 +24,7 @@ import type {
   QueryLike,
   RefPredicateOperator,
   ResolveColumnType,
+  ResolvePredicateColumnType,
   ResolveHavingType,
   OnlyScopeAlias,
   ScopeFromSourceExpression,
@@ -75,12 +77,44 @@ export class SelectQueryBuilder<
   constructor(
     private readonly node: SelectQueryNode,
     private readonly client?: ClickHouseClient,
+    private readonly fromSource?: NormalizedSchemaSource,
   ) {}
 
   private next<NextScope extends ScopeMap = Scope, NextOutput extends object = Output>(
     nextNode: SelectQueryNode,
   ): SelectQueryBuilder<Sources, NextScope, NextOutput> {
-    return new SelectQueryBuilder(nextNode, this.client);
+    return new SelectQueryBuilder(nextNode, this.client, this.fromSource);
+  }
+
+  private getPredicateClickHouseType(ref: ColumnRef<Scope>): string | undefined {
+    if (!this.fromSource || this.node.from?.kind !== "table") {
+      return undefined;
+    }
+
+    const columnName = ref.includes(".") ? ref.split(".").at(-1) : ref;
+    return columnName ? this.fromSource.columns[columnName]?.clickhouseType : undefined;
+  }
+
+  private getBoundPredicateClickHouseType(
+    ref: ColumnRef<Scope>,
+    operator: PredicateOperator,
+    value: unknown,
+  ): string | undefined {
+    const columnType = this.getPredicateClickHouseType(ref);
+    if (!columnType) {
+      return undefined;
+    }
+
+    if ((operator === "in" || operator === "not in") && Array.isArray(value)) {
+      const hasDateMember = value.some((member) => member instanceof globalThis.Date);
+      if (!hasDateMember) {
+        return undefined;
+      }
+
+      return `Array(${columnType})`;
+    }
+
+    return value instanceof globalThis.Date ? columnType : undefined;
   }
 
   as<Alias extends string>(alias: Alias): AliasedQuery<Simplify<Output>, Alias> {
@@ -145,7 +179,7 @@ export class SelectQueryBuilder<
   where<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
-    value: PredicateValue<ResolveColumnType<Scope, Ref>, Operator>,
+    value: PredicateValue<ResolvePredicateColumnType<Scope, Ref>, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   where<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
@@ -155,12 +189,12 @@ export class SelectQueryBuilder<
   where<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
-    value: ExpressionPredicateValue<Value, Operator>,
+    value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   where<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
-    value: QueryLike,
+    value: ExpressionPredicateValue<Value, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   where(
     input:
@@ -201,7 +235,7 @@ export class SelectQueryBuilder<
   prewhere<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
     operator: Operator,
-    value: PredicateValue<ResolveColumnType<Scope, Ref>, Operator>,
+    value: PredicateValue<ResolvePredicateColumnType<Scope, Ref>, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   prewhere<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
@@ -211,12 +245,12 @@ export class SelectQueryBuilder<
   prewhere<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
-    value: ExpressionPredicateValue<Value, Operator>,
+    value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   prewhere<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
-    value: QueryLike,
+    value: ExpressionPredicateValue<Value, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   prewhere(
     input:
@@ -293,12 +327,12 @@ export class SelectQueryBuilder<
   having<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
-    value: HavingValue<Value, Operator>,
+    value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   having<Value, Operator extends PredicateOperator>(
     expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
     operator: Operator,
-    value: QueryLike,
+    value: HavingValue<Value, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output>;
   having(
     input:
@@ -363,7 +397,14 @@ export class SelectQueryBuilder<
         ? input(expressionBuilder).node
         : ({ kind: "ref", name: input } satisfies RefNode);
 
-    const rightExpr = isQueryLike(value) ? toSubqueryExpr(value) : createValueNode(value);
+    const rightExpr = isQueryLike(value)
+      ? toSubqueryExpr(value)
+      : createValueNode(
+          value,
+          typeof input === "string"
+            ? this.getBoundPredicateClickHouseType(input, operator!, value)
+            : undefined,
+        );
 
     const nextCondition = {
       kind: "binary",
@@ -567,6 +608,10 @@ export class SelectQueryBuilder<
   final(): SelectQueryBuilder<Sources, Scope, Output> {
     if (!this.node.from || this.node.from.kind !== "table") {
       throw new Error("FINAL can only be applied to table sources.");
+    }
+
+    if (this.fromSource && !this.fromSource.finalCapable) {
+      throw new Error(`FINAL is not supported for source '${this.node.from.name}'.`);
     }
 
     return this.next({

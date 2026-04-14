@@ -1,6 +1,6 @@
 import { createClickHouseDB, param, type ExecutableQuery } from "../src";
 
-interface SpikeDB {
+export interface SpikeDB {
   event_logs: {
     user_id: number;
     event_type: string;
@@ -31,7 +31,11 @@ interface SpikeDB {
   };
 }
 
-const db = createClickHouseDB<SpikeDB>();
+let db = createClickHouseDB<SpikeDB>();
+
+export function setQueryCaseDb(nextDb: typeof db): void {
+  db = nextDb;
+}
 
 export interface QueryCase {
   name: string;
