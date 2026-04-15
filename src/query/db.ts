@@ -72,7 +72,11 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
       throw new Error(`Source '${table}' is not insertable.`);
     }
 
-    return new InsertQueryBuilder(createEmptyInsertQueryNode(table), this.client, this.schema?.[table]);
+    return new InsertQueryBuilder(
+      createEmptyInsertQueryNode(table),
+      this.client,
+      this.schema?.[table],
+    );
   }
 }
 

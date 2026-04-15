@@ -4,7 +4,6 @@ import {
   DateTime64,
   String as CHString,
   UInt32,
-  UInt64,
   createClickHouseDB,
   defineSchema,
   param,
@@ -120,9 +119,9 @@ describe("schema-first mode", () => {
     expect(engineDb.selectFrom("summing_events as s").select("s.id").final().toSQL().query).toBe(
       "SELECT s.id FROM summing_events AS s FINAL",
     );
-    expect(engineDb.selectFrom("aggregating_events as a").select("a.id").final().toSQL().query).toBe(
-      "SELECT a.id FROM aggregating_events AS a FINAL",
-    );
+    expect(
+      engineDb.selectFrom("aggregating_events as a").select("a.id").final().toSQL().query,
+    ).toBe("SELECT a.id FROM aggregating_events AS a FINAL");
     expect(engineDb.selectFrom("collapsing_events as c").select("c.id").final().toSQL().query).toBe(
       "SELECT c.id FROM collapsing_events AS c FINAL",
     );

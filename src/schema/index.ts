@@ -4,15 +4,13 @@ import { parseSourceExpression, resolveSourceColumns } from "../query/helpers";
 import { SelectQueryBuilder } from "../query/select-query-builder";
 import { TableSourceBuilder } from "../query/source-builder";
 import type { ScopeFromSourceExpression, SourceExpression } from "../query/types";
-import type {
-  DatabaseSchema,
-  InferResult,
-  Simplify,
-  TableName,
-} from "../type-utils";
+import type { DatabaseSchema, InferResult, Simplify, TableName } from "../type-utils";
 
 export interface QuarryColumn<Select, Insert = Select, Where = Select> {
   readonly __quarryColumn: true;
+  readonly __selectType?: Select;
+  readonly __insertType?: Insert;
+  readonly __whereType?: Where;
   readonly clickhouseType: string;
 }
 
@@ -51,11 +49,12 @@ export type QuarrySource =
 export type SchemaDefinition = Record<string, QuarrySource>;
 export type BaseSchemaDefinition = Record<string, QuarryTableSource<SchemaColumns>>;
 
-type InferQueryColumns<Query> = Query extends SelectQueryBuilder<any, any, any, infer Columns>
-  ? Columns extends SchemaColumns
-    ? Columns
-    : never
-  : never;
+type InferQueryColumns<Query> =
+  Query extends SelectQueryBuilder<any, any, any, infer Columns>
+    ? Columns extends SchemaColumns
+      ? Columns
+      : never
+    : never;
 
 type QueryViewDefinitions = Record<
   string,
@@ -127,7 +126,11 @@ export function Date32(): QuarryColumn<string, string | globalThis.Date, string 
   return createColumn("Date32");
 }
 
-export function DateTime(): QuarryColumn<string, string | globalThis.Date, string | globalThis.Date> {
+export function DateTime(): QuarryColumn<
+  string,
+  string | globalThis.Date,
+  string | globalThis.Date
+> {
   return createColumn("DateTime");
 }
 
@@ -194,14 +197,18 @@ function createQueryViewSource<
   } as QuarryQueryViewSource<Query, Columns>;
 }
 
-type TableFactory = (<Columns extends SchemaColumns>(columns: Columns) => QuarryTableSource<Columns>) & {
+type TableFactory = (<Columns extends SchemaColumns>(
+  columns: Columns,
+) => QuarryTableSource<Columns>) & {
   memory<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
   mergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
   replacingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
   summingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
   aggregatingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
   collapsingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
-  versionedCollapsingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
+  versionedCollapsingMergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+  ): QuarryTableSource<Columns>;
 };
 
 export const table: TableFactory = Object.assign(
@@ -227,7 +234,10 @@ export const table: TableFactory = Object.assign(
       return createTableSource(columns, { name: "CollapsingMergeTree", finalCapable: true });
     },
     versionedCollapsingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
-      return createTableSource(columns, { name: "VersionedCollapsingMergeTree", finalCapable: true });
+      return createTableSource(columns, {
+        name: "VersionedCollapsingMergeTree",
+        finalCapable: true,
+      });
     },
   },
 );
@@ -254,10 +264,7 @@ export interface NormalizedSchemaSource {
 
 export type NormalizedSchema = Record<string, NormalizedSchemaSource>;
 
-export class SchemaViewDB<
-  DB extends DatabaseSchema,
-  Sources extends DatabaseSchema = DB,
-> {
+export class SchemaViewDB<DB extends DatabaseSchema, Sources extends DatabaseSchema = DB> {
   constructor(
     private readonly schema: NormalizedSchema,
     private readonly withs: CteNode[] = [],
@@ -327,7 +334,10 @@ export function resolveSchemaDefinition(schema: SchemaLike): SchemaDefinition {
 
 function normalizeColumns(columns: SchemaColumns): Record<string, NormalizedSchemaColumn> {
   return Object.fromEntries(
-    Object.entries(columns).map(([name, column]) => [name, { clickhouseType: column.clickhouseType }]),
+    Object.entries(columns).map(([name, column]) => [
+      name,
+      { clickhouseType: column.clickhouseType },
+    ]),
   );
 }
 

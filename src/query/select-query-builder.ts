@@ -25,7 +25,6 @@ import type {
   PredicateValue,
   QueryLike,
   RefPredicateOperator,
-  ResolveColumnType,
   ResolvePredicateColumnType,
   ResolveHavingType,
   OnlyScopeAlias,
@@ -179,7 +178,7 @@ export class SelectQueryBuilder<
       return undefined;
     }
 
-    const resolved = { ...(this.outputColumns ?? {}) };
+    const resolved = { ...this.outputColumns };
 
     for (const selection of selections) {
       if (typeof selection === "string") {
@@ -205,12 +204,14 @@ export class SelectQueryBuilder<
     return resolved;
   }
 
-  private resolveSelectAllColumns(table?: ScopeAlias<Scope>): Record<string, NormalizedSchemaColumn> | undefined {
+  private resolveSelectAllColumns(
+    table?: ScopeAlias<Scope>,
+  ): Record<string, NormalizedSchemaColumn> | undefined {
     if (this.outputColumns === undefined && this.node.selections.length > 0) {
       return undefined;
     }
 
-    const resolved = { ...(this.outputColumns ?? {}) };
+    const resolved = { ...this.outputColumns };
 
     if (table) {
       const columns = this.scopeColumns[table];
@@ -249,22 +250,26 @@ export class SelectQueryBuilder<
       Scope,
       Simplify<Output & SelectionOutput<Scope, Selections>>,
       Simplify<OutputColumns & SelectionOutputColumns<Scope, Selections>>
-    >({
-      ...this.node,
-      selections: [
-        ...this.node.selections,
-        ...selections.map((selection) => {
-          if (selection instanceof AliasedExpression) {
-            return {
-              expr: selection.node,
-              alias: selection.alias,
-            };
-          }
+    >(
+      {
+        ...this.node,
+        selections: [
+          ...this.node.selections,
+          ...selections.map((selection) => {
+            if (selection instanceof AliasedExpression) {
+              return {
+                expr: selection.node,
+                alias: selection.alias,
+              };
+            }
 
-          return parseSelectionString(selection);
-        }),
-      ],
-    }, this.scopeColumns, this.resolveSelectionColumns(selections));
+            return parseSelectionString(selection);
+          }),
+        ],
+      },
+      this.scopeColumns,
+      this.resolveSelectionColumns(selections),
+    );
   }
 
   selectAll(): SelectQueryBuilder<
@@ -275,7 +280,12 @@ export class SelectQueryBuilder<
   >;
   selectAll<Alias extends ScopeAlias<Scope>>(
     table: Alias,
-  ): SelectQueryBuilder<Sources, Scope, SelectAllResult<Scope, Output, Alias>, SelectAllColumns<Scope, OutputColumns, Alias>>;
+  ): SelectQueryBuilder<
+    Sources,
+    Scope,
+    SelectAllResult<Scope, Output, Alias>,
+    SelectAllColumns<Scope, OutputColumns, Alias>
+  >;
   selectAll<Alias extends ScopeAlias<Scope> | OnlyScopeAlias<Scope> = OnlyScopeAlias<Scope>>(
     table?: Alias,
   ): SelectQueryBuilder<
@@ -288,18 +298,22 @@ export class SelectQueryBuilder<
       Scope,
       SelectAllResult<Scope, Output, Alias>,
       SelectAllColumns<Scope, OutputColumns, Alias>
-    >({
-      ...this.node,
-      selections: [
-        ...this.node.selections,
-        {
-          expr: {
-            kind: "raw",
-            sql: table ? `${table}.*` : "*",
+    >(
+      {
+        ...this.node,
+        selections: [
+          ...this.node.selections,
+          {
+            expr: {
+              kind: "raw",
+              sql: table ? `${table}.*` : "*",
+            },
           },
-        },
-      ],
-    }, this.scopeColumns, this.resolveSelectAllColumns(table));
+        ],
+      },
+      this.scopeColumns,
+      this.resolveSelectAllColumns(table),
+    );
   }
 
   selectExpr<const Selections extends readonly SelectionExpression<Scope>[]>(
@@ -425,7 +439,9 @@ export class SelectQueryBuilder<
     });
   }
 
-  whereNull<Ref extends ColumnRef<Scope>>(column: Ref): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
+  whereNull<Ref extends ColumnRef<Scope>>(
+    column: Ref,
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
       where: appendCondition(this.node.where, {
@@ -695,17 +711,20 @@ export class SelectQueryBuilder<
       Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
       Output,
       OutputColumns
-    >({
-      ...this.node,
-      joins: [
-        ...this.node.joins,
-        {
-          joinType,
-          source: parseSourceExpression(source),
-          on,
-        },
-      ],
-    }, nextScopeColumns);
+    >(
+      {
+        ...this.node,
+        joins: [
+          ...this.node.joins,
+          {
+            joinType,
+            source: parseSourceExpression(source),
+            on,
+          },
+        ],
+      },
+      nextScopeColumns,
+    );
   }
 
   orderBy<Ref extends OrderByRef<Scope, Output>>(

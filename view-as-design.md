@@ -31,11 +31,7 @@ const schema = defineSchema({
     created_at: DateTime64(3),
   }),
 }).views((db) => ({
-  some_view: view.as(
-    db
-      .selectFrom(db.table("xyz_table").final().as("x"))
-      .selectAll("x")
-  ),
+  some_view: view.as(db.selectFrom(db.table("xyz_table").final().as("x")).selectAll("x")),
 }));
 ```
 
@@ -57,12 +53,8 @@ const schema = defineSchema({
     db
       .selectFrom("users as u")
       .leftJoin("events as e", "u.id", "e.user_id")
-      .selectExpr((eb) => [
-        "u.id",
-        "u.email",
-        eb.fn.max("e.created_at").as("last_seen_at"),
-      ])
-      .groupBy("u.id", "u.email")
+      .selectExpr((eb) => ["u.id", "u.email", eb.fn.max("e.created_at").as("last_seen_at")])
+      .groupBy("u.id", "u.email"),
   ),
 }));
 ```
@@ -151,9 +143,7 @@ For those cases, Quarry should have a local annotation escape hatch on expressio
 Conceptually:
 
 ```ts
-eb.raw("someCustomExpr(...)")
-  .typed<number>("UInt32")
-  .as("foo")
+eb.raw("someCustomExpr(...)").typed<number>("UInt32").as("foo");
 ```
 
 The important design point is that the annotation is local to the ambiguous expression.

@@ -1,8 +1,4 @@
-import type {
-  QuarryColumn,
-  QuarryQueryViewSource,
-  QuarryTableSource,
-} from "./schema";
+import type { QuarryColumn, QuarryQueryViewSource, QuarryTableSource } from "./schema";
 
 export type DatabaseSchema = object;
 export type ScopeMap = Record<string, Record<string, unknown>>;
@@ -23,13 +19,14 @@ export type SelectValue<T> = T extends QuarryColumn<infer Select, any, any> ? Se
 export type InsertValue<T> = T extends QuarryColumn<any, infer Insert, any> ? Insert : T;
 export type WhereValue<T> = T extends QuarryColumn<any, any, infer Where> ? Where : T;
 
-type SourceColumns<DB extends DatabaseSchema, Source> = Source extends QuarryTableSource<infer Columns>
-  ? Columns
-  : Source extends QuarryQueryViewSource<any, infer Columns>
+type SourceColumns<Source> =
+  Source extends QuarryTableSource<infer Columns>
     ? Columns
-    : Source extends object
-      ? { [K in Extract<keyof Source, string>]: Source[K] }
-      : never;
+    : Source extends QuarryQueryViewSource<any, infer Columns>
+      ? Columns
+      : Source extends object
+        ? { [K in Extract<keyof Source, string>]: Source[K] }
+        : never;
 
 export type TableName<DB extends DatabaseSchema> = Extract<
   {
@@ -47,32 +44,24 @@ export type InsertableSourceName<DB extends DatabaseSchema> = Extract<
   string
 >;
 
-export type TableRow<
-  DB extends DatabaseSchema,
-  Table extends SelectableSourceName<DB>,
-> = SourceColumns<DB, DB[Table]> extends infer Row extends object
-  ? { [K in Extract<keyof Row, string>]: SelectValue<Row[K]> }
-  : never;
+export type TableRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
+  SourceColumns<DB[Table]> extends infer Row extends object
+    ? { [K in Extract<keyof Row, string>]: SelectValue<Row[K]> }
+    : never;
 
-export type ScopeRow<
-  DB extends DatabaseSchema,
-  Table extends SelectableSourceName<DB>,
-> = SourceColumns<DB, DB[Table]> extends infer Row extends object
-  ? { [K in Extract<keyof Row, string>]: Row[K] }
-  : never;
+export type ScopeRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
+  SourceColumns<DB[Table]> extends infer Row extends object
+    ? { [K in Extract<keyof Row, string>]: Row[K] }
+    : never;
 
-export type InsertRow<
-  DB extends DatabaseSchema,
-  Table extends InsertableSourceName<DB>,
-> = SourceColumns<DB, DB[Table]> extends infer Row extends object
-  ? { [K in Extract<keyof Row, string>]: InsertValue<Row[K]> }
-  : never;
+export type InsertRow<DB extends DatabaseSchema, Table extends InsertableSourceName<DB>> =
+  SourceColumns<DB[Table]> extends infer Row extends object
+    ? { [K in Extract<keyof Row, string>]: InsertValue<Row[K]> }
+    : never;
 
-export type PredicateRow<
-  DB extends DatabaseSchema,
-  Table extends SelectableSourceName<DB>,
-> = SourceColumns<DB, DB[Table]> extends infer Row extends object
-  ? { [K in Extract<keyof Row, string>]: WhereValue<Row[K]> }
-  : never;
+export type PredicateRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
+  SourceColumns<DB[Table]> extends infer Row extends object
+    ? { [K in Extract<keyof Row, string>]: WhereValue<Row[K]> }
+    : never;
 
 export type QueryRow<T> = T extends object ? { [K in Extract<keyof T, string>]: T[K] } : never;

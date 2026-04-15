@@ -99,7 +99,9 @@ export class InsertQueryBuilder<Table extends string, Row extends object> {
 
     if (this.node.source.kind === "values") {
       const resolvedClient = this.getInsertClient(client);
-      const values = (this.node.source.rows as Row[]).map((row) => normalizeInsertRow(row, this.sourceMeta));
+      const values = (this.node.source.rows as Row[]).map((row) =>
+        normalizeInsertRow(row, this.sourceMeta),
+      );
 
       return resolvedClient.insert({
         table: this.node.table,

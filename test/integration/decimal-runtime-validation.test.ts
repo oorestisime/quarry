@@ -40,7 +40,9 @@ describe("decimal runtime validation", () => {
   });
 
   beforeEach(async () => {
-    await getContext().client.command({ query: "TRUNCATE TABLE IF EXISTS decimal_runtime_samples" });
+    await getContext().client.command({
+      query: "TRUNCATE TABLE IF EXISTS decimal_runtime_samples",
+    });
   });
 
   afterAll(async () => {

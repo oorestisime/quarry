@@ -368,10 +368,11 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     now: () => this.callFunction<string, string | Date>("now", [], "DateTime"),
     today: () => this.callFunction<string, string | Date>("today", [], "Date"),
     jsonExtractString: (column: ColumnRef<Scope> | Expression<unknown>, key: string) =>
-      this.callFunction<string>("JSONExtractString", [
-        this.toExpr(column),
-        this.toStringLiteral(key),
-      ], "String"),
+      this.callFunction<string>(
+        "JSONExtractString",
+        [this.toExpr(column), this.toStringLiteral(key)],
+        "String",
+      ),
     sum: (value: ValueInput<Scope>) =>
       this.callFunction<number | string>("sum", [this.toExpr(value)]),
     sumIf: (value: ValueInput<Scope>, condition: Expression<unknown>) =>
@@ -381,19 +382,25 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     avgIf: (value: ValueInput<Scope>, condition: Expression<unknown>) =>
       this.callFunction<number>("avgIf", [this.toExpr(value), condition.node], "Float64"),
     min: <Value extends ValueInput<Scope>>(value: Value) =>
-      this.callFunction<
-        ResolveValueInput<Scope, Value>,
-        ResolveValueInput<Scope, Value>
-      >("min", [this.toExpr(value)], this.resolveValueClickHouseType(value)),
+      this.callFunction<ResolveValueInput<Scope, Value>, ResolveValueInput<Scope, Value>>(
+        "min",
+        [this.toExpr(value)],
+        this.resolveValueClickHouseType(value),
+      ),
     max: <Value extends ValueInput<Scope>>(value: Value) =>
-      this.callFunction<
-        ResolveValueInput<Scope, Value>,
-        ResolveValueInput<Scope, Value>
-      >("max", [this.toExpr(value)], this.resolveValueClickHouseType(value)),
+      this.callFunction<ResolveValueInput<Scope, Value>, ResolveValueInput<Scope, Value>>(
+        "max",
+        [this.toExpr(value)],
+        this.resolveValueClickHouseType(value),
+      ),
     uniq: (value: ValueInput<Scope>) =>
       this.callFunction<string, string | number | bigint>("uniq", [this.toExpr(value)], "UInt64"),
     uniqExact: (value: ValueInput<Scope>) =>
-      this.callFunction<string, string | number | bigint>("uniqExact", [this.toExpr(value)], "UInt64"),
+      this.callFunction<string, string | number | bigint>(
+        "uniqExact",
+        [this.toExpr(value)],
+        "UInt64",
+      ),
     uniqIf: (value: ValueInput<Scope>, condition: Expression<unknown>) =>
       this.callFunction<string, string | number | bigint>(
         "uniqIf",
@@ -407,15 +414,17 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
         this.resolveArrayClickHouseType(value),
       ),
     any: <Value extends ValueInput<Scope>>(value: Value) =>
-      this.callFunction<
-        ResolveValueInput<Scope, Value>,
-        ResolveValueInput<Scope, Value>
-      >("any", [this.toExpr(value)], this.resolveValueClickHouseType(value)),
+      this.callFunction<ResolveValueInput<Scope, Value>, ResolveValueInput<Scope, Value>>(
+        "any",
+        [this.toExpr(value)],
+        this.resolveValueClickHouseType(value),
+      ),
     anyLast: <Value extends ValueInput<Scope>>(value: Value) =>
-      this.callFunction<
-        ResolveValueInput<Scope, Value>,
-        ResolveValueInput<Scope, Value>
-      >("anyLast", [this.toExpr(value)], this.resolveValueClickHouseType(value)),
+      this.callFunction<ResolveValueInput<Scope, Value>, ResolveValueInput<Scope, Value>>(
+        "anyLast",
+        [this.toExpr(value)],
+        this.resolveValueClickHouseType(value),
+      ),
     toInt32: (value: ColumnRef<Scope> | Expression<unknown>) =>
       this.callFunction<number>("toInt32", [this.toExpr(value)], "Int32"),
     toInt64: (value: ColumnRef<Scope> | Expression<unknown>) =>
@@ -423,7 +432,11 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     toUInt32: (value: ColumnRef<Scope> | Expression<unknown>) =>
       this.callFunction<number>("toUInt32", [this.toExpr(value)], "UInt32"),
     toUInt64: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<string, string | number | bigint>("toUInt64", [this.toExpr(value)], "UInt64"),
+      this.callFunction<string, string | number | bigint>(
+        "toUInt64",
+        [this.toExpr(value)],
+        "UInt64",
+      ),
     toFloat32: (value: ColumnRef<Scope> | Expression<unknown>) =>
       this.callFunction<number>("toFloat32", [this.toExpr(value)], "Float32"),
     toFloat64: (value: ColumnRef<Scope> | Expression<unknown>) =>
@@ -447,20 +460,21 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     toStartOfYear: (value: ExpressionInput<Scope>) =>
       this.callFunction<string>("toStartOfYear", [this.toExpr(value)]),
     formatDateTime: (value: ExpressionInput<Scope>, format: string) =>
-      this.callFunction<string>("formatDateTime", [
-        this.toExpr(value),
-        this.toStringLiteral(format),
-      ], "String"),
+      this.callFunction<string>(
+        "formatDateTime",
+        [this.toExpr(value), this.toStringLiteral(format)],
+        "String",
+      ),
     dateDiff: (
       unit: DateTimeUnitInput,
       start: ExpressionInput<Scope>,
       end: ExpressionInput<Scope>,
     ) =>
-      this.callFunction<string>("dateDiff", [
-        this.toDateTimeUnitLiteral(unit),
-        this.toExpr(start),
-        this.toExpr(end),
-      ], "Int64"),
+      this.callFunction<string>(
+        "dateDiff",
+        [this.toDateTimeUnitLiteral(unit), this.toExpr(start), this.toExpr(end)],
+        "Int64",
+      ),
     dateAdd: (unit: DateTimeUnitInput, amount: NumericValueInput, value: ExpressionInput<Scope>) =>
       this.callFunction<string>(
         this.toDateTimeUnit(unit).add,
@@ -496,12 +510,23 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     hasAny: (
       array: ArrayInput<Scope>,
       elements: ParamLike<readonly unknown[]> | Expression<readonly unknown[]>,
-    ) => this.callFunction<number>("hasAny", [this.toExpr(array), this.toValueExpr(elements)], "UInt8"),
+    ) =>
+      this.callFunction<number>(
+        "hasAny",
+        [this.toExpr(array), this.toValueExpr(elements)],
+        "UInt8",
+      ),
     hasAll: (
       array: ArrayInput<Scope>,
       elements: ParamLike<readonly unknown[]> | Expression<readonly unknown[]>,
-    ) => this.callFunction<number>("hasAll", [this.toExpr(array), this.toValueExpr(elements)], "UInt8"),
-    length: (array: ArrayInput<Scope>) => this.callFunction<string>("length", [this.toExpr(array)], "UInt64"),
+    ) =>
+      this.callFunction<number>(
+        "hasAll",
+        [this.toExpr(array), this.toValueExpr(elements)],
+        "UInt8",
+      ),
+    length: (array: ArrayInput<Scope>) =>
+      this.callFunction<string>("length", [this.toExpr(array)], "UInt64"),
     isNull: <Value extends ValueInput<Scope>>(value: Value) =>
       this.callFunction<number>("isNull", [this.toExpr(value)], "UInt8"),
     isNotNull: <Value extends ValueInput<Scope>>(value: Value) =>
@@ -553,7 +578,11 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
           ResolveRefOrExpressionInput<Scope, Value> | ResolveStringValueInput<Pattern>,
           number
         >
-      >("like", [this.toExpr(value), this.toValueExpr(pattern)], this.resolveMaybeNullableUInt8Type(value)),
+      >(
+        "like",
+        [this.toExpr(value), this.toValueExpr(pattern)],
+        this.resolveMaybeNullableUInt8Type(value),
+      ),
     ilike: <Value extends StringInput<Scope>, Pattern extends StringValueInput>(
       value: Value,
       pattern: Pattern,
@@ -563,7 +592,11 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
           ResolveRefOrExpressionInput<Scope, Value> | ResolveStringValueInput<Pattern>,
           number
         >
-      >("ilike", [this.toExpr(value), this.toValueExpr(pattern)], this.resolveMaybeNullableUInt8Type(value)),
+      >(
+        "ilike",
+        [this.toExpr(value), this.toValueExpr(pattern)],
+        this.resolveMaybeNullableUInt8Type(value),
+      ),
     concat: <Parts extends readonly [StringValueInput, StringValueInput, ...StringValueInput[]]>(
       ...parts: Parts
     ) =>

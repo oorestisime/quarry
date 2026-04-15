@@ -295,12 +295,8 @@ defineSchema({
     created_at: quarry.DateTime64(3),
   }),
 }).views((db) => ({
-  some_view: view.as(
-    db
-      .selectFrom(db.table("users").final().as("u"))
-      .selectAll("u")
-  ),
-}))
+  some_view: view.as(db.selectFrom(db.table("users").final().as("u")).selectAll("u")),
+}));
 ```
 
 That reflects the fact that real ClickHouse views can contain:
@@ -501,7 +497,7 @@ const schema = defineSchema({
         eb.fn.toDate("e.created_at").as("event_date"),
         eb.fn.sum("e.amount").as("total_amount"),
       ])
-      .groupBy((eb) => eb.fn.toDate("e.created_at"))
+      .groupBy((eb) => eb.fn.toDate("e.created_at")),
   ),
 }));
 
@@ -575,9 +571,7 @@ In Quarry today, `Scope` is the type-level map of aliases and columns that are c
 Example:
 
 ```ts
-db
-  .selectFrom("users as u")
-  .innerJoin("event_logs as e", "u.id", "e.user_id")
+db.selectFrom("users as u").innerJoin("event_logs as e", "u.id", "e.user_id");
 ```
 
 At that point the current scope is roughly:
@@ -694,7 +688,7 @@ That means Quarry can:
 In plain interface mode, the user writes:
 
 ```ts
-createClickHouseDB<DB>()
+createClickHouseDB<DB>();
 ```
 
 There is no runtime schema object there. Quarry only gets type information.
@@ -726,13 +720,7 @@ So yes, the AST, compiler, and builder can absolutely still use one shared inter
 This is not a final API proposal. It is a sketch of the shape Quarry likely needs internally.
 
 ```ts
-type SourceKind =
-  | "table"
-  | "view"
-  | "materialized_view"
-  | "dictionary"
-  | "cte"
-  | "subquery";
+type SourceKind = "table" | "view" | "materialized_view" | "dictionary" | "cte" | "subquery";
 
 interface NormalizedColumn<Select, Insert = Select, Where = Select> {
   clickhouseType?: string;
@@ -781,11 +769,7 @@ const schema = defineSchema({
     amount: quarry.UInt64(),
   }),
 }).views((db) => ({
-  signup_view: view.as(
-    db
-      .selectFrom("events as e")
-      .select("e.created_at")
-  ),
+  signup_view: view.as(db.selectFrom("events as e").select("e.created_at")),
 }));
 
 const db = createClickHouseDB({ schema, client });
@@ -851,19 +835,19 @@ If a gentler adoption path is ever needed later, it can be revisited, but I woul
 
 Below is the rough impact if Quarry adds a serious normalized schema layer.
 
-| File | Why it changes | Expected impact |
-| --- | --- | --- |
-| `src/schema/index.ts` | new schema types, builders, normalizer | high |
-| `src/type-utils.ts` | row derivation helpers need to become source/column derivation helpers | high |
-| `src/query/types.ts` | the main type core; source kinds, column refs, predicate typing, selection output | very high |
-| `src/query/db.ts` | `createClickHouseDB`, `selectFrom`, `insertInto`, `with` need catalog awareness | high |
-| `src/query/source-builder.ts` | source builders need kind/capability metadata and maybe richer source identity | medium |
-| `src/query/select-query-builder.ts` | capability gating for sources and `FINAL`; where/having overloads may need new type helpers | medium |
-| `src/query/expression-builder.ts` | depends on how scope entries are modeled; could be medium-to-high | medium |
-| `src/query/insert-query-builder.ts` | insertable-source gating and maybe future `fromSelect` typing improvements | medium |
-| `src/query/helpers.ts` | source parsing/normalization helpers | low-to-medium |
-| `src/ast/query.ts` | probably unchanged in phase 1 | low |
-| `src/compiler/query-compiler.ts` | probably unchanged in phase 1 unless new source SQL forms land | low |
+| File                                | Why it changes                                                                              | Expected impact |
+| ----------------------------------- | ------------------------------------------------------------------------------------------- | --------------- |
+| `src/schema/index.ts`               | new schema types, builders, normalizer                                                      | high            |
+| `src/type-utils.ts`                 | row derivation helpers need to become source/column derivation helpers                      | high            |
+| `src/query/types.ts`                | the main type core; source kinds, column refs, predicate typing, selection output           | very high       |
+| `src/query/db.ts`                   | `createClickHouseDB`, `selectFrom`, `insertInto`, `with` need catalog awareness             | high            |
+| `src/query/source-builder.ts`       | source builders need kind/capability metadata and maybe richer source identity              | medium          |
+| `src/query/select-query-builder.ts` | capability gating for sources and `FINAL`; where/having overloads may need new type helpers | medium          |
+| `src/query/expression-builder.ts`   | depends on how scope entries are modeled; could be medium-to-high                           | medium          |
+| `src/query/insert-query-builder.ts` | insertable-source gating and maybe future `fromSelect` typing improvements                  | medium          |
+| `src/query/helpers.ts`              | source parsing/normalization helpers                                                        | low-to-medium   |
+| `src/ast/query.ts`                  | probably unchanged in phase 1                                                               | low             |
+| `src/compiler/query-compiler.ts`    | probably unchanged in phase 1 unless new source SQL forms land                              | low             |
 
 The most important point is that this is not just a new `schema/` module. `query/types.ts` is where the real architectural change lives.
 
@@ -1008,11 +992,7 @@ const schema = defineSchema({
 });
 ```
 
-with inference of the default `select` / `insert` / `where` behavior from the ClickHouse type constructor itself.
-5. Support tables and views first. Treat inherited views as an important part of the initial design.
-6. Omit materialized views and dictionaries from the first public schema release.
-7. Keep existing tests and `typecheck` passing unchanged across phases 1 to 3, and add new schema tests alongside them.
-8. Avoid a first pass that only adds source capabilities but keeps the one-row-type-for-everything model. That would solve part of the problem while leaving the most important type mismatch untouched.
+with inference of the default `select` / `insert` / `where` behavior from the ClickHouse type constructor itself. 5. Support tables and views first. Treat inherited views as an important part of the initial design. 6. Omit materialized views and dictionaries from the first public schema release. 7. Keep existing tests and `typecheck` passing unchanged across phases 1 to 3, and add new schema tests alongside them. 8. Avoid a first pass that only adds source capabilities but keeps the one-row-type-for-everything model. That would solve part of the problem while leaving the most important type mismatch untouched.
 
 ## Bottom Line
 

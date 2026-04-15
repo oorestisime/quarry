@@ -37,13 +37,10 @@ export type ScopeFromTableExpression<DB extends DatabaseSchema, TE extends Table
     ? { [K in Alias]: ScopeRow<DB, Table> }
     : never;
 
-type ScopeFromAliasedQuery<Source> = Source extends AliasedQuery<
-  infer Row,
-  infer Alias,
-  infer OutputColumns
->
-  ? { [K in Alias]: keyof OutputColumns extends never ? QueryRow<Row> : QueryRow<OutputColumns> }
-  : never;
+type ScopeFromAliasedQuery<Source> =
+  Source extends AliasedQuery<infer Row, infer Alias, infer OutputColumns>
+    ? { [K in Alias]: keyof OutputColumns extends never ? QueryRow<Row> : QueryRow<OutputColumns> }
+    : never;
 
 type ScopeFromTableSourceBuilder<DB extends DatabaseSchema, Source> =
   Source extends TableSourceBuilder<
@@ -93,11 +90,14 @@ type SelectionString<Scope extends ScopeMap> =
 
 type ColumnNameFromRef<T extends string> = T extends `${string}.${infer Column}` ? Column : T;
 
-type WrapOutputColumn<T> = T extends QuarryColumn<any, any, any>
-  ? T
-  : QuarryColumn<SelectValue<T>, SelectValue<T>, WhereValue<T>>;
+type WrapOutputColumn<T> =
+  T extends QuarryColumn<any, any, any>
+    ? T
+    : QuarryColumn<SelectValue<T>, SelectValue<T>, WhereValue<T>>;
 
-type ScopeRawValue<Row extends object, Key extends string> = Key extends keyof Row ? Row[Key] : never;
+type ScopeRawValue<Row extends object, Key extends string> = Key extends keyof Row
+  ? Row[Key]
+  : never;
 
 type ScopeSelectedValue<Row extends object, Key extends string> = Key extends keyof Row
   ? SelectValue<Row[Key]>
@@ -243,11 +243,14 @@ export type SelectionOutput<
 export type SelectionOutputColumns<
   Scope extends ScopeMap,
   Selections extends readonly SelectionExpression<Scope>[],
-> = Simplify<UnionToIntersection<SelectionColumnResult<Scope, Selections[number]>>> extends infer Columns
-  ? Columns extends SchemaColumns
-    ? Columns
-    : {}
-  : {};
+> =
+  Simplify<
+    UnionToIntersection<SelectionColumnResult<Scope, Selections[number]>>
+  > extends infer Columns
+    ? Columns extends SchemaColumns
+      ? Columns
+      : {}
+    : {};
 
 export type ScopeSelectionOutput<
   Scope extends ScopeMap,
@@ -256,16 +259,14 @@ export type ScopeSelectionOutput<
   [K in Extract<keyof Scope[Alias], string>]: ScopeSelectedValue<Scope[Alias], K>;
 }>;
 
-export type ScopeSelectionColumns<
-  Scope extends ScopeMap,
-  Alias extends ScopeAlias<Scope>,
-> = Simplify<{
-  [K in Extract<keyof Scope[Alias], string>]: WrapOutputColumn<Scope[Alias][K]>;
-}> extends infer Columns
-  ? Columns extends SchemaColumns
-    ? Columns
-    : {}
-  : {};
+export type ScopeSelectionColumns<Scope extends ScopeMap, Alias extends ScopeAlias<Scope>> =
+  Simplify<{
+    [K in Extract<keyof Scope[Alias], string>]: WrapOutputColumn<Scope[Alias][K]>;
+  }> extends infer Columns
+    ? Columns extends SchemaColumns
+      ? Columns
+      : {}
+    : {};
 
 export type AllScopeSelectionOutput<Scope extends ScopeMap> = Simplify<{
   [K in {
@@ -275,17 +276,20 @@ export type AllScopeSelectionOutput<Scope extends ScopeMap> = Simplify<{
   }[ScopeAlias<Scope>];
 }>;
 
-export type AllScopeSelectionColumns<Scope extends ScopeMap> = Simplify<{
-  [K in {
-    [Alias in ScopeAlias<Scope>]: Extract<keyof Scope[Alias], string>;
-  }[ScopeAlias<Scope>]]: WrapOutputColumn<{
-    [Alias in ScopeAlias<Scope>]: ScopeRawValue<Scope[Alias], Extract<K, string>>;
-  }[ScopeAlias<Scope>]>
-}> extends infer Columns
-  ? Columns extends SchemaColumns
-    ? Columns
-    : {}
-  : {};
+export type AllScopeSelectionColumns<Scope extends ScopeMap> =
+  Simplify<{
+    [K in {
+      [Alias in ScopeAlias<Scope>]: Extract<keyof Scope[Alias], string>;
+    }[ScopeAlias<Scope>]]: WrapOutputColumn<
+      {
+        [Alias in ScopeAlias<Scope>]: ScopeRawValue<Scope[Alias], Extract<K, string>>;
+      }[ScopeAlias<Scope>]
+    >;
+  }> extends infer Columns
+    ? Columns extends SchemaColumns
+      ? Columns
+      : {}
+    : {};
 
 export type ParamLike<T> = T | ClickHouseParam<T>;
 

@@ -7,11 +7,7 @@ import type {
   ValueNode,
 } from "../ast/query";
 import { isClickHouseParam } from "../param";
-import type {
-  NormalizedSchema,
-  NormalizedSchemaColumn,
-  NormalizedSchemaSource,
-} from "../schema";
+import type { NormalizedSchema, NormalizedSchemaColumn, NormalizedSchemaSource } from "../schema";
 import type { DatabaseSchema } from "../type-utils";
 import type { SourceExpression } from "./types";
 
