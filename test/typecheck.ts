@@ -1024,6 +1024,104 @@ const scalarSchema = defineSchema({
   }),
 });
 
+const mergeTreeEngineSchema = defineSchema({
+  merge_tree_samples: table.mergeTree(
+    {
+      id: UInt32(),
+      created_at: DateTime64(3),
+    },
+    {
+      orderBy: ["id"],
+      primaryKey: ["id"],
+      partitionBy: ["toYYYYMM(created_at)"],
+      ttl: ["created_at + toIntervalDay(30)"],
+      settings: {
+        index_granularity: 8192,
+      },
+    },
+  ),
+  shared_merge_tree_samples: table.sharedMergeTree(
+    {
+      id: UInt32(),
+      created_at: DateTime64(3),
+    },
+    {
+      orderBy: ["id"],
+      partitionBy: ["toYYYYMM(created_at)"],
+    },
+  ),
+  replacing_tree_samples: table.replacingMergeTree(
+    {
+      id: UInt32(),
+      version: DateTime64(3),
+      is_deleted: UInt8(),
+    },
+    {
+      versionBy: "version",
+      isDeletedBy: "is_deleted",
+      orderBy: ["id"],
+    },
+  ),
+  shared_replacing_tree_samples: table.sharedReplacingMergeTree(
+    {
+      id: UInt32(),
+      version: DateTime64(3),
+      is_deleted: UInt8(),
+    },
+    {
+      versionBy: "version",
+      isDeletedBy: "is_deleted",
+      orderBy: ["id"],
+      primaryKey: ["id"],
+      settings: {
+        index_granularity: 8192,
+      },
+    },
+  ),
+  summing_tree_samples: table.summingMergeTree(
+    {
+      id: UInt32(),
+      total: UInt32(),
+    },
+    {
+      orderBy: ["id"],
+      sumColumns: ["total"],
+    },
+  ),
+  aggregating_tree_samples: table.aggregatingMergeTree(
+    {
+      id: UInt32(),
+      created_at: DateTime64(3),
+    },
+    {
+      orderBy: ["id"],
+      partitionBy: ["toYYYYMM(created_at)"],
+    },
+  ),
+  collapsing_tree_samples: table.collapsingMergeTree(
+    {
+      id: UInt32(),
+      sign: UInt8(),
+    },
+    {
+      signBy: "sign",
+      orderBy: ["id"],
+    },
+  ),
+  versioned_collapsing_tree_samples: table.versionedCollapsingMergeTree(
+    {
+      id: UInt32(),
+      sign: UInt8(),
+      version: DateTime64(3),
+    },
+    {
+      signBy: "sign",
+      versionBy: "version",
+      orderBy: ["id"],
+    },
+  ),
+});
+
 const schemaDb = createClickHouseDB({ schema, client });
 const richerSchemaDb = createClickHouseDB({ schema: richerSchema, client });
 const scalarSchemaDb = createClickHouseDB({ schema: scalarSchema, client });
@@ -1192,6 +1290,7 @@ void validAggregateViewRow;
 void validFormattedViewRow;
 void validRicherSchemaRow;
 void validScalarSchemaRow;
+void mergeTreeEngineSchema;
 void invalidAggregateViewRow;
 void schemaInsertResultPromise;
 void richerSchemaInsertResultPromise;
@@ -1205,6 +1304,90 @@ schemaDb.table("final_users");
 
 // @ts-expect-error UInt32 predicates should stay numeric
 schemaDb.selectFrom("users as u").where("u.id", "=", "1");
+
+table.mergeTree(
+  {
+    id: UInt32(),
+    version: DateTime64(3),
+  },
+  {
+    // @ts-expect-error mergeTree should not accept replacing-only options
+    versionBy: "version",
+  },
+);
+
+table.sharedMergeTree(
+  {
+    id: UInt32(),
+  },
+  {
+    // @ts-expect-error merge tree orderBy references must point at known columns
+    orderBy: ["missing"],
+  },
+);
+
+table.sharedReplacingMergeTree(
+  {
+    id: UInt32(),
+    is_deleted: UInt8(),
+  },
+  // @ts-expect-error isDeletedBy requires versionBy for replacing engines
+  {
+    isDeletedBy: "is_deleted",
+    orderBy: ["id"],
+  },
+);
+
+table.replacingMergeTree(
+  {
+    id: UInt32(),
+    version: DateTime64(3),
+    is_deleted: UInt8(),
+  },
+  {
+    // @ts-expect-error replacing engine refs must point at known columns
+    versionBy: "updated_at",
+    isDeletedBy: "is_deleted",
+    orderBy: ["id"],
+  },
+);
+
+table.summingMergeTree(
+  {
+    id: UInt32(),
+    total: UInt32(),
+  },
+  {
+    // @ts-expect-error summing sumColumns must point at known columns
+    sumColumns: ["missing"],
+    orderBy: ["id"],
+  },
+);
+
+table.collapsingMergeTree(
+  {
+    id: UInt32(),
+    sign: UInt8(),
+  },
+  // @ts-expect-error collapsing engines require signBy
+  {
+    orderBy: ["id"],
+  },
+);
+
+table.versionedCollapsingMergeTree(
+  {
+    id: UInt32(),
+    sign: UInt8(),
+    version: DateTime64(3),
+  },
+  {
+    signBy: "sign",
+    // @ts-expect-error versioned collapsing versionBy must point at known columns
+    versionBy: "updated_at",
+    orderBy: ["id"],
+  },
+);
 
 defineSchema({
   users: table({

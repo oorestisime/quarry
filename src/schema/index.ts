@@ -14,16 +14,137 @@ export interface QuarryColumn<Select, Insert = Select, Where = Select> {
   readonly clickhouseType: string;
 }
 
-export interface QuarryEngine {
-  readonly name: string;
-  readonly finalCapable: boolean;
+export type SchemaColumns = Record<string, QuarryColumn<any, any, any>>;
+
+type ColumnName<Columns extends SchemaColumns> = Extract<keyof Columns, string>;
+type NonEmptyList<Value> = readonly [Value, ...Value[]];
+
+export type QuarrySettingValue = string | number | boolean;
+
+export interface MergeTreeTableOptions<Columns extends SchemaColumns> {
+  readonly primaryKey?: NonEmptyList<ColumnName<Columns>>;
+  readonly orderBy?: NonEmptyList<ColumnName<Columns>>;
+  readonly partitionBy?: NonEmptyList<string>;
+  readonly ttl?: NonEmptyList<string>;
+  readonly settings?: Readonly<Record<string, QuarrySettingValue>>;
 }
+
+export interface SharedMergeTreeOptions<
+  Columns extends SchemaColumns,
+> extends MergeTreeTableOptions<Columns> {}
+
+type ReplacingMergeTreeQuirks<Columns extends SchemaColumns> =
+  | {
+      readonly versionBy?: undefined;
+      readonly isDeletedBy?: undefined;
+    }
+  | {
+      readonly versionBy: ColumnName<Columns>;
+      readonly isDeletedBy?: ColumnName<Columns>;
+    };
+
+export type ReplacingMergeTreeOptions<Columns extends SchemaColumns> =
+  MergeTreeTableOptions<Columns> & ReplacingMergeTreeQuirks<Columns>;
+
+export type SharedReplacingMergeTreeOptions<Columns extends SchemaColumns> =
+  MergeTreeTableOptions<Columns> & ReplacingMergeTreeQuirks<Columns>;
+
+export type SummingMergeTreeOptions<Columns extends SchemaColumns> =
+  MergeTreeTableOptions<Columns> & {
+    readonly sumColumns?: NonEmptyList<ColumnName<Columns>>;
+  };
+
+export interface AggregatingMergeTreeOptions<
+  Columns extends SchemaColumns,
+> extends MergeTreeTableOptions<Columns> {}
+
+export type CollapsingMergeTreeOptions<Columns extends SchemaColumns> =
+  MergeTreeTableOptions<Columns> & {
+    readonly signBy: ColumnName<Columns>;
+  };
+
+export type VersionedCollapsingMergeTreeOptions<Columns extends SchemaColumns> =
+  MergeTreeTableOptions<Columns> & {
+    readonly signBy: ColumnName<Columns>;
+    readonly versionBy: ColumnName<Columns>;
+  };
+
+interface StoredMergeTreeTableOptions {
+  readonly primaryKey?: NonEmptyList<string>;
+  readonly orderBy?: NonEmptyList<string>;
+  readonly partitionBy?: NonEmptyList<string>;
+  readonly ttl?: NonEmptyList<string>;
+  readonly settings?: Readonly<Record<string, QuarrySettingValue>>;
+}
+
+interface StoredSharedMergeTreeOptions extends StoredMergeTreeTableOptions {}
+
+type StoredReplacingMergeTreeQuirks =
+  | {
+      readonly versionBy?: undefined;
+      readonly isDeletedBy?: undefined;
+    }
+  | {
+      readonly versionBy: string;
+      readonly isDeletedBy?: string;
+    };
+
+type StoredReplacingMergeTreeOptions = StoredMergeTreeTableOptions & StoredReplacingMergeTreeQuirks;
+
+type StoredSharedReplacingMergeTreeOptions = StoredMergeTreeTableOptions &
+  StoredReplacingMergeTreeQuirks;
+
+type StoredSummingMergeTreeOptions = StoredMergeTreeTableOptions & {
+  readonly sumColumns?: NonEmptyList<string>;
+};
+
+interface StoredAggregatingMergeTreeOptions extends StoredMergeTreeTableOptions {}
+
+type StoredCollapsingMergeTreeOptions = StoredMergeTreeTableOptions & {
+  readonly signBy: string;
+};
+
+type StoredVersionedCollapsingMergeTreeOptions = StoredMergeTreeTableOptions & {
+  readonly signBy: string;
+  readonly versionBy: string;
+};
+
+type QuarryNonFinalEngine<Name extends string> = {
+  readonly name: Name;
+  readonly finalCapable: false;
+};
+
+type QuarryFinalEngine<Name extends string> = {
+  readonly name: Name;
+  readonly finalCapable: true;
+};
+
+type QuarryConfiguredNonFinalEngine<Name extends string, Options> = QuarryNonFinalEngine<Name> & {
+  readonly options?: Options;
+};
+
+type QuarryConfiguredFinalEngine<Name extends string, Options> = QuarryFinalEngine<Name> & {
+  readonly options?: Options;
+};
+
+export type QuarryEngine =
+  | QuarryNonFinalEngine<"Table">
+  | QuarryNonFinalEngine<"Memory">
+  | QuarryConfiguredNonFinalEngine<"MergeTree", StoredMergeTreeTableOptions>
+  | QuarryConfiguredNonFinalEngine<"SharedMergeTree", StoredSharedMergeTreeOptions>
+  | QuarryConfiguredFinalEngine<"ReplacingMergeTree", StoredReplacingMergeTreeOptions>
+  | QuarryConfiguredFinalEngine<"SharedReplacingMergeTree", StoredSharedReplacingMergeTreeOptions>
+  | QuarryConfiguredFinalEngine<"SummingMergeTree", StoredSummingMergeTreeOptions>
+  | QuarryConfiguredFinalEngine<"AggregatingMergeTree", StoredAggregatingMergeTreeOptions>
+  | QuarryConfiguredFinalEngine<"CollapsingMergeTree", StoredCollapsingMergeTreeOptions>
+  | QuarryConfiguredFinalEngine<
+      "VersionedCollapsingMergeTree",
+      StoredVersionedCollapsingMergeTreeOptions
+    >;
 
 export interface NormalizedSchemaColumn {
   readonly clickhouseType: string;
 }
-
-export type SchemaColumns = Record<string, QuarryColumn<any, any, any>>;
 
 export interface QuarryTableSource<Columns extends SchemaColumns> {
   readonly __quarrySource: true;
@@ -186,6 +307,119 @@ function createTableSource<Columns extends SchemaColumns>(
   };
 }
 
+function assertNonEmptyList(values: readonly string[] | undefined, context: string): void {
+  if (values && values.length === 0) {
+    throw new Error(`${context} must include at least one value.`);
+  }
+}
+
+function assertKnownColumn<Columns extends SchemaColumns>(
+  columns: Columns,
+  column: string,
+  context: string,
+): void {
+  if (!(column in columns)) {
+    throw new Error(`Unknown column '${column}' in ${context}.`);
+  }
+}
+
+function assertKnownColumns<Columns extends SchemaColumns>(
+  columns: Columns,
+  columnNames: readonly string[] | undefined,
+  context: string,
+): void {
+  assertNonEmptyList(columnNames, context);
+
+  for (const columnName of columnNames ?? []) {
+    assertKnownColumn(columns, columnName, context);
+  }
+}
+
+function validateMergeTreeOptions<Columns extends SchemaColumns>(
+  columns: Columns,
+  options: MergeTreeTableOptions<Columns> | undefined,
+  engineName: string,
+): void {
+  if (!options) {
+    return;
+  }
+
+  assertKnownColumns(columns, options.primaryKey, `${engineName}.primaryKey`);
+  assertKnownColumns(columns, options.orderBy, `${engineName}.orderBy`);
+  assertNonEmptyList(options.partitionBy, `${engineName}.partitionBy`);
+  assertNonEmptyList(options.ttl, `${engineName}.ttl`);
+}
+
+function validateReplacingMergeTreeOptions<Columns extends SchemaColumns>(
+  columns: Columns,
+  options:
+    | ReplacingMergeTreeOptions<Columns>
+    | SharedReplacingMergeTreeOptions<Columns>
+    | undefined,
+  engineName: string,
+): void {
+  validateMergeTreeOptions(columns, options, engineName);
+
+  if (!options) {
+    return;
+  }
+
+  if (options.isDeletedBy && !options.versionBy) {
+    throw new Error(`${engineName}.isDeletedBy requires ${engineName}.versionBy.`);
+  }
+
+  if (options.versionBy) {
+    assertKnownColumn(columns, options.versionBy, `${engineName}.versionBy`);
+  }
+
+  if (options.isDeletedBy) {
+    assertKnownColumn(columns, options.isDeletedBy, `${engineName}.isDeletedBy`);
+  }
+}
+
+function validateSummingMergeTreeOptions<Columns extends SchemaColumns>(
+  columns: Columns,
+  options: SummingMergeTreeOptions<Columns> | undefined,
+  engineName: string,
+): void {
+  validateMergeTreeOptions(columns, options, engineName);
+
+  if (!options) {
+    return;
+  }
+
+  assertKnownColumns(columns, options.sumColumns, `${engineName}.sumColumns`);
+}
+
+function validateCollapsingMergeTreeOptions<Columns extends SchemaColumns>(
+  columns: Columns,
+  options: CollapsingMergeTreeOptions<Columns> | undefined,
+  engineName: string,
+): void {
+  validateMergeTreeOptions(columns, options, engineName);
+
+  if (!options) {
+    return;
+  }
+
+  assertKnownColumn(columns, options.signBy, `${engineName}.signBy`);
+}
+
+function validateVersionedCollapsingMergeTreeOptions<Columns extends SchemaColumns>(
+  columns: Columns,
+  options: VersionedCollapsingMergeTreeOptions<Columns> | undefined,
+  engineName: string,
+): void {
+  validateMergeTreeOptions(columns, options, engineName);
+
+  if (!options) {
+    return;
+  }
+
+  assertKnownColumn(columns, options.signBy, `${engineName}.signBy`);
+  assertKnownColumn(columns, options.versionBy, `${engineName}.versionBy`);
+}
+
 function createQueryViewSource<
   Query extends SelectQueryBuilder<any, any, any, any>,
   Columns extends SchemaColumns,
@@ -201,13 +435,37 @@ type TableFactory = (<Columns extends SchemaColumns>(
   columns: Columns,
 ) => QuarryTableSource<Columns>) & {
   memory<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
-  mergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
-  replacingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
-  summingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
-  aggregatingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
-  collapsingMergeTree<Columns extends SchemaColumns>(columns: Columns): QuarryTableSource<Columns>;
+  mergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+    options?: MergeTreeTableOptions<Columns>,
+  ): QuarryTableSource<Columns>;
+  sharedMergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+    options?: SharedMergeTreeOptions<Columns>,
+  ): QuarryTableSource<Columns>;
+  replacingMergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+    options?: ReplacingMergeTreeOptions<Columns>,
+  ): QuarryTableSource<Columns>;
+  sharedReplacingMergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+    options?: SharedReplacingMergeTreeOptions<Columns>,
+  ): QuarryTableSource<Columns>;
+  summingMergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+    options?: SummingMergeTreeOptions<Columns>,
+  ): QuarryTableSource<Columns>;
+  aggregatingMergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+    options?: AggregatingMergeTreeOptions<Columns>,
+  ): QuarryTableSource<Columns>;
+  collapsingMergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+    options: CollapsingMergeTreeOptions<Columns>,
+  ): QuarryTableSource<Columns>;
   versionedCollapsingMergeTree<Columns extends SchemaColumns>(
     columns: Columns,
+    options: VersionedCollapsingMergeTreeOptions<Columns>,
   ): QuarryTableSource<Columns>;
 };
 
@@ -218,25 +476,98 @@ export const table: TableFactory = Object.assign(
     memory<Columns extends SchemaColumns>(columns: Columns) {
       return createTableSource(columns, { name: "Memory", finalCapable: false });
     },
-    mergeTree<Columns extends SchemaColumns>(columns: Columns) {
-      return createTableSource(columns, { name: "MergeTree", finalCapable: false });
+    mergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options?: MergeTreeTableOptions<Columns>,
+    ) {
+      validateMergeTreeOptions(columns, options, "mergeTree");
+      return createTableSource(
+        columns,
+        options
+          ? { name: "MergeTree", finalCapable: false, options }
+          : { name: "MergeTree", finalCapable: false },
+      );
     },
-    replacingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
-      return createTableSource(columns, { name: "ReplacingMergeTree", finalCapable: true });
+    sharedMergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options?: SharedMergeTreeOptions<Columns>,
+    ) {
+      validateMergeTreeOptions(columns, options, "sharedMergeTree");
+      return createTableSource(
+        columns,
+        options
+          ? { name: "SharedMergeTree", finalCapable: false, options }
+          : { name: "SharedMergeTree", finalCapable: false },
+      );
     },
-    summingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
-      return createTableSource(columns, { name: "SummingMergeTree", finalCapable: true });
+    replacingMergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options?: ReplacingMergeTreeOptions<Columns>,
+    ) {
+      validateReplacingMergeTreeOptions(columns, options, "replacingMergeTree");
+      return createTableSource(
+        columns,
+        options
+          ? { name: "ReplacingMergeTree", finalCapable: true, options }
+          : { name: "ReplacingMergeTree", finalCapable: true },
+      );
     },
-    aggregatingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
-      return createTableSource(columns, { name: "AggregatingMergeTree", finalCapable: true });
+    sharedReplacingMergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options?: SharedReplacingMergeTreeOptions<Columns>,
+    ) {
+      validateReplacingMergeTreeOptions(columns, options, "sharedReplacingMergeTree");
+      return createTableSource(
+        columns,
+        options
+          ? { name: "SharedReplacingMergeTree", finalCapable: true, options }
+          : { name: "SharedReplacingMergeTree", finalCapable: true },
+      );
     },
-    collapsingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
-      return createTableSource(columns, { name: "CollapsingMergeTree", finalCapable: true });
+    summingMergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options?: SummingMergeTreeOptions<Columns>,
+    ) {
+      validateSummingMergeTreeOptions(columns, options, "summingMergeTree");
+      return createTableSource(
+        columns,
+        options
+          ? { name: "SummingMergeTree", finalCapable: true, options }
+          : { name: "SummingMergeTree", finalCapable: true },
+      );
     },
-    versionedCollapsingMergeTree<Columns extends SchemaColumns>(columns: Columns) {
+    aggregatingMergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options?: AggregatingMergeTreeOptions<Columns>,
+    ) {
+      validateMergeTreeOptions(columns, options, "aggregatingMergeTree");
+      return createTableSource(
+        columns,
+        options
+          ? { name: "AggregatingMergeTree", finalCapable: true, options }
+          : { name: "AggregatingMergeTree", finalCapable: true },
+      );
+    },
+    collapsingMergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options: CollapsingMergeTreeOptions<Columns>,
+    ) {
+      validateCollapsingMergeTreeOptions(columns, options, "collapsingMergeTree");
+      return createTableSource(columns, {
+        name: "CollapsingMergeTree",
+        finalCapable: true,
+        options,
+      });
+    },
+    versionedCollapsingMergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options: VersionedCollapsingMergeTreeOptions<Columns>,
+    ) {
+      validateVersionedCollapsingMergeTreeOptions(columns, options, "versionedCollapsingMergeTree");
       return createTableSource(columns, {
         name: "VersionedCollapsingMergeTree",
         finalCapable: true,
+        options,
       });
     },
   },
@@ -259,6 +590,7 @@ export interface NormalizedSchemaSource {
   readonly insertable: boolean;
   readonly finalCapable: boolean;
   readonly columns: Record<string, NormalizedSchemaColumn>;
+  readonly engine?: QuarryEngine;
   readonly query?: SelectQueryNode;
 }
 
@@ -322,14 +654,20 @@ export class SchemaBuilder<Sources extends SchemaDefinition> {
   }
 }
 
-export type SchemaLike = SchemaDefinition | SchemaBuilder<SchemaDefinition>;
+type ResolvableSchemaBuilder = Pick<SchemaBuilder<SchemaDefinition>, "toDefinition">;
+
+export type SchemaLike = SchemaDefinition | ResolvableSchemaBuilder;
 
 export function defineSchema<const S extends BaseSchemaDefinition>(schema: S): SchemaBuilder<S> {
   return new SchemaBuilder(schema);
 }
 
+function isResolvableSchemaBuilder(schema: SchemaLike): schema is ResolvableSchemaBuilder {
+  return typeof (schema as ResolvableSchemaBuilder).toDefinition === "function";
+}
+
 export function resolveSchemaDefinition(schema: SchemaLike): SchemaDefinition {
-  return schema instanceof SchemaBuilder ? schema.toDefinition() : schema;
+  return isResolvableSchemaBuilder(schema) ? schema.toDefinition() : schema;
 }
 
 function normalizeColumns(columns: SchemaColumns): Record<string, NormalizedSchemaColumn> {
@@ -352,6 +690,7 @@ export function normalizeSchema(schemaLike: SchemaLike): NormalizedSchema {
         insertable: true,
         finalCapable: source.engine.finalCapable,
         columns: normalizeColumns(source.columns),
+        engine: source.engine,
       };
       continue;
     }
