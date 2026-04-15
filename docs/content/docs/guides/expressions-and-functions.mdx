@@ -38,6 +38,60 @@ The string `"DateTime"` here is a ClickHouse type name, not a TypeScript type.
 It is the type that ends up inside the `{p0:DateTime}` placeholder in the
 generated SQL.
 
+## Date object behavior
+
+Quarry never auto-deserializes query results into JavaScript `Date` objects.
+Selected `Date`, `DateTime`, and `DateTime64` values still come back as
+`string` under the default JSON formats. The automatic behavior is on the
+input side.
+
+In schema-backed operations, Quarry formats raw JavaScript `Date` values in UTC
+based on the target ClickHouse type:
+
+| Target type | Normalized format |
+| --- | --- |
+| `Date` / `Date32` | `YYYY-MM-DD` |
+| `DateTime` | `YYYY-MM-DD HH:mm:ss` |
+| `DateTime64(p)` | `YYYY-MM-DD HH:mm:ss.<fraction>` |
+
+That automatic formatting applies to:
+
+- schema-backed `insertInto(...).values(...)`
+- schema-backed predicates such as `.where("e.created_at", ">=", new Date(...))`
+
+When Quarry cannot see the target column type, a bare JavaScript `Date`
+defaults to a `DateTime` placeholder. Use `param(date, "Date")`,
+`param(date, "DateTime")`, or `param(date, "DateTime64(3)")` when you want
+exact control over the bound ClickHouse type.
+
+```ts
+import { param } from "@oorestisime/quarry";
+
+await db.insertInto("events").values([
+  {
+    created_at: new Date("2025-01-01T12:34:56.789Z"),
+    event_type: "signup",
+  },
+]);
+
+db
+  .selectFrom("events as e")
+  .where("e.created_at", ">=", new Date("2025-01-01T00:00:00Z"));
+
+db
+  .selectFrom("events as e")
+  .where(
+    "e.created_at",
+    ">=",
+    param(new Date("2025-01-01T00:00:00Z"), "DateTime64(3)"),
+  );
+```
+
+<Callout type="info">
+JavaScript `Date` only carries millisecond precision. If you bind a
+`DateTime64(p)` with `p > 3`, Quarry zero-pads the extra fractional digits.
+</Callout>
+
 ## Type conversion helpers
 
 Common ClickHouse cast functions are exposed under `eb.fn`:

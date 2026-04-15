@@ -18,46 +18,50 @@ export default function HomePage() {
         </p>
         <div className="flex gap-3">
           <Link
-            href="/docs"
+            href="/docs/guides/getting-started"
             className="bg-fd-primary text-fd-primary-foreground rounded-full font-medium px-6 py-2.5 hover:opacity-90 transition"
           >
-            Read the docs
+            Getting started
           </Link>
-          <a
-            href="https://github.com/oorestisime/quarry"
+          <Link
+            href="/docs/reference"
             className="bg-fd-secondary text-fd-secondary-foreground rounded-full font-medium px-6 py-2.5 hover:opacity-90 transition border border-fd-border"
           >
-            GitHub
-          </a>
+            API reference
+          </Link>
         </div>
       </section>
 
-      {/* Feature grid */}
+      {/* Path grid */}
       <section className="px-6 pb-24">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-3 tracking-tight">
-            Built for ClickHouse, not adapted to it
+            Choose your path
           </h2>
           <p className="text-fd-muted-foreground text-center max-w-2xl mx-auto mb-12">
-            Quarry models ClickHouse concepts directly instead of pretending
-            every database behaves like Postgres.
+            The docs are split by the job you are trying to do, not just by
+            the code structure underneath.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Feature
-              title="ClickHouse-first API"
-              description="First-class FINAL, PREWHERE, SETTINGS, and JOIN semantics. No leaky abstractions over a pretend Postgres."
+            <PathCard
+              href="/docs/guides/getting-started"
+              title="Build your first query"
+              description="Start in plain TypeScript mode, connect @clickhouse/client, and run a typed SELECT in a few minutes."
             />
-            <Feature
-              title="Runtime-honest types"
-              description="execute() returns the types your driver actually produces. UInt64 is a string, Decimal is a number, no surprises."
+            <PathCard
+              href="/docs/guides/schema-mode-and-views"
+              title="Use schema mode"
+              description="Add ClickHouse-aware column helpers, engine metadata, query-backed views, and richer runtime information."
             />
-            <Feature
-              title="Type-safe joins and CTEs"
-              description="Column references, aliases, and selected output are all checked against your schema. Subqueries and CTEs contribute their columns to the surrounding scope."
+            <PathCard
+              href="/docs/reference"
+              title="Look up the API"
+              description="Jump straight to SelectQueryBuilder, InsertQueryBuilder, ExpressionBuilder, schema helpers, and live type tables."
             />
-            <Feature
-              title="No ORM, no magic"
-              description="Just a query builder. The compiled SQL is always inspectable via toSQL(). Around 1700 lines of source you can read end-to-end."
+            <PathCard
+              href="/docs/concepts"
+              title="Read the deep dive"
+              description="Understand scope rules, runtime semantics, ClickHouse quirks, and the architecture behind the builder."
             />
           </div>
         </div>
@@ -66,23 +70,24 @@ export default function HomePage() {
       {/* Bottom CTA */}
       <section className="px-6 pb-24">
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-2xl font-bold mb-3">Ready to dig in?</h2>
+          <h2 className="text-2xl font-bold mb-3">Need the deeper model?</h2>
           <p className="text-fd-muted-foreground mb-6">
-            Get started in under five minutes, or read the architecture page
-            to see how it all fits together.
+            Quarry is explicit about ClickHouse behavior. If you want to see
+            where the design is headed or why the semantics look the way they
+            do, the deep-dive docs are the next stop.
           </p>
           <div className="flex gap-3 justify-center">
             <Link
-              href="/docs/guides/getting-started"
+              href="/docs/concepts"
               className="bg-fd-primary text-fd-primary-foreground rounded-full font-medium px-6 py-2.5 hover:opacity-90 transition"
             >
-              Getting started
+              Deep dive
             </Link>
             <Link
-              href="/docs/concepts/architecture"
+              href="/docs/roadmap"
               className="bg-fd-secondary text-fd-secondary-foreground rounded-full font-medium px-6 py-2.5 hover:opacity-90 transition border border-fd-border"
             >
-              Architecture
+              Roadmap
             </Link>
           </div>
         </div>
@@ -91,19 +96,24 @@ export default function HomePage() {
   );
 }
 
-function Feature({
+function PathCard({
+  href,
   title,
   description,
 }: {
+  href: string;
   title: string;
   description: string;
 }) {
   return (
-    <div className="bg-fd-card border border-fd-border rounded-xl p-6 hover:border-fd-primary/40 transition">
+    <Link
+      href={href}
+      className="block bg-fd-card border border-fd-border rounded-xl p-6 hover:border-fd-primary/40 transition"
+    >
       <h3 className="font-semibold text-lg mb-2">{title}</h3>
       <p className="text-fd-muted-foreground leading-relaxed text-sm">
         {description}
       </p>
-    </div>
+    </Link>
   );
 }

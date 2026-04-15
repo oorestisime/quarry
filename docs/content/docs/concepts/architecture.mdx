@@ -44,7 +44,7 @@ for the details.
 The AST is a plain TypeScript data structure. No methods, no inheritance,
 just nested interfaces. The whole thing lives in
 [`src/ast/query.ts`](https://github.com/oorestisime/quarry/blob/main/src/ast/query.ts)
-and is around 110 lines.
+and is around 130 lines.
 
 The top-level node for a select query looks like this:
 
@@ -92,7 +92,7 @@ conditions onto whatever was there before.
 ### 3. Compiler
 
 The compiler is a single pass that walks a `SelectQueryNode` and produces a
-SQL string plus a parameter map. The whole thing is around 170 lines in
+SQL string plus a parameter map. The whole thing is around 210 lines in
 [`src/compiler/query-compiler.ts`](https://github.com/oorestisime/quarry/blob/main/src/compiler/query-compiler.ts).
 
 The two important pieces:
@@ -186,12 +186,12 @@ If you want to understand any of this in more depth, the relevant files are
 small enough to read end-to-end:
 
 - [`src/ast/query.ts`](https://github.com/oorestisime/quarry/blob/main/src/ast/query.ts)
-  &mdash; ~110 lines, the AST node definitions
+  &mdash; ~130 lines, the AST node definitions
 - [`src/compiler/query-compiler.ts`](https://github.com/oorestisime/quarry/blob/main/src/compiler/query-compiler.ts)
-  &mdash; ~170 lines, the compiler
+  &mdash; ~210 lines, the compiler
 - [`src/query/select-query-builder.ts`](https://github.com/oorestisime/quarry/blob/main/src/query/select-query-builder.ts)
-  &mdash; ~630 lines, the select builder (most of it is type-overload bodies)
+  &mdash; ~850 lines, the select builder (most of it is type-overload bodies)
 - [`src/query/expression-builder.ts`](https://github.com/oorestisime/quarry/blob/main/src/query/expression-builder.ts)
-  &mdash; ~270 lines, the expression builder
+  &mdash; ~800 lines, the expression builder (mostly typed `eb.fn.*` surface area)
 
-The whole library is under 1700 lines of source.
+Those four files are roughly 2000 lines together today.

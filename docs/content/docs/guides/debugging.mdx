@@ -1,0 +1,66 @@
+---
+title: Debugging
+description: A short workflow for figuring out whether a Quarry problem is in your builder chain, your SQL, or ClickHouse itself.
+---
+
+When a query is not doing what you expect, keep the debugging order simple.
+
+## 1. Start with `toSQL()`
+
+Look at the SQL Quarry is generating before you debug anything else.
+
+```ts
+const compiled = db
+  .selectFrom("users as u")
+  .select("u.id", "u.email")
+  .where("u.email", "=", "alice@example.com")
+  .toSQL();
+```
+
+If the SQL is wrong, fix the Quarry chain. If the SQL is right, the next step
+is usually to run that SQL directly in ClickHouse.
+
+## 2. Check aliases and selected columns
+
+Most confusing type errors come from scope:
+
+- wrong alias
+- column not projected from a subquery or view
+- column referenced before a join or CTE adds it to scope
+
+If that part feels fuzzy, see
+[Scopes and aliases](/docs/concepts/scopes-and-aliases).
+
+## 3. Make parameter types explicit when needed
+
+If the query shape is right but the value type is wrong, use `param(...)`
+instead of relying on inference.
+
+Common examples:
+
+- `param(date, "DateTime")`
+- `param(value, "UInt64")`
+- `param(null, "Nullable(String)")`
+
+For `null`, use `whereNull(...)` / `whereNotNull(...)` unless you specifically
+need a typed nullable parameter.
+
+## 4. Use `toAST()` only when you need deeper inspection
+
+`toAST()` is mostly for tooling, tests, or deeper inspection of how Quarry
+structured the query.
+
+```ts
+const ast = db
+  .selectFrom("users as u")
+  .select("u.id")
+  .where("u.email", "!=", "")
+  .toAST();
+```
+
+## Short version
+
+1. Check `toSQL()`.
+2. Verify aliases and projected columns.
+3. Make parameter types explicit with `param(...)` when inference is not enough.
+4. If the SQL is fine, debug it as a ClickHouse query.

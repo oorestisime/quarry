@@ -1,0 +1,49 @@
+---
+title: Performance
+description: What Quarry does and does not do for query performance.
+---
+
+Quarry is a query builder. It does not add its own performance layer on top of
+ClickHouse.
+
+That means Quarry does **not**:
+
+- optimize your schema
+- rewrite queries for speed
+- infer `PREWHERE`
+- decide when `FINAL` is appropriate
+- choose insert batch sizes for you
+- tune server settings automatically
+
+Quarry mostly gives you typed access to the SQL features ClickHouse already has.
+
+## What this means in practice
+
+For performance work, use the same judgment you would use with handwritten
+ClickHouse SQL.
+
+Typical ClickHouse performance concerns still apply:
+
+- schema design
+- partitioning and sort keys
+- filtering strategy, including `PREWHERE` vs `WHERE`
+- whether `FINAL` is necessary
+- aggregation memory use, including functions such as `groupArray(...)`
+- insert batch sizing
+- query settings such as `max_threads`
+
+## Quarry's role
+
+Quarry can help you inspect the final SQL with `toSQL()`, but it does not try
+to be an optimizer.
+
+```ts
+const compiled = db
+  .selectFrom("event_logs as e")
+  .select("e.user_id")
+  .where("e.event_type", "=", "signup")
+  .toSQL();
+```
+
+If performance matters, inspect the SQL Quarry produced and then apply normal
+ClickHouse performance analysis to that query.

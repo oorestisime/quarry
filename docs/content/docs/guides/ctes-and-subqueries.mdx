@@ -23,8 +23,56 @@ const rows = await db
   .execute();
 ```
 
-`db.with` returns a new `db` value with the CTE in scope. You can chain
-multiple `.with` calls to define more than one CTE.
+`db.with(...)` returns a **new** `db` value with that CTE in scope. The
+original `db` is unchanged.
+
+```ts
+const withActiveUsers = db.with("active_users", (db) =>
+  db
+    .selectFrom("event_logs as e")
+    .select("e.user_id")
+    .where("e.event_type", "=", "signup")
+    .groupBy("e.user_id"),
+);
+
+withActiveUsers.selectFrom("active_users as au").select("au.user_id");
+
+// type error: the original `db` does not have the CTE in scope
+db.selectFrom("active_users as au");
+```
+
+You can chain multiple `.with(...)` calls, and later CTEs can reference earlier
+ones from the same chain:
+
+```ts
+const rows = await db
+  .with("active_users", (db) =>
+    db
+      .selectFrom("event_logs as e")
+      .select("e.user_id")
+      .where("e.event_type", "=", "signup")
+      .groupBy("e.user_id"),
+  )
+  .with("active_user_emails", (db) =>
+    db
+      .selectFrom("active_users as au")
+      .innerJoin("users as u", "u.id", "au.user_id")
+      .select("u.id", "u.email"),
+  )
+  .selectFrom("active_user_emails as aue")
+  .select("aue.id", "aue.email")
+  .execute();
+```
+
+Each callback receives a fresh `db` value for building that CTE query. That
+keeps each CTE definition self-contained rather than mutating the outer query
+builder in place.
+
+<Callout type="warn">
+Prefer unique CTE names instead of reusing real table or view names. Quarry's
+type and schema metadata are much clearer when CTE names do not collide with
+existing sources.
+</Callout>
 
 ## Subqueries in `WHERE`
 

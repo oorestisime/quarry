@@ -293,6 +293,12 @@ as `string`, decimals come back as `number`, dates come back as `string`.
 (inclusive). `scale` for `toDecimal64` must be `0..18`, and for
 `toDecimal128` must be `0..38`. Out-of-range values throw at build time.
 
+<Callout type="info">
+`eb.fn.toDecimal64(...)` and `eb.fn.toDecimal128(...)` are cast helpers for
+query expressions. They do not define schema columns, and Quarry does not yet
+export `Decimal*` helpers for `defineSchema(...)`.
+</Callout>
+
 ```ts
 db
   .selectFrom("event_logs as e")

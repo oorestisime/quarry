@@ -1,15 +1,37 @@
 ---
-title: Guides
-description: Task-oriented guides for building queries with Quarry.
+title: Overview
+description: Task-oriented guides for using Quarry.
 ---
 
-These guides walk through the parts of the Quarry API in the order you tend to
-reach for them when building real queries.
+Pick the job you want to do.
 
-- [Getting started](/docs/guides/getting-started)
-- [Schema mode and views](/docs/guides/schema-mode-and-views)
-- [Expressions and functions](/docs/guides/expressions-and-functions)
-- [Joins](/docs/guides/joins)
-- [CTEs and subqueries](/docs/guides/ctes-and-subqueries)
-- [Grouping, aggregation, and ordering](/docs/guides/aggregations)
-- [Inserts](/docs/guides/inserts)
+## Start here
+
+- [Getting started](/docs/guides/getting-started) &mdash; install Quarry, create
+  a typed `db`, run a first query, and inspect `toSQL()`.
+- [Schema mode and views](/docs/guides/schema-mode-and-views) &mdash; use column
+  helpers, engine-aware table metadata, and query-backed views.
+
+## Read queries
+
+- [Expressions and functions](/docs/guides/expressions-and-functions) &mdash;
+  parameters, casts, date handling, array helpers, string helpers, and
+  `eb.fn.*` patterns.
+- [Joins](/docs/guides/joins) &mdash; type-safe joins, joined `FINAL` sources,
+  and subquery joins.
+- [CTEs and subqueries](/docs/guides/ctes-and-subqueries) &mdash; stage reusable
+  subqueries with `with(...)` and nested `selectFrom(...)` calls.
+- [Grouping, aggregation, and ordering](/docs/guides/aggregations) &mdash;
+  aggregation helpers, `PREWHERE`, ordering, and settings.
+
+## Write data
+
+- [Inserts](/docs/guides/inserts) &mdash; batch inserts, typed target columns,
+  and `INSERT INTO ... SELECT`.
+
+## Troubleshooting
+
+- [Debugging](/docs/guides/debugging) &mdash; inspect SQL, understand common
+  errors, and separate scope problems from runtime problems.
+- [Performance](/docs/guides/performance) &mdash; what Quarry does and does not
+  do for query performance.

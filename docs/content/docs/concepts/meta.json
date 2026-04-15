@@ -1,6 +1,6 @@
 {
-  "title": "Concepts",
-  "description": "How Quarry thinks about ClickHouse and TypeScript",
+  "title": "Deep Dive",
+  "description": "How Quarry maps ClickHouse behavior into TypeScript types and query builder semantics",
   "pages": [
     "index",
     "approach",

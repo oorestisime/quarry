@@ -1,29 +1,43 @@
 ---
-title: Introduction
-description: Quarry is an experimental ClickHouse-native query builder for TypeScript.
+title: Start Here
+description: Choose the right path through Quarry depending on whether you want to build a query, model schema metadata, or understand the deeper semantics.
 ---
 
 Quarry is a **query builder first**. It is not trying to be an ORM, and it is
 not trying to hide ClickHouse behind a generic multi-dialect SQL abstraction.
 
-This package is currently in early alpha. The current API is already validated
+## Pick a path
+
+- [Build your first query](/docs/guides/getting-started) &mdash; start in plain
+  TypeScript mode, connect `@clickhouse/client`, and run a typed `SELECT`.
+- [Use schema mode](/docs/guides/schema-mode-and-views) &mdash; add ClickHouse-aware
+  column helpers, engine metadata, and query-backed views.
+- [Look up the exact API](/docs/reference) &mdash; jump straight to builder methods,
+  schema helpers, and type-driven reference material.
+- [Read the deep-dive docs](/docs/concepts) &mdash; understand runtime semantics,
+  scope rules, ClickHouse quirks, and the architecture behind the builder.
+
+## Common jobs
+
+- [Expressions and functions](/docs/guides/expressions-and-functions) &mdash; use
+  `param(...)`, `eb.fn.*`, casts, date helpers, and predicate callbacks.
+- [Joins](/docs/guides/joins) &mdash; inner joins, left joins, joined `FINAL`
+  sources, and joining subqueries.
+- [CTEs and subqueries](/docs/guides/ctes-and-subqueries) &mdash; reusable query
+  fragments and nested selects.
+- [Grouping and aggregation](/docs/guides/aggregations) &mdash; `GROUP BY`,
+  `HAVING`, `PREWHERE`, aggregates, and query settings.
+- [Inserts](/docs/guides/inserts) &mdash; batch inserts and `INSERT INTO ... SELECT`.
+- [Debugging](/docs/guides/debugging) &mdash; inspect `toSQL()`, read common
+  errors, and use `toAST()` when the SQL is not enough.
+- [Performance](/docs/guides/performance) &mdash; practical guidance for
+  `PREWHERE`, `FINAL`, batch sizing, `groupArray(...)`, and `max_threads`.
+
+## Status
+
+This package is still in early alpha. The current API is already validated
 against a real ClickHouse instance in integration tests, but the surface may
 still change before a stable release.
 
-## What it covers today
-
-- typed selects and inserts, including `INSERT INTO ... SELECT`
-- joins, subqueries, and CTEs
-- `FINAL`, `PREWHERE`, `GROUP BY`, and `HAVING`
-- `toSQL()` and `execute()`
-- plain TypeScript mode and richer schema mode
-- staged query-backed schema views
-
-## Where to start
-
-- [Approach](/docs/concepts/approach) &mdash; what Quarry is and is not
-- [Getting Started](/docs/guides/getting-started) &mdash; install and run your
-  first query
-- [Schema mode and views](/docs/guides/schema-mode-and-views) &mdash; define
-  ClickHouse-aware tables and query-backed views
-- [Roadmap](/docs/roadmap) &mdash; what is likely to land next
+- [Roadmap](/docs/roadmap) &mdash; what is likely to land next, and what is still
+  intentionally out of scope.

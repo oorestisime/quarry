@@ -43,6 +43,31 @@ const schema = defineSchema({
 The table helpers are explicit about engine families. That matters for things
 like `FINAL`.
 
+For the full column helper matrix, see the
+[schema column types reference](/docs/reference/schema-types).
+
+### Table engine helpers
+
+These helpers do not generate DDL. They attach engine metadata inside Quarry,
+which today mainly affects whether `.final()` is allowed on that source.
+
+| Helper | Engine metadata | `.final()` in Quarry | Typical use |
+| --- | --- | --- | --- |
+| `table({...})` | `Table` (engine-unspecified) | No | Schema typing and insert normalization without modeling a specific engine family. |
+| `table.memory({...})` | `Memory` | No | In-memory scratch or test tables. |
+| `table.mergeTree({...})` | `MergeTree` | No | Plain MergeTree table metadata. |
+| `table.replacingMergeTree({...})` | `ReplacingMergeTree` | Yes | Deduplicated or last-write-wins style tables. |
+| `table.summingMergeTree({...})` | `SummingMergeTree` | Yes | Pre-aggregated numeric rollups. |
+| `table.aggregatingMergeTree({...})` | `AggregatingMergeTree` | Yes | Aggregate-state tables. |
+| `table.collapsingMergeTree({...})` | `CollapsingMergeTree` | Yes | Sign-based collapsing rows. |
+| `table.versionedCollapsingMergeTree({...})` | `VersionedCollapsingMergeTree` | Yes | Collapsing rows that also carry a version. |
+
+<Callout type="info">
+In schema mode, Quarry currently allows `.final()` only for the helpers marked
+"Yes" above. `table(...)`, `table.memory(...)`, and `table.mergeTree(...)`
+are treated as not `FINAL`-capable.
+</Callout>
+
 ## Add query-backed views
 
 Views are staged after the base tables so that the `db` inside the callback
@@ -147,6 +172,14 @@ const schema = defineSchema({
 }));
 ```
 
+## Common errors
+
+| Error message | What it means | How to fix it |
+| --- | --- | --- |
+| `Source 'X' is not insertable.` | You called `db.insertInto("X")` for a schema source that is selectable but not insertable, such as a query-backed view. | Insert into the underlying base table instead of the view. |
+| `FINAL is not supported for source 'X'.` | You called `.final()` on a source Quarry does not mark as `FINAL`-capable. | Use `FINAL` only on sources declared with a `table.*` helper that Quarry marks as `FINAL`-capable, or remove `.final()`. |
+| `Unable to infer selectable columns for view 'X'. Ensure the view query only selects expressions with known schema metadata.` | Quarry could not determine the view's output column metadata from the query passed to `view.as(...)`. | Prefer direct column refs, `selectAll(...)`, or aliased typed expressions such as `eb.fn.toString(...).as("...")`. Avoid building a view entirely from raw SQL expressions with no inferred output metadata. |
+
 ## Current limits
 
 Schema-backed views are still early. Today Quarry supports a useful first pass
@@ -159,7 +192,14 @@ The broad rule is:
 - common cast/date/string/aggregate helpers work well
 - more unusual expressions may need more inference support later
 
-Decimal schema helpers are also intentionally deferred for now.
+Decimal schema helpers are also intentionally deferred for now. That only
+affects schema declaration: Quarry does not yet export `Decimal*` column
+helpers for `defineSchema(...)`.
+
+You can still cast expressions to decimal values with
+[`eb.fn.toDecimal64(...)`](/docs/reference/expressions#type-conversions) and
+`eb.fn.toDecimal128(...)`. Those are query-time cast helpers, not schema
+column types.
 
 The reason is not the input side. ClickHouse accepts decimal strings on insert
 just fine. The harder question is read semantics.
