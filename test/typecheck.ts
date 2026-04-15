@@ -1,12 +1,20 @@
 import {
   Array as CHArray,
   Date as CHDate,
+  Date32,
   DateTime,
   DateTime64,
+  FixedString,
+  IPv4,
+  IPv6,
   Nullable,
+  LowCardinality,
   String as CHString,
+  UInt8,
+  UInt16,
   UInt32,
   UInt64,
+  UUID,
   createClickHouseDB,
   defineSchema,
   param,
@@ -15,6 +23,8 @@ import {
   type ClickHouseInsertResult,
   type InferResult,
   view,
+  Int8,
+  Int16,
 } from "../src";
 
 interface TypecheckDB {
@@ -999,8 +1009,24 @@ const richerSchema = defineSchema({
   }),
 });
 
+const scalarSchema = defineSchema({
+  schema_scalar_samples: table({
+    tiny_u8: UInt8(),
+    small_u16: UInt16(),
+    tiny_i8: Int8(),
+    small_i16: Int16(),
+    event_date32: Date32(),
+    code: FixedString(8),
+    account_uuid: UUID(),
+    client_ipv4: IPv4(),
+    client_ipv6: IPv6(),
+    category: LowCardinality(CHString()),
+  }),
+});
+
 const schemaDb = createClickHouseDB({ schema, client });
 const richerSchemaDb = createClickHouseDB({ schema: richerSchema, client });
+const scalarSchemaDb = createClickHouseDB({ schema: scalarSchema, client });
 const schemaQuery = schemaDb
   .selectFrom("users as u")
   .select("u.id", "u.email", "u.created_at")
@@ -1036,11 +1062,30 @@ const richerSchemaQuery = richerSchemaDb
   .where("s.total_count", "in", ["1", "2"])
   .where("s.event_time", ">=", param(new Date("2025-01-01T12:00:00.000Z"), "DateTime"))
   .orderBy("s.id", "asc");
+const scalarSchemaQuery = scalarSchemaDb
+  .selectFrom("schema_scalar_samples as s")
+  .select(
+    "s.tiny_u8",
+    "s.small_u16",
+    "s.tiny_i8",
+    "s.small_i16",
+    "s.event_date32",
+    "s.code",
+    "s.account_uuid",
+    "s.client_ipv4",
+    "s.client_ipv6",
+    "s.category",
+  )
+  .where("s.tiny_u8", "=", 7)
+  .where("s.event_date32", ">=", new Date("2025-01-01T00:00:00.000Z"))
+  .where("s.category", "=", "premium")
+  .orderBy("s.tiny_u8", "asc");
 type SchemaRow = InferResult<typeof schemaQuery>;
 type InheritedViewRow = InferResult<typeof inheritedViewQuery>;
 type AggregateViewRow = InferResult<typeof aggregateViewQuery>;
 type FormattedViewRow = InferResult<typeof formattedViewQuery>;
 type RicherSchemaRow = InferResult<typeof richerSchemaQuery>;
+type ScalarSchemaRow = InferResult<typeof scalarSchemaQuery>;
 const validSchemaRow: SchemaRow = {
   id: 1,
   email: "alice@example.com",
@@ -1085,6 +1130,18 @@ const validRicherSchemaRow: RicherSchemaRow = {
   event_dates: ["2025-01-01", "2025-01-02"],
   created_history: ["2025-01-01 12:00:00.123"],
 };
+const validScalarSchemaRow: ScalarSchemaRow = {
+  tiny_u8: 7,
+  small_u16: 512,
+  tiny_i8: -3,
+  small_i16: -1024,
+  event_date32: "2025-01-01",
+  code: "ABCDEFGH",
+  account_uuid: "550e8400-e29b-41d4-a716-446655440000",
+  client_ipv4: "127.0.0.1",
+  client_ipv6: "::1",
+  category: "premium",
+};
 const schemaInsertResultPromise: Promise<ClickHouseInsertResult> = schemaDb
   .insertInto("users")
   .values([
@@ -1111,15 +1168,34 @@ const richerSchemaInsertResultPromise: Promise<ClickHouseInsertResult> = richerS
     },
   ])
   .execute();
+const scalarSchemaInsertResultPromise: Promise<ClickHouseInsertResult> = scalarSchemaDb
+  .insertInto("schema_scalar_samples")
+  .values([
+    {
+      tiny_u8: 7,
+      small_u16: 512,
+      tiny_i8: -3,
+      small_i16: -1024,
+      event_date32: new Date("2025-01-01T00:00:00.000Z"),
+      code: "ABCDEFGH",
+      account_uuid: "550e8400-e29b-41d4-a716-446655440000",
+      client_ipv4: "127.0.0.1",
+      client_ipv6: "::1",
+      category: "premium",
+    },
+  ])
+  .execute();
 
 void validSchemaRow;
 void validInheritedViewRow;
 void validAggregateViewRow;
 void validFormattedViewRow;
 void validRicherSchemaRow;
+void validScalarSchemaRow;
 void invalidAggregateViewRow;
 void schemaInsertResultPromise;
 void richerSchemaInsertResultPromise;
+void scalarSchemaInsertResultPromise;
 
 // @ts-expect-error views are not insertable
 schemaDb.insertInto("final_users");
@@ -1158,6 +1234,15 @@ richerSchemaDb.selectFrom("schema_runtime_samples as s").where("s.note", "=", 1)
 
 // @ts-expect-error DateTime columns should not accept numeric predicate values
 richerSchemaDb.selectFrom("schema_runtime_samples as s").where("s.event_time", "=", 1);
+
+// @ts-expect-error UInt8 columns should stay numeric
+scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.tiny_u8", "=", "7");
+
+// @ts-expect-error Date32 columns should not accept numeric predicate values
+scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.event_date32", "=", 1);
+
+// @ts-expect-error low cardinality string columns should not accept numeric predicate values
+scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.category", "=", 1);
 
 richerSchemaDb.insertInto("schema_runtime_samples").values([
   {

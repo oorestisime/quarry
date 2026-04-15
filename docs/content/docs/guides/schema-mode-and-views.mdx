@@ -158,3 +158,17 @@ The broad rule is:
 - direct refs and `selectAll` work well
 - common cast/date/string/aggregate helpers work well
 - more unusual expressions may need more inference support later
+
+Decimal schema helpers are also intentionally deferred for now.
+
+The reason is not the input side. ClickHouse accepts decimal strings on insert
+just fine. The harder question is read semantics.
+
+Under `JSONEachRow`, decimal columns currently come back through the driver as
+JavaScript `number` values in the cases Quarry has validated. That is
+convenient for moderate values, but it can lose precision for large decimals.
+
+So a future decimal helper should probably wait until Quarry decides whether it
+is willing to make schema-aware select rewrites for runtime honesty. For
+example, a schema that wants decimal values as strings may need selected columns
+to compile as `toString(amount) AS amount`, not just change the TypeScript type.

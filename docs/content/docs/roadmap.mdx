@@ -81,6 +81,11 @@ The next schema work should focus on:
 - adding a local expression annotation escape hatch only where inference is not enough
 - keeping plain query-only usage lightweight alongside schema mode
 
+One specific deferred area is decimal schema helpers. Quarry has validated that
+ClickHouse accepts decimal strings on input, but a coherent schema-level
+`string` mode for decimals would likely require schema-aware select rewriting in
+order to stay runtime-honest under `JSONEachRow`.
+
 ## 4. Introspection and migrations
 
 Schema work should eventually lead to:

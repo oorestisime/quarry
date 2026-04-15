@@ -188,6 +188,10 @@ runtime type of every column is whatever `@clickhouse/client` produces under
 that format. That is why `UInt64` and `count()` come back as `string`,
 `DateTime64` comes back as `string`, and `Decimal` comes back as `number`.
 
+That last detail is important: for larger or higher-precision decimals,
+returning a JavaScript `number` can lose precision even if ClickHouse stored the
+exact decimal value correctly.
+
 If you fetch the same query through a different format, the runtime types
 will be different and Quarry's typed result will lie. The library is built
 around `JSONEachRow` and that is the only format it currently supports.

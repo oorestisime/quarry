@@ -79,6 +79,14 @@ export function Bool(): QuarryColumn<boolean> {
   return createColumn("Bool");
 }
 
+export function UInt8(): QuarryColumn<number> {
+  return createColumn("UInt8");
+}
+
+export function UInt16(): QuarryColumn<number> {
+  return createColumn("UInt16");
+}
+
 export function UInt32(): QuarryColumn<number> {
   return createColumn("UInt32");
 }
@@ -89,6 +97,14 @@ export function UInt64(): QuarryColumn<string, string | number | bigint, string 
 
 export function Int32(): QuarryColumn<number> {
   return createColumn("Int32");
+}
+
+export function Int8(): QuarryColumn<number> {
+  return createColumn("Int8");
+}
+
+export function Int16(): QuarryColumn<number> {
+  return createColumn("Int16");
 }
 
 export function Int64(): QuarryColumn<string, string | number | bigint, string | number | bigint> {
@@ -107,6 +123,10 @@ export function Date(): QuarryColumn<string, string | globalThis.Date, string | 
   return createColumn("Date");
 }
 
+export function Date32(): QuarryColumn<string, string | globalThis.Date, string | globalThis.Date> {
+  return createColumn("Date32");
+}
+
 export function DateTime(): QuarryColumn<string, string | globalThis.Date, string | globalThis.Date> {
   return createColumn("DateTime");
 }
@@ -123,10 +143,32 @@ export function Nullable<Select, Insert, Where>(
   return createColumn(`Nullable(${inner.clickhouseType})`);
 }
 
+export function LowCardinality<Select, Insert, Where>(
+  inner: QuarryColumn<Select, Insert, Where>,
+): QuarryColumn<Select, Insert, Where> {
+  return createColumn(`LowCardinality(${inner.clickhouseType})`);
+}
+
 export function Array<Select, Insert, Where>(
   inner: QuarryColumn<Select, Insert, Where>,
 ): QuarryColumn<Select[], Insert[], Where[]> {
   return createColumn(`Array(${inner.clickhouseType})`);
+}
+
+export function FixedString(length: number): QuarryColumn<string> {
+  return createColumn(`FixedString(${length})`);
+}
+
+export function UUID(): QuarryColumn<string> {
+  return createColumn("UUID");
+}
+
+export function IPv4(): QuarryColumn<string> {
+  return createColumn("IPv4");
+}
+
+export function IPv6(): QuarryColumn<string> {
+  return createColumn("IPv6");
 }
 
 function createTableSource<Columns extends SchemaColumns>(
@@ -350,6 +392,10 @@ export function normalizeClickHouseInputValue(value: unknown, clickhouseType: st
     return value;
   }
 
+  if (clickhouseType.startsWith("LowCardinality(") && clickhouseType.endsWith(")")) {
+    return normalizeClickHouseInputValue(value, clickhouseType.slice("LowCardinality(".length, -1));
+  }
+
   if (clickhouseType.startsWith("Nullable(") && clickhouseType.endsWith(")")) {
     return normalizeClickHouseInputValue(value, clickhouseType.slice("Nullable(".length, -1));
   }
@@ -367,6 +413,10 @@ export function normalizeClickHouseInputValue(value: unknown, clickhouseType: st
 
   if (value instanceof globalThis.Date) {
     if (clickhouseType === "Date") {
+      return formatDateValue(value);
+    }
+
+    if (clickhouseType === "Date32") {
       return formatDateValue(value);
     }
 
