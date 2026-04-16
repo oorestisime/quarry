@@ -72,6 +72,7 @@ interface TypecheckDB {
 }
 
 const db = createClickHouseDB<TypecheckDB>();
+const codecColumn = Nullable(CHString().codec(["ZSTD(1)"]));
 
 const client: ClickHouseClient = {
   query: async () => ({
@@ -1295,6 +1296,7 @@ void invalidAggregateViewRow;
 void schemaInsertResultPromise;
 void richerSchemaInsertResultPromise;
 void scalarSchemaInsertResultPromise;
+void codecColumn;
 
 // @ts-expect-error views are not insertable
 schemaDb.insertInto("final_users");
@@ -1304,6 +1306,9 @@ schemaDb.table("final_users");
 
 // @ts-expect-error UInt32 predicates should stay numeric
 schemaDb.selectFrom("users as u").where("u.id", "=", "1");
+
+// @ts-expect-error codec arrays must include at least one value
+CHString().codec([]);
 
 table.mergeTree(
   {

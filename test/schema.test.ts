@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   Date as CHDate,
   DateTime64,
+  Nullable,
   String as CHString,
   UInt8,
   UInt32,
@@ -53,7 +54,8 @@ const engineSchema = defineSchema({
   shared_merge_events: table.sharedMergeTree(
     {
       id: UInt32(),
-      created_at: DateTime64(3),
+      created_at: DateTime64(3).codec(["DoubleDelta", "ZSTD"]),
+      note: Nullable(CHString().codec(["ZSTD(1)"])),
     },
     {
       orderBy: ["id"],
@@ -236,6 +238,16 @@ describe("schema-first mode", () => {
       },
     });
 
+    expect(normalized.shared_merge_events.columns.created_at).toEqual({
+      clickhouseType: "DateTime64(3)",
+      codecs: ["DoubleDelta", "ZSTD"],
+    });
+
+    expect(normalized.shared_merge_events.columns.note).toEqual({
+      clickhouseType: "Nullable(String)",
+      codecs: ["ZSTD(1)"],
+    });
+
     expect(normalized.shared_replacing_events.engine).toEqual({
       name: "SharedReplacingMergeTree",
       finalCapable: true,
@@ -305,6 +317,10 @@ describe("schema-first mode", () => {
         },
       ),
     ).toThrow("Unknown column 'missing' in replacingMergeTree.versionBy.");
+
+    expect(() => CHString().codec([] as never)).toThrow("codec() must include at least one codec.");
+
+    expect(() => CHString().codec([" "])).toThrow("codec() entries must be non-empty strings.");
 
     expect(() =>
       table.collapsingMergeTree(

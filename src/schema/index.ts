@@ -12,6 +12,8 @@ export interface QuarryColumn<Select, Insert = Select, Where = Select> {
   readonly __insertType?: Insert;
   readonly __whereType?: Where;
   readonly clickhouseType: string;
+  readonly codecs?: NonEmptyList<string>;
+  codec(codecs: NonEmptyList<string>): QuarryColumn<Select, Insert, Where>;
 }
 
 export type SchemaColumns = Record<string, QuarryColumn<any, any, any>>;
@@ -144,6 +146,7 @@ export type QuarryEngine =
 
 export interface NormalizedSchemaColumn {
   readonly clickhouseType: string;
+  readonly codecs?: NonEmptyList<string>;
 }
 
 export interface QuarryTableSource<Columns extends SchemaColumns> {
@@ -182,12 +185,40 @@ type QueryViewDefinitions = Record<
   QuarryQueryViewSource<SelectQueryBuilder<any, any, any, any>, SchemaColumns>
 >;
 
+interface QuarryColumnMetadata {
+  readonly codecs?: NonEmptyList<string>;
+}
+
+function normalizeColumnCodecs(codecs: readonly string[]): NonEmptyList<string> {
+  if (codecs.length === 0) {
+    throw new Error("codec() must include at least one codec.");
+  }
+
+  const normalized = codecs.map((codec) => codec.trim());
+
+  for (const codec of normalized) {
+    if (codec.length === 0) {
+      throw new Error("codec() entries must be non-empty strings.");
+    }
+  }
+
+  return normalized as unknown as NonEmptyList<string>;
+}
+
 function createColumn<Select, Insert = Select, Where = Select>(
   clickhouseType: string,
+  metadata: QuarryColumnMetadata = {},
 ): QuarryColumn<Select, Insert, Where> {
   return {
     __quarryColumn: true,
     clickhouseType,
+    ...(metadata.codecs ? { codecs: metadata.codecs } : {}),
+    codec(codecs: NonEmptyList<string>) {
+      return createColumn<Select, Insert, Where>(clickhouseType, {
+        ...metadata,
+        codecs: normalizeColumnCodecs(codecs),
+      });
+    },
   };
 }
 
@@ -264,19 +295,25 @@ export function DateTime64(
 export function Nullable<Select, Insert, Where>(
   inner: QuarryColumn<Select, Insert, Where>,
 ): QuarryColumn<Select | null, Insert | null, Where | null> {
-  return createColumn(`Nullable(${inner.clickhouseType})`);
+  return createColumn(`Nullable(${inner.clickhouseType})`, {
+    codecs: inner.codecs,
+  });
 }
 
 export function LowCardinality<Select, Insert, Where>(
   inner: QuarryColumn<Select, Insert, Where>,
 ): QuarryColumn<Select, Insert, Where> {
-  return createColumn(`LowCardinality(${inner.clickhouseType})`);
+  return createColumn(`LowCardinality(${inner.clickhouseType})`, {
+    codecs: inner.codecs,
+  });
 }
 
 export function Array<Select, Insert, Where>(
   inner: QuarryColumn<Select, Insert, Where>,
 ): QuarryColumn<Select[], Insert[], Where[]> {
-  return createColumn(`Array(${inner.clickhouseType})`);
+  return createColumn(`Array(${inner.clickhouseType})`, {
+    codecs: inner.codecs,
+  });
 }
 
 export function FixedString(length: number): QuarryColumn<string> {
@@ -674,7 +711,10 @@ function normalizeColumns(columns: SchemaColumns): Record<string, NormalizedSche
   return Object.fromEntries(
     Object.entries(columns).map(([name, column]) => [
       name,
-      { clickhouseType: column.clickhouseType },
+      {
+        clickhouseType: column.clickhouseType,
+        ...(column.codecs ? { codecs: column.codecs } : {}),
+      },
     ]),
   );
 }

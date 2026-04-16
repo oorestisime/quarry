@@ -10,5 +10,6 @@
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "test", "queries", "vitest.config.ts", "vitest.integration.config.ts"]
+  "include": ["src", "test", "queries", "vitest.config.ts", "vitest.integration.config.ts"],
+  "exclude": ["test/introspect/fixtures/**/*"]
 }
