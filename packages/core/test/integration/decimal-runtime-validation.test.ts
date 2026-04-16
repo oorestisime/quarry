@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createClickHouseDB } from "../../src";
+import { Decimal, createClickHouseDB, defineSchema, table } from "../../src";
 import { startClickHouse, stopClickHouse, type ClickHouseTestContext } from "./clickhouse";
 
 interface DecimalRuntimeDB {
@@ -11,6 +11,15 @@ interface DecimalRuntimeDB {
 }
 
 const db = createClickHouseDB<DecimalRuntimeDB>();
+const schemaDb = createClickHouseDB({
+  schema: defineSchema({
+    decimal_runtime_samples: table({
+      id: Decimal(9, 0),
+      amount_d18: Decimal(18, 2),
+      amount_d38: Decimal(38, 4),
+    }),
+  }),
+});
 
 let context: ClickHouseTestContext | undefined;
 
@@ -76,6 +85,39 @@ describe("decimal runtime validation", () => {
       },
     ]);
 
+    expect(typeof rows[0].amount_d18).toBe("number");
+    expect(typeof rows[0].amount_d38).toBe("number");
+  });
+
+  it("supports schema-mode Decimal inserts and predicates", async () => {
+    await schemaDb
+      .insertInto("decimal_runtime_samples")
+      .values([
+        {
+          id: 2,
+          amount_d18: "123.45",
+          amount_d38: "9876.5432",
+        },
+      ])
+      .execute(getContext().client);
+
+    const rows = await schemaDb
+      .selectFrom("decimal_runtime_samples as d")
+      .selectAll()
+      .where("d.amount_d18", "=", "123.45")
+      .where("d.amount_d38", "=", 9876.5432)
+      .orderBy("d.id", "asc")
+      .execute(getContext().client);
+
+    expect(rows).toEqual([
+      {
+        id: 2,
+        amount_d18: 123.45,
+        amount_d38: 9876.5432,
+      },
+    ]);
+
+    expect(typeof rows[0].id).toBe("number");
     expect(typeof rows[0].amount_d18).toBe("number");
     expect(typeof rows[0].amount_d38).toBe("number");
   });

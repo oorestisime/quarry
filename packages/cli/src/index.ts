@@ -2,7 +2,15 @@
 
 import { defineCommand, runMain } from "citty";
 import process from "node:process";
-import { introspectDatabase, writeSchemaModule } from "./introspect";
+import {
+  formatIntrospectionFailureReport,
+  introspectDatabase,
+  writeSchemaModule,
+} from "./introspect";
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 const introspectCommand = defineCommand({
   meta: {
@@ -32,17 +40,35 @@ const introspectCommand = defineCommand({
       alias: "o",
       description: "Write the generated module to a file instead of stdout.",
     },
+    tablesOnly: {
+      type: "boolean",
+      description:
+        "Only introspect table-like objects and skip views, dictionaries, and materialized views.",
+    },
   },
   async run({ args }) {
-    const source = await introspectDatabase(args);
+    try {
+      const result = await introspectDatabase(args);
 
-    if (args.out) {
-      await writeSchemaModule(source, args.out);
-      process.stderr.write(`Wrote Quarry schema to ${args.out}\n`);
-      return;
+      if (args.out) {
+        await writeSchemaModule(result.source, args.out);
+        process.stderr.write(`Wrote Quarry schema to ${args.out}\n`);
+      } else {
+        process.stdout.write(result.source);
+      }
+
+      if (result.failures.length > 0) {
+        const report = `${formatIntrospectionFailureReport(result.failures)}\n`;
+        if (args.out) {
+          process.stdout.write(report);
+        } else {
+          process.stderr.write(`\n WARN  ${report}`);
+        }
+      }
+    } catch (error) {
+      process.stderr.write(`\n ERROR  ${getErrorMessage(error)}\n`);
+      process.exitCode = 1;
     }
-
-    process.stdout.write(source);
   },
 });
 

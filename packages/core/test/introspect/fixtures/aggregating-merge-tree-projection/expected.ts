@@ -23,7 +23,7 @@ export const schema = defineSchema({
 }).views((db) => ({
   aggregate_state_labels: view.as(
     db
-      .selectFrom("aggregate_state_samples as t0")
-      .selectExpr((eb) => ["t0.account_id", eb.fn.lower("t0.segment").as("segment_lower")]),
+      .selectFrom("aggregate_state_samples")
+      .selectExpr((eb) => ["account_id", eb.fn.lower("segment").as("segment_lower")]),
   ),
 }));

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import process from "node:process";
 import { createClient } from "@clickhouse/client";
-import { generateSchemaModuleFromDDL } from "@oorestisime/quarry/introspection";
+import { generateSchemaModuleFromDDL } from "../../core/src/introspection/index";
 
 export interface IntrospectArgs {
   readonly url?: string;
@@ -11,6 +11,7 @@ export interface IntrospectArgs {
   readonly password?: string;
   readonly database?: string;
   readonly out?: string;
+  readonly tablesOnly?: boolean;
 }
 
 export interface IntrospectionConnectionOptions {
@@ -26,11 +27,24 @@ export interface IntrospectionObject {
   readonly createTableQuery: string;
 }
 
+export interface IntrospectionFailure {
+  readonly name: string;
+  readonly engine: string;
+  readonly message: string;
+}
+
+export interface IntrospectionResult {
+  readonly source: string;
+  readonly failures: readonly IntrospectionFailure[];
+}
+
 interface SystemTableRow {
   readonly name: string;
   readonly engine: string;
   readonly create_table_query: string;
 }
+
+const MAX_FAILURE_DETAILS = 40;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -63,6 +77,26 @@ function tryFormatTypeScript(source: string): string {
   }
 }
 
+function isTableLikeObject(object: IntrospectionObject): boolean {
+  return object.engine !== "View";
+}
+
+export function formatIntrospectionFailureReport(
+  failures: readonly IntrospectionFailure[],
+  prefix = "Skipped",
+): string {
+  const visibleFailures = failures.slice(0, MAX_FAILURE_DETAILS);
+  const details = visibleFailures
+    .map((failure) => `- ${failure.name} (${failure.engine}): ${failure.message}`)
+    .join("\n");
+  const remainder =
+    failures.length > MAX_FAILURE_DETAILS
+      ? `\n...and ${failures.length - MAX_FAILURE_DETAILS} more unsupported objects.`
+      : "";
+
+  return `${prefix} ${failures.length} unsupported objects:\n${details}${remainder}`;
+}
+
 export function resolveConnectionOptions(
   args: IntrospectArgs,
   env: NodeJS.ProcessEnv = process.env,
@@ -81,14 +115,22 @@ export function resolveConnectionOptions(
 }
 
 export function buildSchemaModule(objects: readonly IntrospectionObject[]): string {
+  return buildSchemaModuleResult(objects).source;
+}
+
+export function buildSchemaModuleResult(
+  objects: readonly IntrospectionObject[],
+): IntrospectionResult {
   if (objects.length === 0) {
     throw new Error("No tables or views were available to introspect.");
   }
 
   const orderedObjects = [...objects].sort(sortObjects);
+  const supportedObjects: IntrospectionObject[] = [];
   const failures = orderedObjects.flatMap((object) => {
     try {
       generateSchemaModuleFromDDL(normalizeCreateStatement(object.createTableQuery));
+      supportedObjects.push(object);
       return [];
     } catch (error) {
       return [
@@ -101,22 +143,32 @@ export function buildSchemaModule(objects: readonly IntrospectionObject[]): stri
     }
   });
 
-  if (failures.length > 0) {
-    const details = failures
-      .map((failure) => `- ${failure.name} (${failure.engine}): ${failure.message}`)
-      .join("\n");
-    throw new Error(`Could not generate a trusted Quarry schema for:\n${details}`);
+  if (supportedObjects.length === 0) {
+    if (failures.length > 0) {
+      throw new Error(
+        formatIntrospectionFailureReport(
+          failures,
+          "Could not generate a trusted Quarry schema for",
+        ),
+      );
+    }
+
+    throw new Error("No supported tables or views were available to introspect.");
   }
 
-  const ddl = orderedObjects
+  const ddl = supportedObjects
     .map((object) => normalizeCreateStatement(object.createTableQuery))
     .join("\n\n");
 
-  return tryFormatTypeScript(generateSchemaModuleFromDDL(ddl));
+  return {
+    source: tryFormatTypeScript(generateSchemaModuleFromDDL(ddl)),
+    failures,
+  };
 }
 
 export async function fetchDatabaseObjects(
   options: IntrospectionConnectionOptions,
+  tablesOnly = false,
 ): Promise<IntrospectionObject[]> {
   const client = createClient({
     url: options.url,
@@ -134,6 +186,8 @@ export async function fetchDatabaseObjects(
           create_table_query
         FROM system.tables
         WHERE database = {database:String}
+          AND engine NOT IN ('Dictionary', 'MaterializedView')
+          ${tablesOnly ? "AND engine != 'View'" : ""}
       `,
       query_params: {
         database: options.database,
@@ -157,12 +211,17 @@ export async function writeSchemaModule(source: string, outPath: string): Promis
   await writeFile(outPath, source, "utf8");
 }
 
-export async function introspectDatabase(args: IntrospectArgs): Promise<string> {
+export async function introspectDatabase(args: IntrospectArgs): Promise<IntrospectionResult> {
   const options = resolveConnectionOptions(args);
-  const objects = await fetchDatabaseObjects(options);
+  const allObjects = await fetchDatabaseObjects(options, args.tablesOnly);
+  const objects = args.tablesOnly ? allObjects.filter(isTableLikeObject) : allObjects;
   if (objects.length === 0) {
-    throw new Error(`No tables or views found in database '${options.database}'.`);
+    throw new Error(
+      args.tablesOnly
+        ? `No table-like objects found in database '${options.database}'.`
+        : `No tables or views found in database '${options.database}'.`,
+    );
   }
 
-  return buildSchemaModule(objects);
+  return buildSchemaModuleResult(objects);
 }

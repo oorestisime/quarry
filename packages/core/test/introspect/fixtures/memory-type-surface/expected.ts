@@ -43,11 +43,11 @@ export const schema = defineSchema({
 }).views((db) => ({
   network_profile_labels: view.as(
     db
-      .selectFrom("network_profiles as t0")
+      .selectFrom("network_profiles")
       .selectExpr((eb) => [
-        "t0.profile_id",
-        eb.fn.toString("t0.small_u16").as("small_u16_text"),
-        eb.fn.lower("t0.nickname").as("nickname_lower"),
+        "profile_id",
+        eb.fn.toString("small_u16").as("small_u16_text"),
+        eb.fn.lower("nickname").as("nickname_lower"),
       ]),
   ),
 }));

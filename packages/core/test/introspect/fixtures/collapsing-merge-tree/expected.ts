@@ -23,8 +23,6 @@ export const schema = defineSchema({
   ),
 }).views((db) => ({
   activity_log_labels: view.as(
-    db
-      .selectFrom("activity_log as t0")
-      .selectExpr((eb) => ["t0.id", eb.fn.toString("t0.id").as("id_text")]),
+    db.selectFrom("activity_log").selectExpr((eb) => ["id", eb.fn.toString("id").as("id_text")]),
   ),
 }));

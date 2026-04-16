@@ -6,6 +6,7 @@ export {
   Bool,
   Date,
   Date32,
+  Decimal,
   DateTime,
   DateTime64,
   FixedString,
@@ -20,13 +21,13 @@ export {
   LowCardinality,
   Nullable,
   String,
+  table,
   UInt8,
   UInt16,
   UInt32,
   UInt64,
   UUID,
   defineSchema,
-  table,
   view,
 } from "./schema";
 export type { InferResult } from "./type-utils";

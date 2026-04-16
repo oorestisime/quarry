@@ -29,11 +29,11 @@ export const schema = defineSchema({
 }).views((db) => ({
   user_session_event_rollup: view.as(
     db
-      .selectFrom("user_session_events as t0")
+      .selectFrom("user_session_events")
       .selectExpr((eb) => [
-        "t0.user_id",
-        eb.fn.toYYYYMM("t0.event_timestamp").as("event_yyyymm"),
-        eb.fn.lower("t0.city").as("city_lower"),
+        "user_id",
+        eb.fn.toYYYYMM("event_timestamp").as("event_yyyymm"),
+        eb.fn.lower("city").as("city_lower"),
       ]),
   ),
 }));

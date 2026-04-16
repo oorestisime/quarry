@@ -28,7 +28,7 @@ export const schema = defineSchema({
 }).views((db) => ({
   daily_metric_months: view.as(
     db
-      .selectFrom("daily_metrics as t0")
-      .selectExpr((eb) => ["t0.account_id", eb.fn.toYYYYMM("t0.bucket_date").as("bucket_yyyymm")]),
+      .selectFrom("daily_metrics")
+      .selectExpr((eb) => ["account_id", eb.fn.toYYYYMM("bucket_date").as("bucket_yyyymm")]),
   ),
 }));

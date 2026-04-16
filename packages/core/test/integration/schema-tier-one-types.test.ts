@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   Date32,
+  Decimal,
   FixedString,
   IPv4,
   IPv6,
@@ -23,6 +24,7 @@ const schema = defineSchema({
     small_u16: UInt16(),
     tiny_i8: Int8(),
     small_i16: Int16(),
+    amount_d12_6: Decimal(12, 6),
     event_date32: Date32(),
     code: FixedString(8),
     account_uuid: UUID(),
@@ -56,6 +58,7 @@ describe("schema tier one scalar types", () => {
           small_u16 UInt16,
           tiny_i8 Int8,
           small_i16 Int16,
+          amount_d12_6 Decimal(12, 6),
           event_date32 Date32,
           code FixedString(8),
           account_uuid UUID,
@@ -85,6 +88,7 @@ describe("schema tier one scalar types", () => {
           small_u16: 512,
           tiny_i8: -3,
           small_i16: -1024,
+          amount_d12_6: "123.456789",
           event_date32: new Date("2025-01-01T00:00:00.000Z"),
           code: "ABCDEFGH",
           account_uuid: "550e8400-e29b-41d4-a716-446655440000",
@@ -107,6 +111,7 @@ describe("schema tier one scalar types", () => {
         small_u16: 512,
         tiny_i8: -3,
         small_i16: -1024,
+        amount_d12_6: 123.456789,
         event_date32: "2025-01-01",
         code: "ABCDEFGH",
         account_uuid: "550e8400-e29b-41d4-a716-446655440000",
@@ -120,6 +125,7 @@ describe("schema tier one scalar types", () => {
     expect(typeof rows[0].small_u16).toBe("number");
     expect(typeof rows[0].tiny_i8).toBe("number");
     expect(typeof rows[0].small_i16).toBe("number");
+    expect(typeof rows[0].amount_d12_6).toBe("number");
     expect(typeof rows[0].event_date32).toBe("string");
     expect(typeof rows[0].code).toBe("string");
     expect(typeof rows[0].account_uuid).toBe("string");

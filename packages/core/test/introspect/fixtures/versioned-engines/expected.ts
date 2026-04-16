@@ -43,7 +43,7 @@ export const schema = defineSchema({
 }).views((db) => ({
   active_leaderboard_users: view.as(
     db
-      .selectFrom("leaderboard_user_dim as t0")
-      .selectExpr((eb) => ["t0.user_id", eb.fn.lower("t0.first_name").as("first_name_lower")]),
+      .selectFrom("leaderboard_user_dim")
+      .selectExpr((eb) => ["user_id", eb.fn.lower("first_name").as("first_name_lower")]),
   ),
 }));

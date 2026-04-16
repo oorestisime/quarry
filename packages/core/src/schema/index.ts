@@ -56,6 +56,10 @@ export type SummingMergeTreeOptions<Columns extends SchemaColumns> =
     readonly sumColumns?: NonEmptyList<ColumnName<Columns>>;
   };
 
+export interface SharedSummingMergeTreeOptions<
+  Columns extends SchemaColumns,
+> extends SummingMergeTreeOptions<Columns> {}
+
 export interface AggregatingMergeTreeOptions<
   Columns extends SchemaColumns,
 > extends MergeTreeTableOptions<Columns> {}
@@ -100,6 +104,8 @@ type StoredSummingMergeTreeOptions = StoredMergeTreeTableOptions & {
   readonly sumColumns?: NonEmptyList<string>;
 };
 
+interface StoredSharedSummingMergeTreeOptions extends StoredSummingMergeTreeOptions {}
+
 interface StoredAggregatingMergeTreeOptions extends StoredMergeTreeTableOptions {}
 
 type StoredCollapsingMergeTreeOptions = StoredMergeTreeTableOptions & {
@@ -137,6 +143,7 @@ export type QuarryEngine =
   | QuarryConfiguredFinalEngine<"ReplacingMergeTree", StoredReplacingMergeTreeOptions>
   | QuarryConfiguredFinalEngine<"SharedReplacingMergeTree", StoredSharedReplacingMergeTreeOptions>
   | QuarryConfiguredFinalEngine<"SummingMergeTree", StoredSummingMergeTreeOptions>
+  | QuarryConfiguredFinalEngine<"SharedSummingMergeTree", StoredSharedSummingMergeTreeOptions>
   | QuarryConfiguredFinalEngine<"AggregatingMergeTree", StoredAggregatingMergeTreeOptions>
   | QuarryConfiguredFinalEngine<"CollapsingMergeTree", StoredCollapsingMergeTreeOptions>
   | QuarryConfiguredFinalEngine<
@@ -268,6 +275,13 @@ export function Float32(): QuarryColumn<number> {
 
 export function Float64(): QuarryColumn<number> {
   return createColumn("Float64");
+}
+
+export function Decimal(
+  precision: number,
+  scale: number,
+): QuarryColumn<number, string | number, string | number> {
+  return createColumn(`Decimal(${precision}, ${scale})`);
 }
 
 export function Date(): QuarryColumn<string, string | globalThis.Date, string | globalThis.Date> {
@@ -492,6 +506,10 @@ type TableFactory = (<Columns extends SchemaColumns>(
     columns: Columns,
     options?: SummingMergeTreeOptions<Columns>,
   ): QuarryTableSource<Columns>;
+  sharedSummingMergeTree<Columns extends SchemaColumns>(
+    columns: Columns,
+    options?: SharedSummingMergeTreeOptions<Columns>,
+  ): QuarryTableSource<Columns>;
   aggregatingMergeTree<Columns extends SchemaColumns>(
     columns: Columns,
     options?: AggregatingMergeTreeOptions<Columns>,
@@ -571,6 +589,18 @@ export const table: TableFactory = Object.assign(
         options
           ? { name: "SummingMergeTree", finalCapable: true, options }
           : { name: "SummingMergeTree", finalCapable: true },
+      );
+    },
+    sharedSummingMergeTree<Columns extends SchemaColumns>(
+      columns: Columns,
+      options?: SharedSummingMergeTreeOptions<Columns>,
+    ) {
+      validateSummingMergeTreeOptions(columns, options, "sharedSummingMergeTree");
+      return createTableSource(
+        columns,
+        options
+          ? { name: "SharedSummingMergeTree", finalCapable: true, options }
+          : { name: "SharedSummingMergeTree", finalCapable: true },
       );
     },
     aggregatingMergeTree<Columns extends SchemaColumns>(

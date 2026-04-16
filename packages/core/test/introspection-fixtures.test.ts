@@ -28,17 +28,35 @@ describe("DDL introspection fixtures", () => {
     });
   }
 
-  it("rejects unsupported default clauses", () => {
-    expect(() =>
-      generateSchemaModuleFromDDL(`
-        CREATE TABLE default.users (
-          id UInt32,
-          created_at DateTime64(3) DEFAULT now64(3)
-        )
-        ENGINE = MergeTree
-        ORDER BY id;
+  it("omits default clauses while preserving the column type", () => {
+    expect(
+      formatTypeScript(
+        generateSchemaModuleFromDDL(`
+          CREATE TABLE default.users (
+            id UInt32,
+            created_at DateTime64(3) DEFAULT now64(3)
+          )
+          ENGINE = MergeTree
+          ORDER BY id;
+        `),
+      ),
+    ).toBe(
+      formatTypeScript(`
+        import { DateTime64, defineSchema, table, UInt32 } from "@oorestisime/quarry";
+
+        export const schema = defineSchema({
+          users: table.mergeTree(
+            {
+              id: UInt32(),
+              created_at: DateTime64(3),
+            },
+            {
+              orderBy: ["id"],
+            },
+          ),
+        });
       `),
-    ).toThrow("Unsupported column clause");
+    );
   });
 
   it("rejects unsupported table clauses instead of misparsing them", () => {

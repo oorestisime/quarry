@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   Date as CHDate,
+  Decimal,
   DateTime64,
   Nullable,
   String as CHString,
@@ -104,6 +105,16 @@ const engineSchema = defineSchema({
       sumColumns: ["total"],
     },
   ),
+  shared_summing_events: table.sharedSummingMergeTree(
+    {
+      id: UInt32(),
+      total: UInt32(),
+    },
+    {
+      orderBy: ["id"],
+      sumColumns: ["total"],
+    },
+  ),
   aggregating_events: table.aggregatingMergeTree(
     {
       id: UInt32(),
@@ -196,6 +207,9 @@ describe("schema-first mode", () => {
       "SELECT s.id FROM summing_events AS s FINAL",
     );
     expect(
+      engineDb.selectFrom("shared_summing_events as s").select("s.id").final().toSQL().query,
+    ).toBe("SELECT s.id FROM shared_summing_events AS s FINAL");
+    expect(
       engineDb.selectFrom("aggregating_events as a").select("a.id").final().toSQL().query,
     ).toBe("SELECT a.id FROM aggregating_events AS a FINAL");
     expect(engineDb.selectFrom("collapsing_events as c").select("c.id").final().toSQL().query).toBe(
@@ -271,6 +285,15 @@ describe("schema-first mode", () => {
       },
     });
 
+    expect(normalized.shared_summing_events.engine).toEqual({
+      name: "SharedSummingMergeTree",
+      finalCapable: true,
+      options: {
+        orderBy: ["id"],
+        sumColumns: ["total"],
+      },
+    });
+
     expect(normalized.collapsing_events.engine).toEqual({
       name: "CollapsingMergeTree",
       finalCapable: true,
@@ -334,5 +357,19 @@ describe("schema-first mode", () => {
         },
       ),
     ).toThrow("Unknown column 'missing' in collapsingMergeTree.signBy.");
+  });
+
+  it("preserves Decimal column metadata", () => {
+    const normalized = normalizeSchema(
+      defineSchema({
+        payments: table({
+          amount: Decimal(12, 6),
+        }),
+      }),
+    );
+
+    expect(normalized.payments.columns.amount).toEqual({
+      clickhouseType: "Decimal(12, 6)",
+    });
   });
 });

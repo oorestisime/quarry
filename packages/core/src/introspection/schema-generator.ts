@@ -44,6 +44,8 @@ type ParsedView =
       readonly kind: "selectAll";
       readonly name: string;
       readonly sourceTable: string;
+      readonly final?: boolean;
+      readonly where?: readonly ParsedWhereCondition[];
     }
   | {
       readonly kind: "selectExpr";
@@ -51,6 +53,21 @@ type ParsedView =
       readonly sourceTable: string;
       readonly selections: readonly ParsedSelection[];
       readonly groupBy?: readonly string[];
+      readonly final?: boolean;
+      readonly where?: readonly ParsedWhereCondition[];
+    };
+
+type ParsedWhereCondition =
+  | {
+      readonly kind: "binary";
+      readonly column: string;
+      readonly operator: "=" | "!=" | ">" | ">=" | "<" | "<=";
+      readonly value: ParsedExpressionArg;
+    }
+  | {
+      readonly kind: "null";
+      readonly column: string;
+      readonly negated: boolean;
     };
 
 type ParsedSchema = {
@@ -63,6 +80,7 @@ type ImportSpec =
   | "Bool"
   | "Date as CHDate"
   | "Date32"
+  | "Decimal"
   | "DateTime"
   | "DateTime64"
   | "FixedString"
@@ -104,16 +122,22 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function unquoteIdentifier(value: string): string {
+function stripIdentifierQuotes(value: string): string {
   const trimmed = value.trim();
-  const unquoted =
+  if (
     (trimmed.startsWith("`") && trimmed.endsWith("`")) ||
     (trimmed.startsWith('"') && trimmed.endsWith('"'))
-      ? trimmed.slice(1, -1)
-      : trimmed;
+  ) {
+    return trimmed.slice(1, -1);
+  }
 
-  const segments = unquoted.split(".");
-  return segments[segments.length - 1]!;
+  return trimmed;
+}
+
+function unquoteIdentifier(value: string): string {
+  const trimmed = value.trim();
+  const segments = trimmed.split(".");
+  return stripIdentifierQuotes(segments[segments.length - 1]!);
 }
 
 function isIdentifierLike(value: string): boolean {
@@ -224,6 +248,76 @@ function splitStatements(sql: string): string[] {
   return statements;
 }
 
+function findTopLevelKeyword(value: string, keyword: string): number {
+  const upperValue = value.toUpperCase();
+  const upperKeyword = keyword.toUpperCase();
+  let depth = 0;
+  let quote: "'" | '"' | "`" | null = null;
+
+  for (let index = 0; index <= value.length - upperKeyword.length; index += 1) {
+    const character = value[index]!;
+
+    if (quote) {
+      if (character === quote && value[index - 1] !== "\\") {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      continue;
+    }
+
+    if (character === "(") {
+      depth += 1;
+      continue;
+    }
+
+    if (character === ")") {
+      depth -= 1;
+      continue;
+    }
+
+    if (depth !== 0) {
+      continue;
+    }
+
+    if (upperValue.slice(index, index + upperKeyword.length) !== upperKeyword) {
+      continue;
+    }
+
+    const before = upperValue[index - 1];
+    const after = upperValue[index + upperKeyword.length];
+    const validBefore = before === undefined || /\s/.test(before);
+    const validAfter = after === undefined || /\s/.test(after);
+
+    if (validBefore && validAfter) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function splitTopLevelByKeyword(value: string, keyword: string): string[] {
+  const parts: string[] = [];
+  let remaining = value.trim();
+
+  while (remaining.length > 0) {
+    const index = findTopLevelKeyword(remaining, keyword);
+    if (index === -1) {
+      parts.push(remaining.trim());
+      break;
+    }
+
+    parts.push(remaining.slice(0, index).trim());
+    remaining = remaining.slice(index + keyword.length).trim();
+  }
+
+  return parts.filter((part) => part.length > 0);
+}
+
 function findMatchingParen(value: string, openIndex: number): number {
   let depth = 0;
   let quote: "'" | '"' | "`" | null = null;
@@ -325,8 +419,12 @@ function stripCodecs(value: string): string {
   return value.replace(/\s+CODEC\((.+)\)\s*$/i, "").trim();
 }
 
+function stripDefaultClause(value: string): string {
+  return value.replace(/\s+DEFAULT\s+[\s\S]+?(?=\s+CODEC\(|$)/i, "").trim();
+}
+
 function parseColumn(line: string): ParsedColumn {
-  if (/\b(?:DEFAULT|MATERIALIZED|ALIAS)\b/i.test(line)) {
+  if (/\b(?:MATERIALIZED|ALIAS)\b/i.test(line)) {
     throw new Error(`Unsupported column clause in '${line}'.`);
   }
 
@@ -335,8 +433,9 @@ function parseColumn(line: string): ParsedColumn {
     throw new Error(`Unsupported column definition '${line}'.`);
   }
 
-  const codecs = parseCodecs(match[2]!);
-  const clickhouseType = normalizeWhitespace(stripCodecs(match[2]!));
+  const definition = stripDefaultClause(match[2]!);
+  const codecs = parseCodecs(definition);
+  const clickhouseType = normalizeWhitespace(stripCodecs(definition));
 
   return {
     name: unquoteIdentifier(match[1]!),
@@ -416,6 +515,19 @@ function parseEngineOptions(
     }
   }
 
+  if (engineName === "SharedSummingMergeTree") {
+    const summingArgs = args.filter(
+      (arg) =>
+        !((arg.startsWith("'") && arg.endsWith("'")) || (arg.startsWith('"') && arg.endsWith('"'))),
+    );
+    if (summingArgs.length > 0) {
+      const sumColumns = parseExpressionList(summingArgs.join(", "));
+      if (sumColumns) {
+        options.sumColumns = sumColumns.map(unquoteIdentifier);
+      }
+    }
+  }
+
   if (engineName === "CollapsingMergeTree" && args[0] && isIdentifierLike(args[0])) {
     options.signBy = unquoteIdentifier(args[0]);
   }
@@ -461,6 +573,13 @@ function parseCreateTable(statement: string): ParsedTable {
 
 function parseExpressionArg(value: string): ParsedExpressionArg {
   const trimmed = value.trim();
+
+  if (/^(?:true|false)$/i.test(trimmed)) {
+    return {
+      kind: "string",
+      value: trimmed.toLowerCase(),
+    };
+  }
 
   if (
     (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
@@ -528,25 +647,125 @@ function parseSelection(value: string, viewName: string): ParsedSelection {
   };
 }
 
+function parseWhereCondition(value: string): ParsedWhereCondition {
+  const trimmed = value.trim();
+
+  const nullMatch = /^(`[^`]+`|"[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+IS\s+(NOT\s+)?NULL$/i.exec(
+    trimmed,
+  );
+  if (nullMatch) {
+    return {
+      kind: "null",
+      column: unquoteIdentifier(nullMatch[1]!),
+      negated: Boolean(nullMatch[2]),
+    };
+  }
+
+  const binaryMatch =
+    /^(`[^`]+`|"[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*(=|!=|<>|>=|<=|>|<)\s*([\s\S]+)$/i.exec(trimmed);
+  if (!binaryMatch) {
+    throw new Error(`Unsupported WHERE condition '${value}'.`);
+  }
+
+  return {
+    kind: "binary",
+    column: unquoteIdentifier(binaryMatch[1]!),
+    operator: (binaryMatch[2] === "<>" ? "!=" : binaryMatch[2]) as
+      | "="
+      | "!="
+      | ">"
+      | ">="
+      | "<"
+      | "<=",
+    value: parseExpressionArg(binaryMatch[3]!),
+  };
+}
+
+function parseWhereClause(value: string | undefined): ParsedWhereCondition[] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const conditions = splitTopLevelByKeyword(value, "AND").map(parseWhereCondition);
+  return conditions.length > 0 ? conditions : undefined;
+}
+
 function parseCreateView(statement: string): ParsedView {
-  const match =
-    /^CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s]+)\s+AS\s+SELECT\s+([\s\S]+?)\s+FROM\s+([^\s]+)(?:\s+GROUP\s+BY\s+([\s\S]+))?$/i.exec(
-      statement,
-    );
-  if (!match) {
+  const headerMatch = /^CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s(]+)\s*([\s\S]*)$/i.exec(
+    statement,
+  );
+  if (!headerMatch) {
     throw new Error(`Unsupported CREATE VIEW statement '${statement}'.`);
   }
 
-  const name = unquoteIdentifier(match[1]!);
-  const sourceTable = unquoteIdentifier(match[3]!);
-  const selectClause = normalizeWhitespace(match[2]!);
-  const groupBy = parseExpressionList(match[4]);
+  const name = unquoteIdentifier(headerMatch[1]!);
+  let remainder = headerMatch[2]!.trim();
+
+  if (remainder.startsWith("(")) {
+    const closing = findMatchingParen(remainder, 0);
+    remainder = remainder.slice(closing + 1).trim();
+  }
+
+  if (!/^AS\s+SELECT\s+/i.test(remainder)) {
+    throw new Error(`Unsupported CREATE VIEW statement '${statement}'.`);
+  }
+
+  remainder = remainder.replace(/^AS\s+SELECT\s+/i, "");
+  const fromIndex = findTopLevelKeyword(remainder, "FROM");
+  if (fromIndex === -1) {
+    throw new Error(`Unsupported CREATE VIEW statement '${statement}'.`);
+  }
+
+  const selectClauseRaw = remainder.slice(0, fromIndex).trim();
+  remainder = remainder.slice(fromIndex + 4).trim();
+
+  const sourceMatch = /^([^\s]+)([\s\S]*)$/i.exec(remainder);
+  if (!sourceMatch) {
+    throw new Error(`Unsupported CREATE VIEW statement '${statement}'.`);
+  }
+
+  const sourceTable = unquoteIdentifier(sourceMatch[1]!);
+  let tail = sourceMatch[2]!.trim();
+  let isFinal = false;
+  if (/^FINAL\b/i.test(tail)) {
+    isFinal = true;
+    tail = tail.replace(/^FINAL\b/i, "").trim();
+  }
+
+  let whereClause: string | undefined;
+  if (/^WHERE\b/i.test(tail)) {
+    tail = tail.replace(/^WHERE\b/i, "").trim();
+    const groupByIndex = findTopLevelKeyword(tail, "GROUP BY");
+    if (groupByIndex === -1) {
+      whereClause = tail;
+      tail = "";
+    } else {
+      whereClause = tail.slice(0, groupByIndex).trim();
+      tail = tail.slice(groupByIndex).trim();
+    }
+  }
+
+  let groupByClause: string | undefined;
+  if (/^GROUP\s+BY\b/i.test(tail)) {
+    groupByClause = tail.replace(/^GROUP\s+BY\b/i, "").trim();
+    tail = "";
+  }
+
+  if (tail.length > 0) {
+    throw new Error(`Unsupported CREATE VIEW statement '${statement}'.`);
+  }
+
+  const selectClause = normalizeWhitespace(selectClauseRaw);
+  const groupBy = parseExpressionList(groupByClause);
+  const where = parseWhereClause(whereClause);
 
   if (selectClause === "*") {
     return {
       kind: "selectAll",
       name,
       sourceTable,
+      ...(isFinal ? { final: true } : {}),
+      ...(where ? { where } : {}),
     };
   }
 
@@ -554,8 +773,12 @@ function parseCreateView(statement: string): ParsedView {
     kind: "selectExpr",
     name,
     sourceTable,
-    selections: splitTopLevel(match[2]!, ",").map((selection) => parseSelection(selection, name)),
+    selections: splitTopLevel(selectClauseRaw, ",").map((selection) =>
+      parseSelection(selection, name),
+    ),
     ...(groupBy ? { groupBy: groupBy.map(unquoteIdentifier) } : {}),
+    ...(isFinal ? { final: true } : {}),
+    ...(where ? { where } : {}),
   };
 }
 
@@ -641,6 +864,12 @@ function renderColumnType(clickhouseType: string, imports: Set<ImportSpec>): str
     return "Float64()";
   }
 
+  const decimalMatch = /^Decimal\((\d+),\s*(\d+)\)$/.exec(clickhouseType);
+  if (decimalMatch) {
+    imports.add("Decimal");
+    return `Decimal(${decimalMatch[1]}, ${decimalMatch[2]})`;
+  }
+
   if (clickhouseType === "Date") {
     imports.add("Date as CHDate");
     return "CHDate()";
@@ -708,12 +937,16 @@ function renderStringArray(values: readonly string[]): string {
   return `[${values.map((value) => JSON.stringify(value)).join(", ")}]`;
 }
 
+function renderPropertyKey(value: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? value : JSON.stringify(value);
+}
+
 function renderColumn(column: ParsedColumn, imports: Set<ImportSpec>): string {
   const base = renderColumnType(column.clickhouseType, imports);
   const expression = column.codecs?.length
     ? `${base}.codec(${renderStringArray(column.codecs)})`
     : base;
-  return `    ${column.name}: ${expression},`;
+  return `    ${renderPropertyKey(column.name)}: ${expression},`;
 }
 
 function renderSettings(settings: Record<string, unknown>): string[] {
@@ -757,6 +990,7 @@ function renderTable(tableDef: ParsedTable, imports: Set<ImportSpec>): string {
     ReplacingMergeTree: "replacingMergeTree",
     SharedReplacingMergeTree: "sharedReplacingMergeTree",
     SummingMergeTree: "summingMergeTree",
+    SharedSummingMergeTree: "sharedSummingMergeTree",
     AggregatingMergeTree: "aggregatingMergeTree",
     CollapsingMergeTree: "collapsingMergeTree",
     VersionedCollapsingMergeTree: "versionedCollapsingMergeTree",
@@ -768,15 +1002,15 @@ function renderTable(tableDef: ParsedTable, imports: Set<ImportSpec>): string {
   }
 
   if (optionsEntries.length === 0) {
-    return `  ${tableDef.name}: table.${method}({\n${columnsBlock}\n  }),`;
+    return `  ${renderPropertyKey(tableDef.name)}: table.${method}({\n${columnsBlock}\n  }),`;
   }
 
-  return `  ${tableDef.name}: table.${method}(\n  {\n${columnsBlock}\n  },\n  {\n${optionsEntries.join("\n")}\n  },\n  ),`;
+  return `  ${renderPropertyKey(tableDef.name)}: table.${method}(\n  {\n${columnsBlock}\n  },\n  {\n${optionsEntries.join("\n")}\n  },\n  ),`;
 }
 
-function renderExpressionArg(arg: ParsedExpressionArg, alias: string): string {
+function renderExpressionArg(arg: ParsedExpressionArg): string {
   if (arg.kind === "column") {
-    return JSON.stringify(`${alias}.${arg.column}`);
+    return JSON.stringify(arg.column);
   }
 
   if (arg.kind === "string") {
@@ -786,35 +1020,72 @@ function renderExpressionArg(arg: ParsedExpressionArg, alias: string): string {
   return String(arg.value);
 }
 
-function renderSelection(selection: ParsedSelection, alias: string): string {
+function renderSelection(selection: ParsedSelection): string {
   if (selection.kind === "column") {
-    return JSON.stringify(`${alias}.${selection.column}`);
+    return JSON.stringify(selection.column);
   }
 
-  const args = selection.args.map((arg) => renderExpressionArg(arg, alias)).join(", ");
+  const args = selection.args.map((arg) => renderExpressionArg(arg)).join(", ");
   return `eb.fn.${selection.functionName}(${args}).as(${JSON.stringify(selection.alias)})`;
 }
 
-function renderView(viewDef: ParsedView, imports: Set<ImportSpec>, index: number): string {
+function renderViewSource(viewDef: ParsedView): string {
+  if (!viewDef.final) {
+    return JSON.stringify(viewDef.sourceTable);
+  }
+
+  return `db.table(${JSON.stringify(viewDef.sourceTable)}).final()`;
+}
+
+function renderWhereValue(arg: ParsedExpressionArg): string {
+  if (arg.kind === "column") {
+    return JSON.stringify(arg.column);
+  }
+
+  if (arg.kind === "string") {
+    return JSON.stringify(arg.value);
+  }
+
+  return String(arg.value);
+}
+
+function renderWhereCondition(condition: ParsedWhereCondition): string {
+  if (condition.kind === "null") {
+    return condition.negated
+      ? `.whereNotNull(${JSON.stringify(condition.column)})`
+      : `.whereNull(${JSON.stringify(condition.column)})`;
+  }
+
+  return `.where(${JSON.stringify(condition.column)}, ${JSON.stringify(condition.operator)}, ${renderWhereValue(condition.value)})`;
+}
+
+function renderView(viewDef: ParsedView, imports: Set<ImportSpec>): string {
   imports.add("view");
-  const alias = `t${index}`;
 
   if (viewDef.kind === "selectAll") {
-    return `  ${viewDef.name}: view.as(db.selectFrom(${JSON.stringify(`${viewDef.sourceTable} as ${alias}`)}).selectAll(${JSON.stringify(alias)})),`;
+    const chain = [
+      `db.selectFrom(${renderViewSource(viewDef)})`,
+      `.selectAll()`,
+      ...(viewDef.where?.map((condition) => renderWhereCondition(condition)) ?? []),
+    ];
+
+    return `  ${renderPropertyKey(viewDef.name)}: view.as(${chain.join("")}),`;
   }
 
   const lines = [
-    `  ${viewDef.name}: view.as(`,
+    `  ${renderPropertyKey(viewDef.name)}: view.as(`,
     `    db`,
-    `      .selectFrom(${JSON.stringify(`${viewDef.sourceTable} as ${alias}`)})`,
-    `      .selectExpr((eb) => [${viewDef.selections.map((selection) => renderSelection(selection, alias)).join(", ")}])`,
+    `      .selectFrom(${renderViewSource(viewDef)})`,
+    `      .selectExpr((eb) => [${viewDef.selections.map((selection) => renderSelection(selection)).join(", ")}])`,
   ];
+
+  for (const condition of viewDef.where ?? []) {
+    lines.push(`      ${renderWhereCondition(condition)}`);
+  }
 
   if (viewDef.groupBy && viewDef.groupBy.length > 0) {
     lines.push(
-      `      .groupBy(${viewDef.groupBy
-        .map((column) => JSON.stringify(`${alias}.${column}`))
-        .join(", ")})`,
+      `      .groupBy(${viewDef.groupBy.map((column) => JSON.stringify(column)).join(", ")})`,
     );
   }
 
@@ -833,7 +1104,7 @@ export function generateSchemaModuleFromDDL(ddl: string): string {
   if (parsed.views.length > 0) {
     imports.add("view");
     const updatedImportList = [...imports].sort((left, right) => left.localeCompare(right));
-    const viewLines = parsed.views.map((viewDef, index) => renderView(viewDef, imports, index));
+    const viewLines = parsed.views.map((viewDef) => renderView(viewDef, imports));
     schemaExpression = `${schemaExpression}.views((db) => ({\n${viewLines.join("\n")}\n}))`;
     return `import { ${updatedImportList.join(", ")} } from "@oorestisime/quarry";\n\nexport const schema = ${schemaExpression};\n`;
   }

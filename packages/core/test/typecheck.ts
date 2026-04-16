@@ -2,6 +2,7 @@ import {
   Array as CHArray,
   Date as CHDate,
   Date32,
+  Decimal,
   DateTime,
   DateTime64,
   FixedString,
@@ -1016,6 +1017,7 @@ const scalarSchema = defineSchema({
     small_u16: UInt16(),
     tiny_i8: Int8(),
     small_i16: Int16(),
+    amount_d12_6: Decimal(12, 6),
     event_date32: Date32(),
     code: FixedString(8),
     account_uuid: UUID(),
@@ -1080,6 +1082,16 @@ const mergeTreeEngineSchema = defineSchema({
     },
   ),
   summing_tree_samples: table.summingMergeTree(
+    {
+      id: UInt32(),
+      total: UInt32(),
+    },
+    {
+      orderBy: ["id"],
+      sumColumns: ["total"],
+    },
+  ),
+  shared_summing_tree_samples: table.sharedSummingMergeTree(
     {
       id: UInt32(),
       total: UInt32(),
@@ -1168,6 +1180,7 @@ const scalarSchemaQuery = scalarSchemaDb
     "s.small_u16",
     "s.tiny_i8",
     "s.small_i16",
+    "s.amount_d12_6",
     "s.event_date32",
     "s.code",
     "s.account_uuid",
@@ -1234,6 +1247,7 @@ const validScalarSchemaRow: ScalarSchemaRow = {
   small_u16: 512,
   tiny_i8: -3,
   small_i16: -1024,
+  amount_d12_6: 123.456789,
   event_date32: "2025-01-01",
   code: "ABCDEFGH",
   account_uuid: "550e8400-e29b-41d4-a716-446655440000",
@@ -1275,6 +1289,7 @@ const scalarSchemaInsertResultPromise: Promise<ClickHouseInsertResult> = scalarS
       small_u16: 512,
       tiny_i8: -3,
       small_i16: -1024,
+      amount_d12_6: "123.456789",
       event_date32: new Date("2025-01-01T00:00:00.000Z"),
       code: "ABCDEFGH",
       account_uuid: "550e8400-e29b-41d4-a716-446655440000",
@@ -1369,6 +1384,18 @@ table.summingMergeTree(
   },
 );
 
+table.sharedSummingMergeTree(
+  {
+    id: UInt32(),
+    total: UInt32(),
+  },
+  {
+    // @ts-expect-error shared summing sumColumns must point at known columns
+    sumColumns: ["missing"],
+    orderBy: ["id"],
+  },
+);
+
 table.collapsingMergeTree(
   {
     id: UInt32(),
@@ -1431,6 +1458,9 @@ scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.event_date32", 
 
 // @ts-expect-error low cardinality string columns should not accept numeric predicate values
 scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.category", "=", 1);
+
+scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.amount_d12_6", "=", 1.25);
+scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.amount_d12_6", "=", "1.25");
 
 richerSchemaDb.insertInto("schema_runtime_samples").values([
   {

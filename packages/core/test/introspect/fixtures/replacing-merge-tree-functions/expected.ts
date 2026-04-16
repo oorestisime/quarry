@@ -31,12 +31,12 @@ export const schema = defineSchema({
 }).views((db) => ({
   event_version_labels: view.as(
     db
-      .selectFrom("event_versions as t0")
+      .selectFrom("event_versions")
       .selectExpr((eb) => [
-        "t0.id",
-        eb.fn.toString("t0.id").as("id_text"),
-        eb.fn.lower("t0.status").as("status_lower"),
-        eb.fn.formatDateTime("t0.created_at", "%Y-%m-%d").as("created_day"),
+        "id",
+        eb.fn.toString("id").as("id_text"),
+        eb.fn.lower("status").as("status_lower"),
+        eb.fn.formatDateTime("created_at", "%Y-%m-%d").as("created_day"),
       ]),
   ),
 }));

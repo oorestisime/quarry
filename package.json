@@ -28,24 +28,17 @@
   "scripts": {
     "build": "pnpm --filter @oorestisime/quarry build",
     "build:cli": "pnpm build && pnpm --filter @oorestisime/quarry-cli build",
+    "cli": "pnpm exec tsx packages/cli/src/index.ts",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "lint": "pnpm run lint:core && pnpm run lint:cli",
-    "lint:core": "pnpm --filter @oorestisime/quarry lint",
-    "lint:cli": "pnpm --filter @oorestisime/quarry-cli lint",
-    "lint:fix": "pnpm run lint:fix:core && pnpm run lint:fix:cli",
-    "lint:fix:core": "pnpm --filter @oorestisime/quarry lint:fix",
-    "lint:fix:cli": "pnpm --filter @oorestisime/quarry-cli lint:fix",
+    "lint": "pnpm --filter @oorestisime/quarry lint && pnpm --filter @oorestisime/quarry-cli lint",
+    "lint:fix": "pnpm --filter @oorestisime/quarry lint:fix && pnpm --filter @oorestisime/quarry-cli lint:fix",
     "publish:core": "pnpm --filter @oorestisime/quarry publish",
-    "test": "pnpm run test:core && pnpm run test:cli",
-    "test:core": "pnpm --filter @oorestisime/quarry test",
-    "test:cli": "pnpm --filter @oorestisime/quarry-cli test",
+    "test": "pnpm --filter @oorestisime/quarry test && pnpm --filter @oorestisime/quarry-cli test",
     "test:coverage": "pnpm --filter @oorestisime/quarry test:coverage",
     "test:integration": "pnpm --filter @oorestisime/quarry test:integration",
     "test:watch": "pnpm --filter @oorestisime/quarry test:watch",
-    "typecheck": "pnpm run typecheck:core && pnpm run typecheck:cli",
-    "typecheck:core": "pnpm exec tsc --noEmit -p packages/core/tsconfig.json",
-    "typecheck:cli": "pnpm --filter @oorestisime/quarry-cli typecheck",
+    "typecheck": "pnpm --filter @oorestisime/quarry typecheck && pnpm --filter @oorestisime/quarry-cli typecheck",
     "typecheck:docs": "pnpm --filter @oorestisime/quarry-docs typecheck"
   },
   "devDependencies": {
@@ -56,6 +49,7 @@
     "oxlint": "^1.57.0",
     "testcontainers": "^11.13.0",
     "tsdown": "^0.21.7",
+    "tsx": "^4.20.6",
     "typescript": "^6.0.2",
     "vitest": "^3.2.4"
   }
