@@ -1,7 +1,7 @@
 {
-  "name": "@oorestisime/quarry",
+  "name": "quarry-workspace",
   "version": "0.2.0",
-  "private": false,
+  "private": true,
   "description": "Experimental ClickHouse-native query builder for TypeScript.",
   "keywords": [
     "analytics",
@@ -24,29 +24,22 @@
     "type": "git",
     "url": "git+ssh://git@github.com/oorestisime/quarry.git"
   },
-  "files": [
-    "dist"
-  ],
   "type": "module",
-  "sideEffects": false,
-  "types": "./dist/index.d.mts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs"
-    }
-  },
   "scripts": {
-    "build": "tsdown",
+    "build": "pnpm --filter @oorestisime/quarry build",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts vitest.integration.config.ts",
-    "lint:fix": "oxlint --vitest-plugin -A valid-title --fix src test vitest.config.ts vitest.integration.config.ts",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "lint": "pnpm --filter @oorestisime/quarry lint",
+    "lint:fix": "pnpm --filter @oorestisime/quarry lint:fix",
+    "publish:core": "pnpm --filter @oorestisime/quarry publish",
+    "test": "pnpm --filter @oorestisime/quarry test",
+    "test:coverage": "pnpm --filter @oorestisime/quarry test:coverage",
+    "test:integration": "pnpm --filter @oorestisime/quarry test:integration",
+    "test:watch": "pnpm --filter @oorestisime/quarry test:watch",
+    "typecheck": "pnpm run typecheck:core && pnpm run typecheck:cli",
+    "typecheck:core": "pnpm exec tsc --noEmit -p packages/core/tsconfig.json",
+    "typecheck:cli": "pnpm exec tsc --noEmit -p packages/cli/tsconfig.json",
+    "typecheck:docs": "pnpm --filter @oorestisime/quarry-docs typecheck"
   },
   "devDependencies": {
     "@clickhouse/client": "^1.18.2",

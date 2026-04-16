@@ -9,4 +9,5 @@ export default defineConfig({
   platform: "node",
   target: "es2022",
   treeshake: true,
+  tsconfig: "./tsconfig.json",
 });

@@ -1,0 +1,11 @@
+{
+  "name": "@oorestisime/quarry-cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal CLI package for Quarry workspace tooling.",
+  "type": "module",
+  "dependencies": {
+    "@clickhouse/client": "^1.18.2",
+    "@oorestisime/quarry": "workspace:*"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "@oorestisime/quarry",
+  "version": "0.2.0",
+  "private": false,
+  "description": "Experimental ClickHouse-native query builder for TypeScript.",
+  "keywords": [
+    "analytics",
+    "clickhouse",
+    "columnar",
+    "query",
+    "query builder",
+    "query-builder",
+    "sql",
+    "type-safe",
+    "type-safety",
+    "typescript"
+  ],
+  "homepage": "https://github.com/oorestisime/quarry",
+  "bugs": {
+    "url": "https://github.com/oorestisime/quarry/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/oorestisime/quarry.git"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts vitest.integration.config.ts",
+    "lint:fix": "oxlint --vitest-plugin -A valid-title --fix src test vitest.config.ts vitest.integration.config.ts",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  }
+}
