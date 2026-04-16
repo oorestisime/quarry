@@ -3,6 +3,7 @@ dist/
 coverage/
 packages/core/dist/
 packages/core/coverage/
+packages/cli/dist/
 *.tgz
 
 *.log

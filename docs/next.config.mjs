@@ -1,18 +1,19 @@
 import { createMDX } from "fumadocs-mdx/next";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = resolve(__dirname, "..");
 
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
   // Twoslash bundles the TypeScript compiler at runtime; keep it external.
   serverExternalPackages: ["typescript", "twoslash"],
-  // Pin Turbopack to this directory so Next.js does not try to use the parent
-  // library's lockfile as the workspace root.
+  // The docs site reads workspace packages and source files during build.
+  outputFileTracingRoot: workspaceRoot,
   turbopack: {
-    root: __dirname,
+    root: workspaceRoot,
   },
 };
 

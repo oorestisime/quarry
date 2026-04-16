@@ -3,9 +3,23 @@
   "version": "0.0.0",
   "private": true,
   "description": "Internal CLI package for Quarry workspace tooling.",
+  "bin": {
+    "quarry": "./dist/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts tsdown.config.ts",
+    "lint:fix": "oxlint --vitest-plugin -A valid-title --fix src test vitest.config.ts tsdown.config.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
-    "@oorestisime/quarry": "workspace:*"
+    "@oorestisime/quarry": "workspace:*",
+    "citty": "^0.1.6"
   }
 }
