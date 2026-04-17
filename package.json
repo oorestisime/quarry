@@ -33,6 +33,7 @@
     "lint": "pnpm --filter @oorestisime/quarry lint && pnpm --filter @oorestisime/quarry-cli lint",
     "lint:fix": "pnpm --filter @oorestisime/quarry lint:fix && pnpm --filter @oorestisime/quarry-cli lint:fix",
     "publish:core": "pnpm --filter @oorestisime/quarry publish",
+    "release:check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm typecheck:docs && pnpm test && pnpm test:integration && pnpm build:cli",
     "test": "pnpm --filter @oorestisime/quarry test && pnpm --filter @oorestisime/quarry-cli test",
     "test:coverage": "pnpm --filter @oorestisime/quarry test:coverage",
     "test:integration": "pnpm --filter @oorestisime/quarry test:integration",
