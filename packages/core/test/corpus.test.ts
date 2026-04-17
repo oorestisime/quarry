@@ -2,20 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import {
-  Array,
-  Date,
-  DateTime,
-  DateTime64,
-  Float64,
-  Nullable,
-  String,
-  UInt32,
-  UInt64,
-  createClickHouseDB,
-  defineSchema,
-  table,
-} from "../src";
+import { createClickHouseDB } from "../src";
 import {
   aggregateFunctionsCase,
   arrayFunctionsCase,
@@ -49,39 +36,6 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 const queriesDir = resolve(currentDir, "../queries");
 
 const plainDb = createClickHouseDB<SpikeDB>();
-
-const schemaDb = createClickHouseDB({
-  schema: defineSchema({
-    event_logs: table.replacingMergeTree({
-      user_id: UInt32(),
-      event_type: String(),
-      created_at: DateTime(),
-      event_date: Date(),
-      properties: String(),
-      version: UInt32(),
-    }),
-    inquiry_downloads: table.replacingMergeTree({
-      user_id: UInt32(),
-      created_at: DateTime(),
-      version: UInt32(),
-    }),
-    users: table({
-      id: UInt32(),
-      email: String(),
-      status: String(),
-    }),
-    typed_samples: table({
-      id: UInt32(),
-      big_user_id: UInt64(),
-      label: String(),
-      status: String(),
-      nickname: Nullable(String()),
-      tags: Array(String()),
-      amount: Float64(),
-      created_at: DateTime64(3),
-    }),
-  }),
-});
 
 const cases = [
   simpleSelectCase,
@@ -132,5 +86,4 @@ function runCorpus(label: string, db: typeof plainDb): void {
 
 describe("query corpus spike", () => {
   runCorpus("plain mode", plainDb);
-  runCorpus("schema mode", schemaDb);
 });

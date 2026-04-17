@@ -4,7 +4,7 @@
   "pages": [
     "index",
     "getting-started",
-    "schema-mode-and-views",
+    "introspection",
     "expressions-and-functions",
     "joins",
     "ctes-and-subqueries",

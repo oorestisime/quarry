@@ -5,7 +5,7 @@ import type {
   SelectionNode,
   SourceNode,
 } from "../ast/query";
-import { normalizeClickHouseInputValue } from "../schema";
+import { normalizeClickHouseInputValue } from "../input-normalization";
 import { escapeSingleQuotedString } from "../utils/string";
 
 export interface CompiledQuery {

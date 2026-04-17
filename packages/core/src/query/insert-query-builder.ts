@@ -6,7 +6,7 @@ import type {
   CommandCapableClickHouseClient,
   InsertCapableClickHouseClient,
 } from "../client";
-import { normalizeInsertRow, type NormalizedSchemaSource } from "../schema";
+import { normalizeInsertValue } from "../input-normalization";
 import type { Simplify } from "../type-utils";
 import type { SelectQueryBuilder } from "./select-query-builder";
 
@@ -16,13 +16,12 @@ export class InsertQueryBuilder<Table extends string, Row extends object> {
   constructor(
     private readonly node: InsertQueryNode,
     private readonly client?: ClickHouseClient,
-    private readonly sourceMeta?: NormalizedSchemaSource,
   ) {}
 
   private next<NextRow extends object = Row>(
     nextNode: InsertQueryNode,
   ): InsertQueryBuilder<Table, NextRow> {
-    return new InsertQueryBuilder(nextNode, this.client, this.sourceMeta);
+    return new InsertQueryBuilder(nextNode, this.client);
   }
 
   columns<
@@ -99,9 +98,7 @@ export class InsertQueryBuilder<Table extends string, Row extends object> {
 
     if (this.node.source.kind === "values") {
       const resolvedClient = this.getInsertClient(client);
-      const values = (this.node.source.rows as Row[]).map((row) =>
-        normalizeInsertRow(row, this.sourceMeta),
-      );
+      const values = this.node.source.rows.map((row) => normalizeInsertValue(row)) as Row[];
 
       return resolvedClient.insert({
         table: this.node.table,

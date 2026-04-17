@@ -1,0 +1,138 @@
+---
+title: DB Typing Helpers
+description: Type-level helpers for distinguishing tables from views and for expressing different read and write shapes.
+---
+
+Quarry's default DB shape is still plain TypeScript:
+
+```ts
+interface DB {
+  users: {
+    id: number;
+    email: string;
+  };
+}
+```
+
+Plain object sources are treated as regular tables.
+
+Use the helpers on this page when you want more precision than a plain object
+can express.
+
+## TypedView
+
+`TypedView<Row>` marks a source as selectable but not insertable.
+
+```ts
+import type { TypedView } from "@oorestisime/quarry";
+
+interface DB {
+  daily_users: TypedView<{
+    signup_date: string;
+    total_users: string;
+  }>;
+}
+```
+
+This means:
+
+- `db.selectFrom("daily_users")` is allowed
+- `db.insertInto("daily_users")` is rejected by the type system
+- `db.table("daily_users")` is rejected by the type system
+
+## TypedTable
+
+`TypedTable<Row>` is the table counterpart.
+
+```ts
+import type { TypedTable } from "@oorestisime/quarry";
+
+interface DB {
+  users: TypedTable<{
+    id: number;
+    email: string;
+  }>;
+}
+```
+
+You do not need `TypedTable` for ordinary handwritten schemas because a plain
+object already behaves like a table. It is mainly useful for symmetry with
+generated introspection output.
+
+## ColumnType
+
+`ColumnType<Select, Insert, Where>` lets a column read as one type while
+accepting a broader or different type for inserts and predicates.
+
+```ts
+import type { ColumnType } from "@oorestisime/quarry";
+
+type MetricText = ColumnType<string, number, number>;
+
+interface DB {
+  metrics: {
+    display_value: MetricText;
+  };
+}
+```
+
+That means:
+
+- selected rows expose `display_value` as `string`
+- inserts accept `number`
+- `where("display_value", "=", ...)` accepts `number`
+
+## ClickHouse aliases
+
+Quarry exports a small set of ClickHouse-specific aliases built on top of
+`ColumnType`.
+
+### Date and time
+
+- `ClickHouseDate`: reads as `string`, inserts as `string`
+- `ClickHouseDate32`: reads as `string`, inserts as `string`
+- `ClickHouseDateTime`: reads as `string`, inserts as `string | Date`
+- `ClickHouseDateTime64`: reads as `string`, inserts as `string | Date`
+
+### Large numeric types
+
+- `ClickHouseUInt64`: reads as `string`, inserts as `string | number | bigint`
+- `ClickHouseInt64`: reads as `string`, inserts as `string | number | bigint`
+- `ClickHouseDecimal`: reads as `number`, inserts as `number | string`
+
+These aliases match Quarry's current runtime semantics under `JSONEachRow` and
+the ClickHouse JS client.
+
+## Generated output
+
+The CLI introspection flow uses these helpers automatically.
+
+```ts
+import type {
+  ClickHouseDate,
+  ClickHouseDateTime64,
+  ClickHouseUInt64,
+  TypedTable,
+  TypedView,
+} from "@oorestisime/quarry";
+
+export interface Users {
+  id: number;
+  created_at: ClickHouseDateTime64;
+}
+
+export interface DailyUsers {
+  signup_date: ClickHouseDate;
+  total_users: ClickHouseUInt64;
+}
+
+export interface Tables {
+  users: TypedTable<Users>;
+}
+
+export interface Views {
+  daily_users: TypedView<DailyUsers>;
+}
+
+export interface DB extends Tables, Views {}
+```

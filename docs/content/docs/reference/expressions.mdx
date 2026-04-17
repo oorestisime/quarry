@@ -295,8 +295,7 @@ as `string`, decimals come back as `number`, dates come back as `string`.
 
 <Callout type="info">
 `eb.fn.toDecimal64(...)` and `eb.fn.toDecimal128(...)` are cast helpers for
-query expressions. They do not define schema columns, and Quarry does not yet
-export `Decimal*` helpers for `defineSchema(...)`.
+query expressions. They are about query-time casts, not a separate schema DSL.
 </Callout>
 
 ```ts

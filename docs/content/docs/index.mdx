@@ -1,6 +1,6 @@
 ---
 title: Start Here
-description: Choose the right path through Quarry depending on whether you want to build a query, model schema metadata, or understand the deeper semantics.
+description: Choose the right path through Quarry depending on whether you want to build a query, bootstrap DB types, or understand the deeper semantics.
 ---
 
 Quarry is a **query builder first**. It is not trying to be an ORM, and it is
@@ -10,13 +10,10 @@ not trying to hide ClickHouse behind a generic multi-dialect SQL abstraction.
 
 - [Build your first query](/docs/guides/getting-started) &mdash; start in plain
   TypeScript mode, connect `@clickhouse/client`, and run a typed `SELECT`.
-- [Use schema mode](/docs/guides/schema-mode-and-views) &mdash; add ClickHouse-aware
-  column helpers, engine metadata, and query-backed views.
-- [Bootstrap an existing schema](/docs/guides/introspection) &mdash; generate a
-  first-pass schema module from ClickHouse metadata with the experimental CLI
-  package.
+- [Bootstrap an existing DB type](/docs/guides/introspection) &mdash; generate a
+  plain `DB` type from ClickHouse metadata with the experimental CLI package.
 - [Look up the exact API](/docs/reference) &mdash; jump straight to builder methods,
-  schema helpers, and type-driven reference material.
+  DB entry points, and type-driven reference material.
 - [Read the deep-dive docs](/docs/concepts) &mdash; understand runtime semantics,
   scope rules, ClickHouse quirks, and the architecture behind the builder.
 

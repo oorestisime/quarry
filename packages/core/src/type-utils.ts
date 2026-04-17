@@ -1,4 +1,5 @@
-import type { QuarryColumn, QuarryQueryViewSource, QuarryTableSource } from "./schema";
+import type { QueryColumn } from "./column-metadata";
+import type { ColumnType, TypedTable, TypedView } from "./db-types";
 
 export type DatabaseSchema = object;
 export type ScopeMap = Record<string, Record<string, unknown>>;
@@ -15,34 +16,39 @@ export type InferResult<T> = T extends { readonly __resultType: infer Output } ?
 
 export type SourceName<DB extends DatabaseSchema> = Extract<keyof DB, string>;
 
-export type SelectValue<T> = T extends QuarryColumn<infer Select, any, any> ? Select : T;
-export type InsertValue<T> = T extends QuarryColumn<any, infer Insert, any> ? Insert : T;
-export type WhereValue<T> = T extends QuarryColumn<any, any, infer Where> ? Where : T;
+export type SelectValue<T> =
+  T extends ColumnType<infer Select, any, any>
+    ? Select
+    : T extends QueryColumn<infer Select, any>
+      ? Select
+      : T;
+export type InsertValue<T> = T extends ColumnType<any, infer Insert, any> ? Insert : SelectValue<T>;
+export type WhereValue<T> =
+  T extends ColumnType<any, any, infer Where>
+    ? Where
+    : T extends QueryColumn<any, infer Where>
+      ? Where
+      : T;
 
 type SourceColumns<Source> =
-  Source extends QuarryTableSource<infer Columns>
-    ? Columns
-    : Source extends QuarryQueryViewSource<any, infer Columns>
-      ? Columns
+  Source extends TypedTable<infer Row>
+    ? { [K in Extract<keyof Row, string>]: Row[K] }
+    : Source extends TypedView<infer Row>
+      ? { [K in Extract<keyof Row, string>]: Row[K] }
       : Source extends object
         ? { [K in Extract<keyof Source, string>]: Source[K] }
         : never;
 
 export type TableName<DB extends DatabaseSchema> = Extract<
   {
-    [K in SourceName<DB>]: DB[K] extends QuarryQueryViewSource<any, any> ? never : K;
+    [K in SourceName<DB>]: DB[K] extends TypedView<any> ? never : K;
   }[SourceName<DB>],
   string
 >;
 
 export type SelectableSourceName<DB extends DatabaseSchema> = SourceName<DB>;
 
-export type InsertableSourceName<DB extends DatabaseSchema> = Extract<
-  {
-    [K in SourceName<DB>]: DB[K] extends QuarryQueryViewSource<any, any> ? never : K;
-  }[SourceName<DB>],
-  string
->;
+export type InsertableSourceName<DB extends DatabaseSchema> = TableName<DB>;
 
 export type TableRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
   SourceColumns<DB[Table]> extends infer Row extends object

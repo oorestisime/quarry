@@ -1,6 +1,6 @@
 # @oorestisime/quarry-cli
 
-CLI for Quarry schema introspection.
+CLI for Quarry DB type introspection.
 
 ## Usage
 
@@ -8,10 +8,10 @@ CLI for Quarry schema introspection.
 npx @oorestisime/quarry-cli introspect \
   --url http://localhost:8123 \
   --database analytics \
-  --out schema.ts
+  --out db.ts
 ```
 
-The generated schema module imports runtime helpers from `@oorestisime/quarry`.
+The generated file exports plain TypeScript `Tables`, `Views`, and `DB` types.
 
 ## Docs
 

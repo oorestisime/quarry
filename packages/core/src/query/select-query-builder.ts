@@ -1,7 +1,7 @@
 import type { ExprNode, RefNode, SelectQueryNode, SelectionNode } from "../ast/query";
+import type { QueryColumn, QueryColumnMap } from "../column-metadata";
 import { compileSelectQuery, type CompiledQuery } from "../compiler/query-compiler";
 import type { ClickHouseClient, QueryCapableClickHouseClient } from "../client";
-import type { NormalizedSchema, NormalizedSchemaColumn, SchemaColumns } from "../schema";
 import type { DatabaseSchema, ScopeMap, Simplify } from "../type-utils";
 import { Expression, AliasedExpression, ExpressionBuilder } from "./expression-builder";
 import {
@@ -52,7 +52,7 @@ type SelectAllResult<
 
 type SelectAllColumns<
   Scope extends ScopeMap,
-  OutputColumns extends SchemaColumns,
+  OutputColumns extends QueryColumnMap,
   Alias extends ScopeAlias<Scope> | undefined,
 > = Simplify<
   OutputColumns &
@@ -61,7 +61,7 @@ type SelectAllColumns<
       : AllScopeSelectionColumns<Scope>)
 >;
 
-type ScopeColumnMap = Record<string, Record<string, NormalizedSchemaColumn>>;
+type ScopeColumnMap = Record<string, QueryColumnMap>;
 
 function parseSelectionParts(selection: string): { expr: string; alias?: string } {
   const match = selection.match(/^(.*?)\s+as\s+(.*?)$/i);
@@ -100,7 +100,7 @@ export class SelectQueryBuilder<
   Sources extends DatabaseSchema,
   Scope extends ScopeMap,
   Output extends object,
-  OutputColumns extends SchemaColumns = {},
+  OutputColumns extends QueryColumnMap = {},
 > implements ExecutableQuery<Output> {
   declare readonly __resultType: Output;
   declare readonly __outputColumns: OutputColumns;
@@ -108,27 +108,20 @@ export class SelectQueryBuilder<
   constructor(
     private readonly node: SelectQueryNode,
     private readonly client?: ClickHouseClient,
-    private readonly catalog?: NormalizedSchema,
     private readonly scopeColumns: ScopeColumnMap = {},
-    private readonly outputColumns?: Record<string, NormalizedSchemaColumn>,
+    private readonly outputColumns?: QueryColumnMap,
   ) {}
 
   private next<
     NextScope extends ScopeMap = Scope,
     NextOutput extends object = Output,
-    NextOutputColumns extends SchemaColumns = OutputColumns,
+    NextOutputColumns extends QueryColumnMap = OutputColumns,
   >(
     nextNode: SelectQueryNode,
     nextScopeColumns: ScopeColumnMap = this.scopeColumns,
-    nextOutputColumns: Record<string, NormalizedSchemaColumn> | undefined = this.outputColumns,
+    nextOutputColumns: QueryColumnMap | undefined = this.outputColumns,
   ): SelectQueryBuilder<Sources, NextScope, NextOutput, NextOutputColumns> {
-    return new SelectQueryBuilder(
-      nextNode,
-      this.client,
-      this.catalog,
-      nextScopeColumns,
-      nextOutputColumns,
-    );
+    return new SelectQueryBuilder(nextNode, this.client, nextScopeColumns, nextOutputColumns);
   }
 
   private getPredicateClickHouseType(ref: ColumnRef<Scope>): string | undefined {
@@ -157,7 +150,7 @@ export class SelectQueryBuilder<
     return value instanceof globalThis.Date ? columnType : undefined;
   }
 
-  private resolveScopeColumn(ref: ColumnRef<Scope>): NormalizedSchemaColumn | undefined {
+  private resolveScopeColumn(ref: ColumnRef<Scope>): QueryColumn | undefined {
     if (ref.includes(".")) {
       const [alias, column] = ref.split(".");
       return alias && column ? this.scopeColumns[alias]?.[column] : undefined;
@@ -173,7 +166,7 @@ export class SelectQueryBuilder<
 
   private resolveSelectionColumns(
     selections: readonly SelectionExpression<Scope>[],
-  ): Record<string, NormalizedSchemaColumn> | undefined {
+  ): QueryColumnMap | undefined {
     if (this.outputColumns === undefined && this.node.selections.length > 0) {
       return undefined;
     }
@@ -204,9 +197,7 @@ export class SelectQueryBuilder<
     return resolved;
   }
 
-  private resolveSelectAllColumns(
-    table?: ScopeAlias<Scope>,
-  ): Record<string, NormalizedSchemaColumn> | undefined {
+  private resolveSelectAllColumns(table?: ScopeAlias<Scope>): QueryColumnMap | undefined {
     if (this.outputColumns === undefined && this.node.selections.length > 0) {
       return undefined;
     }
@@ -230,7 +221,7 @@ export class SelectQueryBuilder<
     return resolved;
   }
 
-  getOutputColumns(): Record<string, NormalizedSchemaColumn> | undefined {
+  getOutputColumns(): QueryColumnMap | undefined {
     return this.outputColumns ? { ...this.outputColumns } : undefined;
   }
 
@@ -690,7 +681,7 @@ export class SelectQueryBuilder<
     Output,
     OutputColumns
   > {
-    const resolvedSource = resolveSourceColumns(source, this.catalog);
+    const resolvedSource = resolveSourceColumns(source);
     const nextScopeColumns = resolvedSource
       ? { ...this.scopeColumns, [resolvedSource.alias]: resolvedSource.columns }
       : this.scopeColumns;
@@ -776,11 +767,6 @@ export class SelectQueryBuilder<
   final(): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     if (!this.node.from || this.node.from.kind !== "table") {
       throw new Error("FINAL can only be applied to table sources.");
-    }
-
-    const fromSource = this.catalog?.[this.node.from.name];
-    if (fromSource && !fromSource.finalCapable) {
-      throw new Error(`FINAL is not supported for source '${this.node.from.name}'.`);
     }
 
     return this.next({

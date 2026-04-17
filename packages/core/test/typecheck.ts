@@ -1,31 +1,19 @@
 import {
-  Array as CHArray,
-  Date as CHDate,
-  Date32,
-  Decimal,
-  DateTime,
-  DateTime64,
-  FixedString,
-  IPv4,
-  IPv6,
-  Nullable,
-  LowCardinality,
-  String as CHString,
-  UInt8,
-  UInt16,
-  UInt32,
-  UInt64,
-  UUID,
-  createClickHouseDB,
-  defineSchema,
-  param,
-  table,
-  type ClickHouseClient,
+  type ClickHouseDate,
+  type ClickHouseDate32,
+  type ClickHouseDateTime,
+  type ClickHouseDateTime64,
+  type ClickHouseDecimal,
+  type ClickHouseInt64,
   type ClickHouseInsertResult,
+  type ClickHouseUInt64,
+  type ColumnType,
+  createClickHouseDB,
+  param,
+  type ClickHouseClient,
   type InferResult,
-  view,
-  Int8,
-  Int16,
+  type TypedTable,
+  type TypedView,
 } from "../src";
 
 interface TypecheckDB {
@@ -73,7 +61,6 @@ interface TypecheckDB {
 }
 
 const db = createClickHouseDB<TypecheckDB>();
-const codecColumn = Nullable(CHString().codec(["ZSTD(1)"]));
 
 const client: ClickHouseClient = {
   query: async () => ({
@@ -970,528 +957,182 @@ db.insertInto("json_samples").values([
   },
 ]);
 
-const schema = defineSchema({
-  users: table.replacingMergeTree({
-    id: UInt32(),
-    email: CHString(),
-    created_at: DateTime64(3),
-    signup_date: CHDate(),
-  }),
-}).views((db) => ({
-  final_users: view.as(db.selectFrom(db.table("users").final().as("u")).selectAll("u")),
-  daily_users: view.as(
-    db
-      .selectFrom("users as u")
-      .selectExpr((eb) => ["u.signup_date", eb.fn.count().as("total_users")])
-      .groupBy("u.signup_date"),
-  ),
-  formatted_users: view.as(
-    db
-      .selectFrom("users as u")
-      .selectExpr((eb) => [
-        "u.id",
-        eb.fn.toString("u.id").as("id_text"),
-        eb.fn.lower("u.email").as("email_lower"),
-        eb.fn.formatDateTime("u.created_at", "%Y-%m-%d").as("created_date_text"),
-        eb.fn.toYYYYMM("u.created_at").as("created_yyyymm"),
-      ]),
-  ),
-}));
+interface AdvancedTypecheckDB {
+  users: TypedTable<{
+    id: number;
+    created_at: ClickHouseDateTime64;
+    big_user_id: ClickHouseUInt64;
+    custom_metric: ColumnType<string, number, number>;
+  }>;
+  daily_users: TypedView<{
+    signup_date: ClickHouseDate;
+    total_users: ClickHouseUInt64;
+  }>;
+}
 
-const richerSchema = defineSchema({
-  schema_runtime_samples: table({
-    id: UInt32(),
-    event_date: CHDate(),
-    event_time: DateTime(),
-    created_at: DateTime64(3),
-    total_count: UInt64(),
-    note: Nullable(CHString()),
-    event_dates: CHArray(CHDate()),
-    created_history: CHArray(DateTime64(3)),
-  }),
-});
-
-const scalarSchema = defineSchema({
-  schema_scalar_samples: table({
-    tiny_u8: UInt8(),
-    small_u16: UInt16(),
-    tiny_i8: Int8(),
-    small_i16: Int16(),
-    amount_d12_6: Decimal(12, 6),
-    created_at: DateTime64(3).defaultSql("now64(3)"),
-    event_date: CHDate().materializedSql("toDate(created_at)"),
-    event_label: CHString().aliasSql("toString(event_date)"),
-    event_date32: Date32(),
-    code: FixedString(8),
-    account_uuid: UUID(),
-    client_ipv4: IPv4(),
-    client_ipv6: IPv6(),
-    category: LowCardinality(CHString()),
-  }),
-});
-
-const mergeTreeEngineSchema = defineSchema({
-  merge_tree_samples: table.mergeTree(
-    {
-      id: UInt32(),
-      created_at: DateTime64(3),
-    },
-    {
-      orderBy: ["id"],
-      primaryKey: ["id"],
-      partitionBy: ["toYYYYMM(created_at)"],
-      ttl: ["created_at + toIntervalDay(30)"],
-      settings: {
-        index_granularity: 8192,
-      },
-    },
-  ),
-  shared_merge_tree_samples: table.sharedMergeTree(
-    {
-      id: UInt32(),
-      created_at: DateTime64(3),
-    },
-    {
-      orderBy: ["id"],
-      partitionBy: ["toYYYYMM(created_at)"],
-    },
-  ),
-  replacing_tree_samples: table.replacingMergeTree(
-    {
-      id: UInt32(),
-      version: DateTime64(3),
-      is_deleted: UInt8(),
-    },
-    {
-      versionBy: "version",
-      isDeletedBy: "is_deleted",
-      orderBy: ["id"],
-    },
-  ),
-  shared_replacing_tree_samples: table.sharedReplacingMergeTree(
-    {
-      id: UInt32(),
-      version: DateTime64(3),
-      is_deleted: UInt8(),
-    },
-    {
-      versionBy: "version",
-      isDeletedBy: "is_deleted",
-      orderBy: ["id"],
-      primaryKey: ["id"],
-      settings: {
-        index_granularity: 8192,
-      },
-    },
-  ),
-  summing_tree_samples: table.summingMergeTree(
-    {
-      id: UInt32(),
-      total: UInt32(),
-    },
-    {
-      orderBy: ["id"],
-      sumColumns: ["total"],
-    },
-  ),
-  shared_summing_tree_samples: table.sharedSummingMergeTree(
-    {
-      id: UInt32(),
-      total: UInt32(),
-    },
-    {
-      orderBy: ["id"],
-      sumColumns: ["total"],
-    },
-  ),
-  aggregating_tree_samples: table.aggregatingMergeTree(
-    {
-      id: UInt32(),
-      created_at: DateTime64(3),
-    },
-    {
-      orderBy: ["id"],
-      partitionBy: ["toYYYYMM(created_at)"],
-    },
-  ),
-  collapsing_tree_samples: table.collapsingMergeTree(
-    {
-      id: UInt32(),
-      sign: UInt8(),
-    },
-    {
-      signBy: "sign",
-      orderBy: ["id"],
-    },
-  ),
-  versioned_collapsing_tree_samples: table.versionedCollapsingMergeTree(
-    {
-      id: UInt32(),
-      sign: UInt8(),
-      version: DateTime64(3),
-    },
-    {
-      signBy: "sign",
-      versionBy: "version",
-      orderBy: ["id"],
-    },
-  ),
-});
-
-const schemaDb = createClickHouseDB({ schema, client });
-const richerSchemaDb = createClickHouseDB({ schema: richerSchema, client });
-const scalarSchemaDb = createClickHouseDB({ schema: scalarSchema, client });
-const schemaQuery = schemaDb
+const advancedDb = createClickHouseDB<AdvancedTypecheckDB>();
+const advancedUsersQuery = advancedDb
   .selectFrom("users as u")
-  .select("u.id", "u.email", "u.created_at")
-  .where("u.created_at", ">=", new Date("2025-01-01T00:00:00.000Z"));
-const inheritedViewQuery = schemaDb
-  .selectFrom("final_users as f")
-  .select("f.id", "f.email", "f.created_at")
-  .where("f.signup_date", ">=", new Date("2025-01-01T00:00:00.000Z"));
-const aggregateViewQuery = schemaDb
+  .select("u.id", "u.created_at", "u.big_user_id", "u.custom_metric")
+  .where("u.created_at", ">=", new Date("2025-01-01T00:00:00.000Z"))
+  .where("u.big_user_id", "=", 42n)
+  .where("u.custom_metric", "=", 1);
+const advancedViewQuery = advancedDb
   .selectFrom("daily_users as d")
-  .select("d.signup_date", "d.total_users")
-  .orderBy("d.signup_date", "asc");
-const formattedViewQuery = schemaDb
-  .selectFrom("formatted_users as f")
-  .select("f.id", "f.id_text", "f.email_lower", "f.created_date_text", "f.created_yyyymm")
-  .orderBy("f.id", "asc");
-const richerSchemaQuery = richerSchemaDb
-  .selectFrom("schema_runtime_samples as s")
-  .select(
-    "s.id",
-    "s.event_date",
-    "s.event_time",
-    "s.created_at",
-    "s.total_count",
-    "s.note",
-    "s.event_dates",
-    "s.created_history",
-  )
-  .where("s.event_date", ">=", new Date("2025-01-01T00:00:00.000Z"))
-  .where("s.event_time", ">=", new Date("2025-01-01T12:00:00.000Z"))
-  .where("s.created_at", ">=", new Date("2025-01-01T12:00:00.123Z"))
-  .where("s.event_date", "in", [new Date("2025-01-01T00:00:00.000Z")])
-  .where("s.total_count", "in", ["1", "2"])
-  .where("s.event_time", ">=", param(new Date("2025-01-01T12:00:00.000Z"), "DateTime"))
-  .orderBy("s.id", "asc");
-const scalarSchemaQuery = scalarSchemaDb
-  .selectFrom("schema_scalar_samples as s")
-  .select(
-    "s.tiny_u8",
-    "s.small_u16",
-    "s.tiny_i8",
-    "s.small_i16",
-    "s.amount_d12_6",
-    "s.event_date32",
-    "s.code",
-    "s.account_uuid",
-    "s.client_ipv4",
-    "s.client_ipv6",
-    "s.category",
-  )
-  .where("s.tiny_u8", "=", 7)
-  .where("s.event_date32", ">=", new Date("2025-01-01T00:00:00.000Z"))
-  .where("s.category", "=", "premium")
-  .orderBy("s.tiny_u8", "asc");
-type SchemaRow = InferResult<typeof schemaQuery>;
-type InheritedViewRow = InferResult<typeof inheritedViewQuery>;
-type AggregateViewRow = InferResult<typeof aggregateViewQuery>;
-type FormattedViewRow = InferResult<typeof formattedViewQuery>;
-type RicherSchemaRow = InferResult<typeof richerSchemaQuery>;
-type ScalarSchemaRow = InferResult<typeof scalarSchemaQuery>;
-const validSchemaRow: SchemaRow = {
+  .select("d.signup_date", "d.total_users");
+
+type AdvancedUserRow = InferResult<typeof advancedUsersQuery>;
+type AdvancedViewRow = InferResult<typeof advancedViewQuery>;
+
+const validAdvancedUserRow: AdvancedUserRow = {
   id: 1,
-  email: "alice@example.com",
   created_at: "2025-01-01 00:00:00.000",
+  big_user_id: "42",
+  custom_metric: "1",
 };
-const validInheritedViewRow: InheritedViewRow = {
-  id: 1,
-  email: "alice@example.com",
-  created_at: "2025-01-01 00:00:00.000",
-};
-const validAggregateViewRow: AggregateViewRow = {
+
+const validAdvancedViewRow: AdvancedViewRow = {
   signup_date: "2025-01-01",
   total_users: "42",
 };
-const validFormattedViewRow: FormattedViewRow = {
-  id: 1,
-  id_text: "1",
-  email_lower: "alice@example.com",
-  created_date_text: "2025-01-01",
-  created_yyyymm: 202501,
-};
 
-// @ts-expect-error projected views should not expose source columns that are not selected
-schemaDb.selectFrom("daily_users as d").select("d.email");
-
-// @ts-expect-error projected views should not allow predicates on non-projected source columns
-schemaDb.selectFrom("daily_users as d").where("d.email", "=", "alice@example.com");
-
-const invalidAggregateViewRow: AggregateViewRow = {
-  signup_date: "2025-01-01",
-  total_users: "42",
-  // @ts-expect-error projected view result types should not contain hidden source columns
-  email: "alice@example.com",
-};
-const validRicherSchemaRow: RicherSchemaRow = {
-  id: 1,
-  event_date: "2025-01-01",
-  event_time: "2025-01-01 12:00:00",
-  created_at: "2025-01-01 12:00:00.123",
-  total_count: "42",
-  note: null,
-  event_dates: ["2025-01-01", "2025-01-02"],
-  created_history: ["2025-01-01 12:00:00.123"],
-};
-const validScalarSchemaRow: ScalarSchemaRow = {
-  tiny_u8: 7,
-  small_u16: 512,
-  tiny_i8: -3,
-  small_i16: -1024,
-  amount_d12_6: 123.456789,
-  event_date32: "2025-01-01",
-  code: "ABCDEFGH",
-  account_uuid: "550e8400-e29b-41d4-a716-446655440000",
-  client_ipv4: "127.0.0.1",
-  client_ipv6: "::1",
-  category: "premium",
-};
-const schemaInsertResultPromise: Promise<ClickHouseInsertResult> = schemaDb
+const advancedInsertResultPromise: Promise<ClickHouseInsertResult> = advancedDb
   .insertInto("users")
   .values([
     {
       id: 1,
-      email: "alice@example.com",
       created_at: new Date("2025-01-01T00:00:00.000Z"),
-      signup_date: "2025-01-01",
+      big_user_id: 42n,
+      custom_metric: 1,
     },
   ])
   .execute();
-const richerSchemaInsertResultPromise: Promise<ClickHouseInsertResult> = richerSchemaDb
-  .insertInto("schema_runtime_samples")
+
+void validAdvancedUserRow;
+void validAdvancedViewRow;
+void advancedInsertResultPromise;
+
+// @ts-expect-error typed views should not be insertable
+advancedDb.insertInto("daily_users");
+
+// @ts-expect-error typed views should not be table sources
+advancedDb.table("daily_users");
+
+// @ts-expect-error custom column where type should stay numeric
+advancedDb.selectFrom("users as u").where("u.custom_metric", "=", "1");
+
+// @ts-expect-error ClickHouseDateTime64 should not accept numeric predicate values
+advancedDb.selectFrom("users as u").where("u.created_at", "=", 1);
+
+interface AliasTypecheckDB {
+  typed_aliases: TypedTable<{
+    event_date: ClickHouseDate;
+    event_date32: ClickHouseDate32;
+    event_time: ClickHouseDateTime;
+    created_at: ClickHouseDateTime64;
+    amount: ClickHouseDecimal;
+    signed_total: ClickHouseInt64;
+    unsigned_total: ClickHouseUInt64;
+  }>;
+}
+
+const aliasDb = createClickHouseDB<AliasTypecheckDB>();
+const aliasQuery = aliasDb
+  .selectFrom("typed_aliases as t")
+  .select(
+    "t.event_date",
+    "t.event_date32",
+    "t.event_time",
+    "t.created_at",
+    "t.amount",
+    "t.signed_total",
+    "t.unsigned_total",
+  )
+  .where("t.event_date", "=", "2025-01-01")
+  .where("t.event_date32", "=", "2025-01-01")
+  .where("t.event_time", ">=", new Date("2025-01-01T12:00:00.000Z"))
+  .where("t.created_at", ">=", "2025-01-01 12:00:00.123")
+  .where("t.amount", "=", "1.25")
+  .where("t.signed_total", "=", 42n)
+  .where("t.unsigned_total", "=", 42);
+
+type AliasRow = InferResult<typeof aliasQuery>;
+
+const validAliasRow: AliasRow = {
+  event_date: "2025-01-01",
+  event_date32: "2025-01-01",
+  event_time: "2025-01-01 12:00:00",
+  created_at: "2025-01-01 12:00:00.123",
+  amount: 1.25,
+  signed_total: "42",
+  unsigned_total: "42",
+};
+
+const aliasInsertResultPromise: Promise<ClickHouseInsertResult> = aliasDb
+  .insertInto("typed_aliases")
   .values([
     {
-      id: 1,
-      event_date: new Date("2025-01-01T00:00:00.000Z"),
-      event_time: "2025-01-01 12:00:00",
+      event_date: "2025-01-01",
+      event_date32: "2025-01-01",
+      event_time: new Date("2025-01-01T12:00:00.000Z"),
       created_at: new Date("2025-01-01T12:00:00.123Z"),
-      total_count: 42n,
-      note: null,
-      event_dates: [new Date("2025-01-01T00:00:00.000Z"), "2025-01-02"],
-      created_history: [new Date("2025-01-01T12:00:00.123Z"), "2025-01-02 12:00:00.456"],
-    },
-  ])
-  .execute();
-const scalarSchemaInsertResultPromise: Promise<ClickHouseInsertResult> = scalarSchemaDb
-  .insertInto("schema_scalar_samples")
-  .values([
-    {
-      tiny_u8: 7,
-      small_u16: 512,
-      tiny_i8: -3,
-      small_i16: -1024,
-      amount_d12_6: "123.456789",
-      created_at: new Date("2025-01-01T00:00:00.000Z"),
-      event_date: new Date("2025-01-01T00:00:00.000Z"),
-      event_label: "2025-01-01",
-      event_date32: new Date("2025-01-01T00:00:00.000Z"),
-      code: "ABCDEFGH",
-      account_uuid: "550e8400-e29b-41d4-a716-446655440000",
-      client_ipv4: "127.0.0.1",
-      client_ipv6: "::1",
-      category: "premium",
+      amount: "1.25",
+      signed_total: 42,
+      unsigned_total: 42n,
     },
   ])
   .execute();
 
-void validSchemaRow;
-void validInheritedViewRow;
-void validAggregateViewRow;
-void validFormattedViewRow;
-void validRicherSchemaRow;
-void validScalarSchemaRow;
-void mergeTreeEngineSchema;
-void invalidAggregateViewRow;
-void schemaInsertResultPromise;
-void richerSchemaInsertResultPromise;
-void scalarSchemaInsertResultPromise;
-void codecColumn;
+void validAliasRow;
+void aliasInsertResultPromise;
 
-// @ts-expect-error views are not insertable
-schemaDb.insertInto("final_users");
+// @ts-expect-error ClickHouseDate should not accept numeric predicate values
+aliasDb.selectFrom("typed_aliases as t").where("t.event_date", "=", 1);
 
-// @ts-expect-error views are not table sources
-schemaDb.table("final_users");
-
-// @ts-expect-error UInt32 predicates should stay numeric
-schemaDb.selectFrom("users as u").where("u.id", "=", "1");
-
-// @ts-expect-error codec arrays must include at least one value
-CHString().codec([]);
-
-table.mergeTree(
+aliasDb.insertInto("typed_aliases").values([
   {
-    id: UInt32(),
-    version: DateTime64(3),
-  },
-  {
-    // @ts-expect-error mergeTree should not accept replacing-only options
-    versionBy: "version",
-  },
-);
-
-table.sharedMergeTree(
-  {
-    id: UInt32(),
-  },
-  {
-    // @ts-expect-error merge tree orderBy references must point at known columns
-    orderBy: ["missing"],
-  },
-);
-
-table.sharedReplacingMergeTree(
-  {
-    id: UInt32(),
-    is_deleted: UInt8(),
-  },
-  // @ts-expect-error isDeletedBy requires versionBy for replacing engines
-  {
-    isDeletedBy: "is_deleted",
-    orderBy: ["id"],
-  },
-);
-
-table.replacingMergeTree(
-  {
-    id: UInt32(),
-    version: DateTime64(3),
-    is_deleted: UInt8(),
-  },
-  {
-    // @ts-expect-error replacing engine refs must point at known columns
-    versionBy: "updated_at",
-    isDeletedBy: "is_deleted",
-    orderBy: ["id"],
-  },
-);
-
-table.summingMergeTree(
-  {
-    id: UInt32(),
-    total: UInt32(),
-  },
-  {
-    // @ts-expect-error summing sumColumns must point at known columns
-    sumColumns: ["missing"],
-    orderBy: ["id"],
-  },
-);
-
-table.sharedSummingMergeTree(
-  {
-    id: UInt32(),
-    total: UInt32(),
-  },
-  {
-    // @ts-expect-error shared summing sumColumns must point at known columns
-    sumColumns: ["missing"],
-    orderBy: ["id"],
-  },
-);
-
-table.collapsingMergeTree(
-  {
-    id: UInt32(),
-    sign: UInt8(),
-  },
-  // @ts-expect-error collapsing engines require signBy
-  {
-    orderBy: ["id"],
-  },
-);
-
-table.versionedCollapsingMergeTree(
-  {
-    id: UInt32(),
-    sign: UInt8(),
-    version: DateTime64(3),
-  },
-  {
-    signBy: "sign",
-    // @ts-expect-error versioned collapsing versionBy must point at known columns
-    versionBy: "updated_at",
-    orderBy: ["id"],
-  },
-);
-
-defineSchema({
-  users: table({
-    id: UInt32(),
-  }),
-}).views((db) => ({
-  // @ts-expect-error missing sources should fail in the staged view builder
-  bad_view: view.as(db.selectFrom("missing_source as m").selectAll("m")),
-}));
-
-richerSchemaDb.insertInto("schema_runtime_samples").values([
-  {
-    id: 1,
-    event_date: "2025-01-01",
+    // @ts-expect-error ClickHouseDate should not accept Date insert values
+    event_date: new Date("2025-01-01T00:00:00.000Z"),
+    event_date32: "2025-01-01",
     event_time: "2025-01-01 12:00:00",
     created_at: "2025-01-01 12:00:00.123",
-    total_count: "1",
-    note: null,
-    // @ts-expect-error Date array columns should not accept scalar Date values on insert
-    event_dates: new Date("2025-01-01T00:00:00.000Z"),
-    created_history: [],
+    amount: 1.25,
+    signed_total: "42",
+    unsigned_total: "42",
   },
 ]);
 
-// @ts-expect-error nullable string columns should not accept numeric predicate values
-richerSchemaDb.selectFrom("schema_runtime_samples as s").where("s.note", "=", 1);
-
-// @ts-expect-error DateTime columns should not accept numeric predicate values
-richerSchemaDb.selectFrom("schema_runtime_samples as s").where("s.event_time", "=", 1);
-
-// @ts-expect-error UInt8 columns should stay numeric
-scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.tiny_u8", "=", "7");
-
-// @ts-expect-error Date32 columns should not accept numeric predicate values
-scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.event_date32", "=", 1);
-
-// @ts-expect-error low cardinality string columns should not accept numeric predicate values
-scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.category", "=", 1);
-
-scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.amount_d12_6", "=", 1.25);
-scalarSchemaDb.selectFrom("schema_scalar_samples as s").where("s.amount_d12_6", "=", "1.25");
-
-richerSchemaDb.insertInto("schema_runtime_samples").values([
+aliasDb.insertInto("typed_aliases").values([
   {
-    id: 1,
     event_date: "2025-01-01",
+    // @ts-expect-error ClickHouseDate32 should not accept boolean insert values
+    event_date32: true,
     event_time: "2025-01-01 12:00:00",
     created_at: "2025-01-01 12:00:00.123",
-    total_count: "1",
-    // @ts-expect-error nullable string columns should not accept numeric insert values
-    note: 1,
-    event_dates: [],
-    created_history: [],
+    amount: 1.25,
+    signed_total: "42",
+    unsigned_total: "42",
   },
 ]);
 
-richerSchemaDb.insertInto("schema_runtime_samples").values([
+// @ts-expect-error ClickHouseDateTime should not accept numeric predicate values
+aliasDb.selectFrom("typed_aliases as t").where("t.event_time", "=", 1);
+
+// @ts-expect-error ClickHouseDecimal should not accept boolean predicates
+aliasDb.selectFrom("typed_aliases as t").where("t.amount", "=", true);
+
+aliasDb.insertInto("typed_aliases").values([
   {
-    id: 1,
     event_date: "2025-01-01",
+    event_date32: "2025-01-01",
     event_time: "2025-01-01 12:00:00",
     created_at: "2025-01-01 12:00:00.123",
-    total_count: "1",
-    note: null,
-    event_dates: ["2025-01-01"],
-    // @ts-expect-error DateTime64 arrays should not accept numeric members
-    created_history: [1],
+    amount: 1.25,
+    // @ts-expect-error ClickHouseInt64 should not accept boolean insert values
+    signed_total: false,
+    unsigned_total: "42",
   },
 ]);
+
+// @ts-expect-error ClickHouseUInt64 should not accept boolean predicates
+aliasDb.selectFrom("typed_aliases as t").where("t.unsigned_total", "=", false);

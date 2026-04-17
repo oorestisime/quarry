@@ -2,7 +2,7 @@
   "name": "@oorestisime/quarry-cli",
   "version": "0.4.0",
   "private": false,
-  "description": "Command-line tools for Quarry schema introspection.",
+  "description": "Command-line tools for Quarry DB type introspection.",
   "keywords": [
     "cli",
     "clickhouse",
@@ -41,7 +41,6 @@
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
-    "@oorestisime/quarry": "workspace:*",
     "citty": "^0.1.6"
   }
 }

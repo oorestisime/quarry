@@ -2,10 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "types": ["node", "vitest/globals"],
-    "ignoreDeprecations": "6.0",
-    "paths": {
-      "@oorestisime/quarry": ["../core/src/index.ts"]
-    }
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src", "test", "vitest.config.ts"]
 }

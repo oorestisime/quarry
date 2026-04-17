@@ -21,7 +21,7 @@
 <p align="center">
   <a href="https://ch-quarry.vercel.app/docs/guides/getting-started"><strong>Getting started</strong></a>
   ·
-  <a href="https://ch-quarry.vercel.app/docs/guides/schema-mode-and-views"><strong>Schema mode</strong></a>
+  <a href="https://ch-quarry.vercel.app/docs/guides/introspection"><strong>Introspection</strong></a>
   ·
   <a href="https://ch-quarry.vercel.app/docs/reference"><strong>API reference</strong></a>
   ·
@@ -33,11 +33,11 @@ Quarry is a query builder first. It is not trying to be an ORM or hide ClickHous
 ## Why Quarry
 
 - ClickHouse-first surface area: `FINAL`, `PREWHERE`, `SETTINGS`, typed joins,
-  `INSERT INTO ... SELECT`, and query-backed views.
+  `INSERT INTO ... SELECT`, and explicit table sources.
 - Runtime-honest types: `UInt64` comes back as `string`, `Decimal` comes back
   as `number`, and the docs are explicit about those semantics.
-- Two ways to model your database: plain TypeScript interfaces for the light
-  path, or richer schema mode when you want ClickHouse-aware metadata.
+- Plain TypeScript DB types: Quarry stays focused on query building instead of
+  asking you to maintain a second schema DSL.
 - Inspectable output: every query can be compiled with `toSQL()` before you
   execute it.
 
@@ -82,9 +82,8 @@ const rows = await query.execute();
 
 - [Getting started](https://ch-quarry.vercel.app/docs/guides/getting-started)
   &mdash; install Quarry, create a typed `db`, run a first query, inspect SQL.
-- [Schema mode and views](https://ch-quarry.vercel.app/docs/guides/schema-mode-and-views)
-  &mdash; ClickHouse-aware column helpers, engine metadata, and query-backed
-  views.
+- [Introspection](https://ch-quarry.vercel.app/docs/guides/introspection)
+  &mdash; bootstrap plain `Tables`, `Views`, and `DB` types from ClickHouse.
 - [API reference](https://ch-quarry.vercel.app/docs/reference) &mdash; exact
   builder methods, helper surfaces, and selected live type tables.
 - [Deep dive](https://ch-quarry.vercel.app/docs/concepts) &mdash; runtime

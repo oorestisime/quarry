@@ -3,7 +3,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import process from "node:process";
 import { createClient } from "@clickhouse/client";
-import { describeDDLObjects, generateSchemaModuleFromDDL } from "./introspection/index";
+import {
+  generateTypeScriptSchemaModule,
+  type TypeScriptIntrospectionColumn,
+} from "./introspection/ts-generator";
 
 export interface IntrospectArgs {
   readonly url?: string;
@@ -28,7 +31,6 @@ export interface IntrospectionConnectionOptions {
 export interface IntrospectionObject {
   readonly name: string;
   readonly engine: string;
-  readonly createTableQuery: string;
 }
 
 export interface IntrospectionFailure {
@@ -37,17 +39,17 @@ export interface IntrospectionFailure {
   readonly message: string;
 }
 
-export interface IntrospectionResult {
-  readonly source: string;
-  readonly failures: readonly IntrospectionFailure[];
-  readonly summary: IntrospectionSummary;
-}
-
 export interface IntrospectionSummary {
   readonly generatedObjects: number;
   readonly generatedTables: number;
   readonly generatedViews: number;
   readonly skippedObjects: number;
+}
+
+export interface IntrospectionResult {
+  readonly source: string;
+  readonly failures: readonly IntrospectionFailure[];
+  readonly summary: IntrospectionSummary;
 }
 
 export interface IntrospectionSchemaHeaderOptions {
@@ -60,18 +62,19 @@ export interface IntrospectionSchemaHeaderOptions {
 interface SystemTableRow {
   readonly name: string;
   readonly engine: string;
-  readonly create_table_query: string;
+}
+
+interface SystemColumnRow {
+  readonly table: string;
+  readonly name: string;
+  readonly type: string;
+  readonly position: number;
 }
 
 const MAX_FAILURE_DETAILS = 40;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function normalizeCreateStatement(statement: string): string {
-  const trimmed = statement.trim();
-  return trimmed.endsWith(";") ? trimmed : `${trimmed};`;
 }
 
 function sortObjects(left: IntrospectionObject, right: IntrospectionObject): number {
@@ -87,7 +90,7 @@ function sortObjects(left: IntrospectionObject, right: IntrospectionObject): num
 
 function tryFormatTypeScript(source: string): string {
   try {
-    return execFileSync("oxfmt", ["--stdin-filepath", "schema.ts"], {
+    return execFileSync("oxfmt", ["--stdin-filepath", "db.ts"], {
       input: source,
       encoding: "utf8",
     });
@@ -132,7 +135,6 @@ function buildSchemaHeaderOptions(
   args: IntrospectArgs,
   options: Pick<IntrospectionConnectionOptions, "database">,
 ): IntrospectionSchemaHeaderOptions {
-  // Only include non-sensitive options in generated file headers.
   return {
     database: options.database,
     tablesOnly: args.tablesOnly ?? false,
@@ -202,13 +204,6 @@ export function resolveConnectionOptions(
   };
 }
 
-export function buildSchemaModule(
-  objects: readonly IntrospectionObject[],
-  headerOptions?: IntrospectionSchemaHeaderOptions,
-): string {
-  return buildSchemaModuleResult(objects, headerOptions).source;
-}
-
 export function filterExcludedObjects(
   objects: readonly IntrospectionObject[],
   includePattern?: RegExp,
@@ -227,8 +222,9 @@ export function filterExcludedObjects(
   });
 }
 
-export function buildSchemaModuleResult(
+export function buildTypeScriptModuleResult(
   objects: readonly IntrospectionObject[],
+  columns: readonly TypeScriptIntrospectionColumn[],
   headerOptions?: IntrospectionSchemaHeaderOptions,
 ): IntrospectionResult {
   if (objects.length === 0) {
@@ -236,98 +232,58 @@ export function buildSchemaModuleResult(
   }
 
   const orderedObjects = [...objects].sort(sortObjects);
-  const supportedTables: IntrospectionObject[] = [];
-  const candidateViews: Array<IntrospectionObject & { dependencies: readonly string[] }> = [];
+  const columnsByObject = new Map<string, TypeScriptIntrospectionColumn[]>();
+  for (const column of columns) {
+    const existing = columnsByObject.get(column.objectName);
+    if (existing) {
+      existing.push(column);
+    } else {
+      columnsByObject.set(column.objectName, [column]);
+    }
+  }
+
   const failures: IntrospectionFailure[] = [];
+  const tables: Array<{ name: string; columns: readonly TypeScriptIntrospectionColumn[] }> = [];
+  const views: Array<{ name: string; columns: readonly TypeScriptIntrospectionColumn[] }> = [];
 
   for (const object of orderedObjects) {
-    try {
-      generateSchemaModuleFromDDL(normalizeCreateStatement(object.createTableQuery));
-
-      const [descriptor] = describeDDLObjects(normalizeCreateStatement(object.createTableQuery));
-      if (!descriptor) {
-        failures.push({
-          name: object.name,
-          engine: object.engine,
-          message: "Could not describe the introspected object.",
-        });
-        continue;
-      }
-
-      if (descriptor.kind === "view") {
-        candidateViews.push({
-          ...object,
-          dependencies: descriptor.dependencies,
-        });
-      } else {
-        supportedTables.push(object);
-      }
-    } catch (error) {
+    const objectColumns = columnsByObject.get(object.name) ?? [];
+    if (objectColumns.length === 0) {
       failures.push({
         name: object.name,
         engine: object.engine,
-        message: getErrorMessage(error),
+        message: "Could not load column metadata for the introspected object.",
       });
+      continue;
+    }
+
+    if (isTableLikeObject(object)) {
+      tables.push({ name: object.name, columns: objectColumns });
+    } else {
+      views.push({ name: object.name, columns: objectColumns });
     }
   }
 
-  const supportedObjects: IntrospectionObject[] = [...supportedTables];
-  const resolvedNames = new Set(supportedTables.map((object) => object.name));
-  let remainingViews = [...candidateViews];
-  let progress = true;
-
-  while (remainingViews.length > 0 && progress) {
-    progress = false;
-    const nextRemainingViews: typeof remainingViews = [];
-
-    for (const view of remainingViews) {
-      if (view.dependencies.every((dependency) => resolvedNames.has(dependency))) {
-        supportedObjects.push(view);
-        resolvedNames.add(view.name);
-        progress = true;
-        continue;
-      }
-
-      nextRemainingViews.push(view);
-    }
-
-    remainingViews = nextRemainingViews;
+  if (tables.length + views.length === 0) {
+    throw new Error(
+      failures.length > 0
+        ? formatIntrospectionFailureReport(
+            failures,
+            "Could not generate trusted TypeScript DB types for",
+          )
+        : "No supported tables or views were available to introspect.",
+    );
   }
-
-  for (const view of remainingViews) {
-    failures.push({
-      name: view.name,
-      engine: view.engine,
-      message: `Referenced source ${view.dependencies.map((dependency) => `'${dependency}'`).join(", ")} was not generated.`,
-    });
-  }
-
-  if (supportedObjects.length === 0) {
-    if (failures.length > 0) {
-      throw new Error(
-        formatIntrospectionFailureReport(
-          failures,
-          "Could not generate a trusted Quarry schema for",
-        ),
-      );
-    }
-
-    throw new Error("No supported tables or views were available to introspect.");
-  }
-
-  const ddl = supportedObjects
-    .map((object) => normalizeCreateStatement(object.createTableQuery))
-    .join("\n\n");
 
   return {
     source: tryFormatTypeScript(
-      `${formatSchemaModuleHeader(headerOptions)}\n\n${generateSchemaModuleFromDDL(ddl)}`,
+      `${formatSchemaModuleHeader(headerOptions)}\n\n${generateTypeScriptSchemaModule(tables, views)}`,
     ),
     failures,
     summary: {
-      generatedObjects: supportedObjects.length,
-      generatedTables: supportedTables.length,
-      generatedViews: supportedObjects.length - supportedTables.length,
+      generatedObjects: tables.length + views.length,
+      generatedTables: tables.length,
+      generatedViews: views.length,
       skippedObjects: failures.length,
     },
   };
@@ -349,8 +305,7 @@ export async function fetchDatabaseObjects(
       query: `
         SELECT
           name,
-          engine,
-          create_table_query
+          engine
         FROM system.tables
         WHERE database = {database:String}
           AND engine NOT IN ('Dictionary', 'MaterializedView')
@@ -366,7 +321,46 @@ export async function fetchDatabaseObjects(
     return rows.map((row) => ({
       name: row.name,
       engine: row.engine,
-      createTableQuery: row.create_table_query,
+    }));
+  } finally {
+    await client.close();
+  }
+}
+
+export async function fetchDatabaseColumns(
+  options: IntrospectionConnectionOptions,
+): Promise<TypeScriptIntrospectionColumn[]> {
+  const client = createClient({
+    url: options.url,
+    username: options.user,
+    password: options.password,
+    request_timeout: 30_000,
+  });
+
+  try {
+    const result = await client.query({
+      query: `
+        SELECT
+          table,
+          name,
+          type,
+          position
+        FROM system.columns
+        WHERE database = {database:String}
+        ORDER BY table ASC, position ASC
+      `,
+      query_params: {
+        database: options.database,
+      },
+      format: "JSONEachRow",
+    });
+
+    const rows = await result.json<SystemColumnRow>();
+    return rows.map((row) => ({
+      objectName: row.table,
+      name: row.name,
+      clickhouseType: row.type,
+      position: row.position,
     }));
   } finally {
     await client.close();
@@ -395,5 +389,6 @@ export async function introspectDatabase(args: IntrospectArgs): Promise<Introspe
     );
   }
 
-  return buildSchemaModuleResult(objects, buildSchemaHeaderOptions(args, options));
+  const columns = await fetchDatabaseColumns(options);
+  return buildTypeScriptModuleResult(objects, columns, buildSchemaHeaderOptions(args, options));
 }

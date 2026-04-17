@@ -1,5 +1,5 @@
 import type { SelectQueryNode, TableNode } from "../ast/query";
-import type { NormalizedSchemaColumn, NormalizedSchemaSource } from "../schema";
+import type { QueryColumnMap } from "../column-metadata";
 import type { DatabaseSchema, TableName } from "../type-utils";
 
 export class TableSourceBuilder<
@@ -11,19 +11,14 @@ export class TableSourceBuilder<
     readonly table: Table,
     readonly alias?: Alias,
     readonly isFinal = false,
-    private readonly schemaSource?: NormalizedSchemaSource,
   ) {}
 
   as<NextAlias extends string>(alias: NextAlias): TableSourceBuilder<DB, Table, NextAlias> {
-    return new TableSourceBuilder(this.table, alias, this.isFinal, this.schemaSource);
+    return new TableSourceBuilder(this.table, alias, this.isFinal);
   }
 
   final(): TableSourceBuilder<DB, Table, Alias> {
-    if (this.schemaSource && !this.schemaSource.finalCapable) {
-      throw new Error(`FINAL is not supported for source '${this.table}'.`);
-    }
-
-    return new TableSourceBuilder(this.table, this.alias, true, this.schemaSource);
+    return new TableSourceBuilder(this.table, this.alias, true);
   }
 
   toSourceNode(): TableNode {
@@ -40,14 +35,14 @@ export class AliasedQuery<_Output extends object, Alias extends string, _OutputC
   constructor(
     private readonly query: SelectQueryNode,
     readonly alias: Alias,
-    private readonly outputColumns?: Record<string, NormalizedSchemaColumn>,
+    private readonly outputColumns?: QueryColumnMap,
   ) {}
 
   toAST(): SelectQueryNode {
     return structuredClone(this.query);
   }
 
-  getOutputColumns(): Record<string, NormalizedSchemaColumn> | undefined {
+  getOutputColumns(): QueryColumnMap | undefined {
     return this.outputColumns ? { ...this.outputColumns } : undefined;
   }
 }

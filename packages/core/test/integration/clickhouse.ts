@@ -155,6 +155,7 @@ export async function startClickHouse(): Promise<ClickHouseTestContext> {
     password: CLICKHOUSE_PASSWORD,
     clickhouse_settings: {
       allow_experimental_json_type: 1,
+      date_time_input_format: "best_effort",
     },
   });
 

@@ -39,7 +39,7 @@ function startSpinner(label: string): () => void {
 const introspectCommand = defineCommand({
   meta: {
     name: "introspect",
-    description: "Read ClickHouse metadata and generate a Quarry schema module.",
+    description: "Read ClickHouse metadata and generate plain TypeScript DB types.",
   },
   args: {
     url: {
@@ -62,7 +62,7 @@ const introspectCommand = defineCommand({
     out: {
       type: "string",
       alias: "o",
-      description: "Write the generated module to a file instead of stdout.",
+      description: "Write the generated TypeScript module to a file instead of stdout.",
     },
     tablesOnly: {
       type: "boolean",
@@ -87,7 +87,7 @@ const introspectCommand = defineCommand({
 
       if (args.out) {
         await writeSchemaModule(result.source, args.out);
-        process.stderr.write(`Wrote Quarry schema to ${args.out}\n`);
+        process.stderr.write(`Wrote generated TypeScript DB types to ${args.out}\n`);
       } else {
         process.stdout.write(result.source);
       }

@@ -1,5 +1,5 @@
 {
   "title": "API Reference",
   "description": "Generated and hand-curated reference for the public Quarry surface",
-  "pages": ["index", "schema-types", "db", "select", "insert", "expressions"]
+  "pages": ["index", "db-types", "db", "select", "insert", "expressions"]
 }

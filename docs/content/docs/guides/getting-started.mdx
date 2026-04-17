@@ -45,48 +45,18 @@ const db = createClickHouseDB<DB>({ client });
 That `db` value is now strongly typed against your schema. Table names,
 columns, and aliases are all checked.
 
-## Or create a schema-backed DB
+## Why Quarry stays plain
 
-If you want runtime schema metadata, engine-aware tables, or query-backed views,
-define a richer schema and pass it directly.
+Quarry is a query builder, not a schema modeling framework. The library stays
+honest by typing what your queries read and write under ClickHouse's runtime
+semantics instead of asking you to maintain a second schema DSL.
+
+If you already have a database and want help bootstrapping the `DB` type, use
+the CLI introspection flow instead of writing the interface by hand.
 
 ```ts
-import { createClient } from "@clickhouse/client";
-import {
-  DateTime64,
-  String,
-  UInt32,
-  createClickHouseDB,
-  defineSchema,
-  table,
-  view,
-} from "@oorestisime/quarry";
-
-const client = createClient({
-  url: "http://localhost:8123",
-});
-
-const schema = defineSchema({
-  event_logs: table.replacingMergeTree({
-    user_id: UInt32(),
-    event_type: String(),
-    created_at: DateTime64(3),
-  }),
-}).views((db) => ({
-  signup_events: view.as(
-    db
-      .selectFrom("event_logs as e")
-      .select("e.user_id", "e.created_at")
-      .where("e.event_type", "=", "signup")
-  ),
-}));
-
-const db = createClickHouseDB({ client, schema });
+npx @oorestisime/quarry-cli introspect --database analytics --out db.ts
 ```
-
-The returned `db` still uses the same query builder surface. The difference is
-that schema mode carries richer ClickHouse metadata into typing and view
-definitions.
 
 ## Build and execute a query
 

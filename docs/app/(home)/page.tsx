@@ -49,14 +49,14 @@ export default function HomePage() {
               description="Start in plain TypeScript mode, connect @clickhouse/client, and run a typed SELECT in a few minutes."
             />
             <PathCard
-              href="/docs/guides/schema-mode-and-views"
-              title="Use schema mode"
-              description="Add ClickHouse-aware column helpers, engine metadata, query-backed views, and richer runtime information."
+              href="/docs/guides/introspection"
+              title="Bootstrap DB types"
+              description="Generate plain TypeScript Tables, Views, and DB types from an existing ClickHouse database."
             />
             <PathCard
               href="/docs/reference"
               title="Look up the API"
-              description="Jump straight to SelectQueryBuilder, InsertQueryBuilder, ExpressionBuilder, schema helpers, and live type tables."
+              description="Jump straight to SelectQueryBuilder, InsertQueryBuilder, ExpressionBuilder, and live type tables."
             />
             <PathCard
               href="/docs/concepts"
@@ -84,10 +84,10 @@ export default function HomePage() {
               Deep dive
             </Link>
             <Link
-              href="/docs/roadmap"
+              href="/docs/guides/introspection"
               className="bg-fd-secondary text-fd-secondary-foreground rounded-full font-medium px-6 py-2.5 hover:opacity-90 transition border border-fd-border"
             >
-              Roadmap
+              Introspection
             </Link>
           </div>
         </div>

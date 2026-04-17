@@ -1,6 +1,6 @@
 import type { SelectQueryNode } from "../ast/query";
+import type { QueryColumn, QueryColumnMap } from "../column-metadata";
 import type { ClickHouseParam } from "../param";
-import type { QuarryColumn, SchemaColumns } from "../schema";
 import type {
   DatabaseSchema,
   QueryRow,
@@ -91,9 +91,7 @@ type SelectionString<Scope extends ScopeMap> =
 type ColumnNameFromRef<T extends string> = T extends `${string}.${infer Column}` ? Column : T;
 
 type WrapOutputColumn<T> =
-  T extends QuarryColumn<any, any, any>
-    ? T
-    : QuarryColumn<SelectValue<T>, SelectValue<T>, WhereValue<T>>;
+  T extends QueryColumn<any, any> ? T : QueryColumn<SelectValue<T>, WhereValue<T>>;
 
 type ScopeRawValue<Row extends object, Key extends string> = Key extends keyof Row
   ? Row[Key]
@@ -230,7 +228,7 @@ type SelectionColumnResult<Scope extends ScopeMap, Selection> = Selection extend
       >;
     }
   : Selection extends AliasedExpression<infer Value, infer Alias, infer Where>
-    ? { [K in Alias]: QuarryColumn<Value, Value, Where> }
+    ? { [K in Alias]: QueryColumn<Value, Where> }
     : never;
 
 export type QueryLike = { toAST(): SelectQueryNode } | AliasedQuery<object, string, any>;
@@ -247,7 +245,7 @@ export type SelectionOutputColumns<
   Simplify<
     UnionToIntersection<SelectionColumnResult<Scope, Selections[number]>>
   > extends infer Columns
-    ? Columns extends SchemaColumns
+    ? Columns extends QueryColumnMap
       ? Columns
       : {}
     : {};
@@ -263,7 +261,7 @@ export type ScopeSelectionColumns<Scope extends ScopeMap, Alias extends ScopeAli
   Simplify<{
     [K in Extract<keyof Scope[Alias], string>]: WrapOutputColumn<Scope[Alias][K]>;
   }> extends infer Columns
-    ? Columns extends SchemaColumns
+    ? Columns extends QueryColumnMap
       ? Columns
       : {}
     : {};
@@ -286,7 +284,7 @@ export type AllScopeSelectionColumns<Scope extends ScopeMap> =
       }[ScopeAlias<Scope>]
     >;
   }> extends infer Columns
-    ? Columns extends SchemaColumns
+    ? Columns extends QueryColumnMap
       ? Columns
       : {}
     : {};

@@ -90,25 +90,12 @@ want to insert two batches, or use both patterns, build two queries.
 
 ### Automatic value normalization
 
-When the insert target comes from a schema passed to
-`createClickHouseDB({ schema })`, Quarry normalizes `values(...)` rows before
-sending them to ClickHouse.
+Quarry normalizes bound query parameter values when it has an explicit
+ClickHouse type, but `insertInto(...).values(...)` rows are otherwise sent as
+you provide them.
 
-| Input | Target column type | What Quarry sends |
-| --- | --- | --- |
-| `Date` object | `Date` or `Date32` | UTC `YYYY-MM-DD` string |
-| `Date` object | `DateTime` | UTC `YYYY-MM-DD HH:mm:ss` string |
-| `Date` object | `DateTime64(p)` | UTC timestamp string with `p` fractional digits |
-| `bigint` | any scalar column | decimal string |
-| `LowCardinality(T)` value | `LowCardinality(T)` | normalized as `T` |
-| `Nullable(T)` value | `Nullable(T)` | normalized as `T`; `null` and `undefined` pass through |
-| array value | `Array(T)` | each member normalized as `T` |
-
-This is why schema-backed inserts can accept JavaScript `Date` objects for
-date/time columns and `bigint` values for 64-bit integer columns.
-
-Without schema mode, Quarry has no column metadata for `values(...)`, so rows
-are sent as you provided them.
+If you need exact ClickHouse date/time formatting in inserts, pass explicit
+strings or use `INSERT INTO ... SELECT` with typed expressions.
 
 ## `fromSelect(query)`
 

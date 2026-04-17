@@ -4,12 +4,14 @@ description: The entry point that turns a @clickhouse/client instance into a typ
 ---
 
 `createClickHouseDB(...)` is the entry point of the library. It supports two
-ways of describing your schema:
+things:
 
-- a plain TypeScript interface
-- a richer schema object built with `defineSchema(...)`
+- a plain TypeScript DB shape
+- an optional `@clickhouse/client` instance
 
-Both return the same `db` handle shape.
+You can keep that DB shape entirely plain, or add type-only wrappers such as
+`TypedView<Row>` and `ColumnType<Select, Insert, Where>` when you want more
+precision. See [DB typing helpers](/docs/reference/db-types).
 
 ## Plain mode
 
@@ -29,39 +31,9 @@ const db = createClickHouseDB<DB>({
 });
 ```
 
-## Schema mode
-
-```ts
-import { createClient } from "@clickhouse/client";
-import {
-  DateTime64,
-  String,
-  UInt32,
-  createClickHouseDB,
-  defineSchema,
-  table,
-  view,
-} from "@oorestisime/quarry";
-
-const schema = defineSchema({
-  users: table.replacingMergeTree({
-    id: UInt32(),
-    email: String(),
-    created_at: DateTime64(3),
-  }),
-}).views((db) => ({
-  active_users: view.as(
-    db
-      .selectFrom("users as u")
-      .select("u.id", "u.email", "u.created_at")
-  ),
-}));
-
-const db = createClickHouseDB({
-  client: createClient({ url: "http://localhost:8123" }),
-  schema,
-});
-```
+Introspection output uses named row interfaces plus `TypedTable<...>` /
+`TypedView<...>` wrappers, but handwritten schemas can stay as plain objects if
+you prefer.
 
 ## Options
 
@@ -79,19 +51,5 @@ The options object is rendered live from the source:
   reference
 - `db.table(name)` &mdash; build an explicit table source (for `FINAL`,
   custom aliases, etc.)
-
-Schema mode also lets you define query-backed views ahead of time with staged
-schema construction:
-
-```ts
-const schema = defineSchema({
-  users: table.replacingMergeTree({
-    id: UInt32(),
-    email: String(),
-  }),
-}).views((db) => ({
-  user_emails: view.as(db.selectFrom("users as u").select("u.id", "u.email")),
-}));
-```
 
 See the [guides](/docs/guides) for end-to-end examples of each.

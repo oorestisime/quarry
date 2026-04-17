@@ -1,6 +1,6 @@
 import type { ExprNode } from "../ast/query";
+import type { QueryColumnMap } from "../column-metadata";
 import type { ClickHouseParam } from "../param";
-import type { NormalizedSchemaColumn } from "../schema";
 import type { ScopeMap } from "../type-utils";
 import { escapeSingleQuotedString } from "../utils/string";
 import { createValueNode, isQueryLike, toSubqueryExpr } from "./helpers";
@@ -19,7 +19,7 @@ import type {
   StringColumnRef,
 } from "./types";
 
-type ScopeColumnMap = Record<string, Record<string, NormalizedSchemaColumn>>;
+type ScopeColumnMap = Record<string, QueryColumnMap>;
 
 export class Expression<T, Where = T> {
   constructor(
