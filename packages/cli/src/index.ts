@@ -4,12 +4,36 @@ import { defineCommand, runMain } from "citty";
 import process from "node:process";
 import {
   formatIntrospectionFailureReport,
+  formatIntrospectionSummaryReport,
   introspectDatabase,
   writeSchemaModule,
 } from "./introspect";
 
+const SPINNER_FRAMES = ["-", "\\", "|", "/"] as const;
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function startSpinner(label: string): () => void {
+  if (!process.stderr.isTTY) {
+    return () => {};
+  }
+
+  let frameIndex = 0;
+  const render = () => {
+    process.stderr.write(`\r${SPINNER_FRAMES[frameIndex]} ${label}`);
+    frameIndex = (frameIndex + 1) % SPINNER_FRAMES.length;
+  };
+
+  render();
+  const timer = setInterval(render, 80);
+  timer.unref();
+
+  return () => {
+    clearInterval(timer);
+    process.stderr.write("\r\u001B[2K");
+  };
 }
 
 const introspectCommand = defineCommand({
@@ -45,10 +69,21 @@ const introspectCommand = defineCommand({
       description:
         "Only introspect table-like objects and skip views, dictionaries, and materialized views.",
     },
+    includePattern: {
+      type: "string",
+      description: "Regex include filter for object names.",
+    },
+    excludePattern: {
+      type: "string",
+      description: "Regex blocklist for object names.",
+    },
   },
   async run({ args }) {
+    const stopSpinner = startSpinner("Introspecting ClickHouse schema...");
+
     try {
       const result = await introspectDatabase(args);
+      stopSpinner();
 
       if (args.out) {
         await writeSchemaModule(result.source, args.out);
@@ -57,15 +92,14 @@ const introspectCommand = defineCommand({
         process.stdout.write(result.source);
       }
 
+      process.stderr.write(`${formatIntrospectionSummaryReport(result.summary)}\n`);
+
       if (result.failures.length > 0) {
         const report = `${formatIntrospectionFailureReport(result.failures)}\n`;
-        if (args.out) {
-          process.stdout.write(report);
-        } else {
-          process.stderr.write(`\n WARN  ${report}`);
-        }
+        process.stderr.write(` WARN  ${report}`);
       }
     } catch (error) {
+      stopSpinner();
       process.stderr.write(`\n ERROR  ${getErrorMessage(error)}\n`);
       process.exitCode = 1;
     }

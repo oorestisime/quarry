@@ -13,7 +13,18 @@ export interface QuarryColumn<Select, Insert = Select, Where = Select> {
   readonly __whereType?: Where;
   readonly clickhouseType: string;
   readonly codecs?: NonEmptyList<string>;
+  readonly clause?: QuarryColumnClause;
   codec(codecs: NonEmptyList<string>): QuarryColumn<Select, Insert, Where>;
+  defaultSql(sql: string): QuarryColumn<Select, Insert, Where>;
+  materializedSql(sql: string): QuarryColumn<Select, Insert, Where>;
+  aliasSql(sql: string): QuarryColumn<Select, Insert, Where>;
+}
+
+export type QuarryColumnClauseKind = "default" | "materialized" | "alias";
+
+export interface QuarryColumnClause {
+  readonly kind: QuarryColumnClauseKind;
+  readonly sql: string;
 }
 
 export type SchemaColumns = Record<string, QuarryColumn<any, any, any>>;
@@ -154,6 +165,7 @@ export type QuarryEngine =
 export interface NormalizedSchemaColumn {
   readonly clickhouseType: string;
   readonly codecs?: NonEmptyList<string>;
+  readonly clause?: QuarryColumnClause;
 }
 
 export interface QuarryTableSource<Columns extends SchemaColumns> {
@@ -194,6 +206,36 @@ type QueryViewDefinitions = Record<
 
 interface QuarryColumnMetadata {
   readonly codecs?: NonEmptyList<string>;
+  readonly clause?: QuarryColumnClause;
+}
+
+function normalizeColumnClauseSql(sql: string, kind: QuarryColumnClauseKind): string {
+  const normalized = sql.trim();
+  if (normalized.length === 0) {
+    throw new Error(`${kind}Sql() requires a non-empty SQL expression.`);
+  }
+
+  return normalized;
+}
+
+function setColumnClause(
+  metadata: QuarryColumnMetadata,
+  kind: QuarryColumnClauseKind,
+  sql: string,
+): QuarryColumnMetadata {
+  if (metadata.clause && metadata.clause.kind !== kind) {
+    throw new Error(
+      `Column already has a '${metadata.clause.kind}' clause and cannot also define '${kind}'.`,
+    );
+  }
+
+  return {
+    ...metadata,
+    clause: {
+      kind,
+      sql: normalizeColumnClauseSql(sql, kind),
+    },
+  };
 }
 
 function normalizeColumnCodecs(codecs: readonly string[]): NonEmptyList<string> {
@@ -220,11 +262,30 @@ function createColumn<Select, Insert = Select, Where = Select>(
     __quarryColumn: true,
     clickhouseType,
     ...(metadata.codecs ? { codecs: metadata.codecs } : {}),
+    ...(metadata.clause ? { clause: metadata.clause } : {}),
     codec(codecs: NonEmptyList<string>) {
       return createColumn<Select, Insert, Where>(clickhouseType, {
         ...metadata,
         codecs: normalizeColumnCodecs(codecs),
       });
+    },
+    defaultSql(sql: string) {
+      return createColumn<Select, Insert, Where>(
+        clickhouseType,
+        setColumnClause(metadata, "default", sql),
+      );
+    },
+    materializedSql(sql: string) {
+      return createColumn<Select, Insert, Where>(
+        clickhouseType,
+        setColumnClause(metadata, "materialized", sql),
+      );
+    },
+    aliasSql(sql: string) {
+      return createColumn<Select, Insert, Where>(
+        clickhouseType,
+        setColumnClause(metadata, "alias", sql),
+      );
     },
   };
 }
@@ -311,6 +372,7 @@ export function Nullable<Select, Insert, Where>(
 ): QuarryColumn<Select | null, Insert | null, Where | null> {
   return createColumn(`Nullable(${inner.clickhouseType})`, {
     codecs: inner.codecs,
+    clause: inner.clause,
   });
 }
 
@@ -319,6 +381,7 @@ export function LowCardinality<Select, Insert, Where>(
 ): QuarryColumn<Select, Insert, Where> {
   return createColumn(`LowCardinality(${inner.clickhouseType})`, {
     codecs: inner.codecs,
+    clause: inner.clause,
   });
 }
 
@@ -327,6 +390,7 @@ export function Array<Select, Insert, Where>(
 ): QuarryColumn<Select[], Insert[], Where[]> {
   return createColumn(`Array(${inner.clickhouseType})`, {
     codecs: inner.codecs,
+    clause: inner.clause,
   });
 }
 
@@ -744,6 +808,7 @@ function normalizeColumns(columns: SchemaColumns): Record<string, NormalizedSche
       {
         clickhouseType: column.clickhouseType,
         ...(column.codecs ? { codecs: column.codecs } : {}),
+        ...(column.clause ? { clause: column.clause } : {}),
       },
     ]),
   );

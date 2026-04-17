@@ -372,4 +372,44 @@ describe("schema-first mode", () => {
       clickhouseType: "Decimal(12, 6)",
     });
   });
+
+  it("preserves default, materialized, and alias column metadata", () => {
+    const normalized = normalizeSchema(
+      defineSchema({
+        user_notifications: table({
+          created_at: DateTime64(3).defaultSql("now64(3)"),
+          event_date: CHDate().materializedSql("toDate(created_at)"),
+          event_label: CHString().aliasSql("toString(event_date)"),
+        }),
+      }),
+    );
+
+    expect(normalized.user_notifications.columns.created_at).toEqual({
+      clickhouseType: "DateTime64(3)",
+      clause: {
+        kind: "default",
+        sql: "now64(3)",
+      },
+    });
+    expect(normalized.user_notifications.columns.event_date).toEqual({
+      clickhouseType: "Date",
+      clause: {
+        kind: "materialized",
+        sql: "toDate(created_at)",
+      },
+    });
+    expect(normalized.user_notifications.columns.event_label).toEqual({
+      clickhouseType: "String",
+      clause: {
+        kind: "alias",
+        sql: "toString(event_date)",
+      },
+    });
+  });
+
+  it("does not allow multiple conflicting column clauses", () => {
+    expect(() => CHString().defaultSql("'pending'").aliasSql("status")).toThrow(
+      "Column already has a 'default' clause and cannot also define 'alias'.",
+    );
+  });
 });

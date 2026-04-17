@@ -35,10 +35,6 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
-    },
-    "./introspection": {
-      "types": "./dist/introspection.d.mts",
-      "import": "./dist/introspection.mjs"
     }
   },
   "scripts": {

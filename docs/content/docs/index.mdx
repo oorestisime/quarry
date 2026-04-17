@@ -12,6 +12,9 @@ not trying to hide ClickHouse behind a generic multi-dialect SQL abstraction.
   TypeScript mode, connect `@clickhouse/client`, and run a typed `SELECT`.
 - [Use schema mode](/docs/guides/schema-mode-and-views) &mdash; add ClickHouse-aware
   column helpers, engine metadata, and query-backed views.
+- [Bootstrap an existing schema](/docs/guides/introspection) &mdash; generate a
+  first-pass schema module from ClickHouse metadata with the experimental CLI
+  package.
 - [Look up the exact API](/docs/reference) &mdash; jump straight to builder methods,
   schema helpers, and type-driven reference material.
 - [Read the deep-dive docs](/docs/concepts) &mdash; understand runtime semantics,
@@ -38,6 +41,3 @@ not trying to hide ClickHouse behind a generic multi-dialect SQL abstraction.
 This package is still in early alpha. The current API is already validated
 against a real ClickHouse instance in integration tests, but the surface may
 still change before a stable release.
-
-- [Roadmap](/docs/roadmap) &mdash; what is likely to land next, and what is still
-  intentionally out of scope.

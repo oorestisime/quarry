@@ -28,7 +28,7 @@ describe("DDL introspection fixtures", () => {
     });
   }
 
-  it("omits default clauses while preserving the column type", () => {
+  it("preserves default clauses while generating schema output", () => {
     expect(
       formatTypeScript(
         generateSchemaModuleFromDDL(`
@@ -48,7 +48,7 @@ describe("DDL introspection fixtures", () => {
           users: table.mergeTree(
             {
               id: UInt32(),
-              created_at: DateTime64(3),
+              created_at: DateTime64(3).defaultSql("now64(3)"),
             },
             {
               orderBy: ["id"],
@@ -89,5 +89,27 @@ describe("DDL introspection fixtures", () => {
         FROM default.users;
       `),
     ).toThrow("Unsupported view function 'hex' in view 'user_labels'.");
+  });
+
+  it("preserves boolean literals in generated views", () => {
+    const source = formatTypeScript(
+      generateSchemaModuleFromDDL(`
+        CREATE TABLE default.users (
+          id UInt32,
+          is_active Bool
+        )
+        ENGINE = Memory;
+
+        CREATE VIEW default.active_user_labels AS
+        SELECT
+          id,
+          nullIf(is_active, true) AS maybe_active
+        FROM default.users
+        WHERE is_active = false;
+      `),
+    );
+
+    expect(source).toContain('eb.fn.nullIf("is_active", true).as("maybe_active")');
+    expect(source).toContain('.where("is_active", "=", false)');
   });
 });

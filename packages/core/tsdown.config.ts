@@ -3,10 +3,7 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   clean: true,
   dts: true,
-  entry: {
-    index: "src/index.ts",
-    introspection: "src/introspection/index.ts",
-  },
+  entry: ["src/index.ts"],
   format: ["esm"],
   outDir: "dist",
   platform: "node",

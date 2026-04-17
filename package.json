@@ -28,7 +28,6 @@
   "scripts": {
     "build": "pnpm --filter @oorestisime/quarry build",
     "build:cli": "pnpm build && pnpm --filter @oorestisime/quarry-cli build",
-    "cli": "pnpm exec tsx packages/cli/src/index.ts",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "lint": "pnpm --filter @oorestisime/quarry lint && pnpm --filter @oorestisime/quarry-cli lint",

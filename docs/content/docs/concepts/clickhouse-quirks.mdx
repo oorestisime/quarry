@@ -50,12 +50,10 @@ For the runtime type story (UInt64 → string, etc.), see
 | `WINDOW` / window functions | ❌ | Not yet |
 | `INSERT INTO`               | ✅ | `db.insertInto(table).values([...])` |
 | `INSERT INTO ... SELECT`    | ✅ | `db.insertInto(table).fromSelect(query)` |
-| Migrations / schema diff    | ❌ | Not in scope &mdash; see [roadmap](/docs/roadmap#out-of-scope-for-now) |
+| Migrations / schema diff    | ❌ | Not in scope for Quarry |
 
-The roadmap section on [more ClickHouse-specific AST and builder support](/docs/roadmap#2-more-clickhouse-specific-ast-and-builder-support)
-covers the strategy for filling in the missing rows over time. The current
-direction is corpus-driven &mdash; implement what real queries actually need
-first, not exhaustive coverage of the ClickHouse spec.
+The current direction is corpus-driven &mdash; implement what real queries
+actually need first, not exhaustive coverage of the ClickHouse spec.
 
 ## Quirks that catch people off-guard
 
@@ -211,8 +209,8 @@ which keeps ETL-style transforms entirely inside ClickHouse.
 These are not "missing features" &mdash; they are decisions:
 
 - **Migrations and schema diff.** Quarry is a query builder, not a schema
-  manager. ClickHouse-aware migrations are on the [roadmap](/docs/roadmap#4-introspection-and-migrations)
-  but they will be a separate concern.
+  manager. If Quarry ever grows migration tooling, it should remain a separate
+  concern.
 - **A generic SQL abstraction across multiple databases.** Quarry models
   ClickHouse directly. There is no plan to make it portable.
 - **An ORM-style "model" layer.** No entities, no relationships, no lazy

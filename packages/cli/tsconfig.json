@@ -3,10 +3,8 @@
   "compilerOptions": {
     "types": ["node", "vitest/globals"],
     "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
-      "@oorestisime/quarry": ["../core/src/index.ts"],
-      "@oorestisime/quarry/introspection": ["../core/src/introspection/index.ts"]
+      "@oorestisime/quarry": ["../core/src/index.ts"]
     }
   },
   "include": ["src", "test", "vitest.config.ts"]
