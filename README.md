@@ -118,9 +118,6 @@ This package is still in the early alpha stage. The current API is already valid
 
 See the [docs site](https://ch-quarry.vercel.app) for the full supported API, runtime semantics, and concept guides.
 
-- [Roadmap](https://ch-quarry.vercel.app/docs/roadmap) &mdash; what is likely
-  to land next
-
 ## Naming
 
 The project name is Quarry. The npm package name is `@oorestisime/quarry`.

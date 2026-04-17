@@ -1,21 +1,43 @@
 {
   "name": "@oorestisime/quarry-cli",
   "version": "0.1.0",
-  "private": true,
-  "description": "Internal CLI package for Quarry workspace tooling.",
+  "private": false,
+  "description": "Command-line tools for Quarry schema introspection.",
+  "keywords": [
+    "cli",
+    "clickhouse",
+    "introspection",
+    "query-builder",
+    "schema",
+    "typescript"
+  ],
+  "homepage": "https://github.com/oorestisime/quarry",
+  "bugs": {
+    "url": "https://github.com/oorestisime/quarry/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/oorestisime/quarry.git"
+  },
   "bin": {
     "quarry": "./dist/index.mjs"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts tsdown.config.ts",
     "lint:fix": "oxlint --vitest-plugin -A valid-title --fix src test vitest.config.ts tsdown.config.ts",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
