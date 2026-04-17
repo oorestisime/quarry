@@ -96,7 +96,9 @@ describe("CLI introspection helpers", () => {
     expect(source).toContain("// - tablesOnly: true");
     expect(source).toContain('// - includePattern: "^public_"');
     expect(source).toContain('// - excludePattern: "^public_tmp_"');
-    expect(source).toContain('import { defineSchema, table, UInt32 } from "@oorestisime/quarry";');
+    expect(source).toContain(
+      'import { defineSchema, table, type SchemaBuilder, UInt32 } from "@oorestisime/quarry";',
+    );
   });
 
   it("returns supported output and reports unsupported objects separately", () => {

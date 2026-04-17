@@ -4,12 +4,13 @@ import {
   defineSchema,
   String as CHString,
   table,
+  type SchemaBuilder,
   UInt32,
   UInt64,
   view,
 } from "@oorestisime/quarry";
 
-export const schema = defineSchema({
+const tables = {
   event_versions: table.replacingMergeTree(
     {
       id: UInt32(),
@@ -28,7 +29,13 @@ export const schema = defineSchema({
       versionBy: "version",
     },
   ),
-}).views((db) => ({
+};
+
+const baseSchema: SchemaBuilder<typeof tables> = defineSchema(tables);
+
+const defineViews = (
+  db: Parameters<typeof baseSchema.views>[0] extends (db: infer DB) => unknown ? DB : never,
+) => ({
   event_version_labels: view.as(
     db
       .selectFrom("event_versions")
@@ -39,4 +46,7 @@ export const schema = defineSchema({
         eb.fn.formatDateTime("created_at", "%Y-%m-%d").as("created_day"),
       ]),
   ),
-}));
+});
+
+export const schema: SchemaBuilder<typeof tables & ReturnType<typeof defineViews>> =
+  baseSchema.views(defineViews);

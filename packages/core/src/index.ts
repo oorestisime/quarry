@@ -30,6 +30,19 @@ export {
   defineSchema,
   view,
 } from "./schema";
+export type {
+  BaseSchemaDefinition,
+  QuarryColumn,
+  QuarryColumnClause,
+  QuarryColumnClauseKind,
+  QuarryQueryViewSource,
+  QuarrySettingValue,
+  QuarryTableSource,
+  SchemaBuilder,
+  SchemaColumns,
+  SchemaDefinition,
+  SchemaLike,
+} from "./schema";
 export type { InferResult } from "./type-utils";
 export type { CreateClickHouseDBOptions } from "./query/db";
 export { ClickHouseDB, createClickHouseDB } from "./query/db";

@@ -4,10 +4,11 @@ import {
   defineSchema,
   String as CHString,
   table,
+  type SchemaBuilder,
   UInt32,
 } from "@oorestisime/quarry";
 
-export const schema = defineSchema({
+const tables = {
   user_notifications: table.mergeTree(
     {
       id: UInt32(),
@@ -19,4 +20,6 @@ export const schema = defineSchema({
       orderBy: ["id"],
     },
   ),
-});
+};
+
+export const schema: SchemaBuilder<typeof tables> = defineSchema(tables);

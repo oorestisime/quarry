@@ -1,6 +1,14 @@
-import { Date as CHDate, defineSchema, Int64, table, UInt64, view } from "@oorestisime/quarry";
+import {
+  Date as CHDate,
+  defineSchema,
+  Int64,
+  table,
+  type SchemaBuilder,
+  UInt64,
+  view,
+} from "@oorestisime/quarry";
 
-export const schema = defineSchema({
+const tables = {
   revenue_rollups: table.sharedSummingMergeTree(
     {
       event_date: CHDate(),
@@ -13,10 +21,19 @@ export const schema = defineSchema({
       sumColumns: ["amount_cents"],
     },
   ),
-}).views((db) => ({
+};
+
+const baseSchema: SchemaBuilder<typeof tables> = defineSchema(tables);
+
+const defineViews = (
+  db: Parameters<typeof baseSchema.views>[0] extends (db: infer DB) => unknown ? DB : never,
+) => ({
   revenue_rollup_months: view.as(
     db
       .selectFrom("revenue_rollups")
       .selectExpr((eb) => ["user_id", eb.fn.toYYYYMM("event_date").as("event_yyyymm")]),
   ),
-}));
+});
+
+export const schema: SchemaBuilder<typeof tables & ReturnType<typeof defineViews>> =
+  baseSchema.views(defineViews);

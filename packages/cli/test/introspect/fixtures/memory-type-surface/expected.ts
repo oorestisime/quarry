@@ -16,12 +16,13 @@ import {
   Nullable,
   String as CHString,
   table,
+  type SchemaBuilder,
   UInt16,
   UUID,
   view,
 } from "@oorestisime/quarry";
 
-export const schema = defineSchema({
+const tables = {
   network_profiles: table.memory({
     profile_id: UUID(),
     has_opt_in: Bool(),
@@ -40,7 +41,13 @@ export const schema = defineSchema({
     tags: CHArray(LowCardinality(CHString())),
     retry_codes: CHArray(Nullable(UInt16())),
   }),
-}).views((db) => ({
+};
+
+const baseSchema: SchemaBuilder<typeof tables> = defineSchema(tables);
+
+const defineViews = (
+  db: Parameters<typeof baseSchema.views>[0] extends (db: infer DB) => unknown ? DB : never,
+) => ({
   network_profile_labels: view.as(
     db
       .selectFrom("network_profiles")
@@ -50,4 +57,7 @@ export const schema = defineSchema({
         eb.fn.lower("nickname").as("nickname_lower"),
       ]),
   ),
-}));
+});
+
+export const schema: SchemaBuilder<typeof tables & ReturnType<typeof defineViews>> =
+  baseSchema.views(defineViews);

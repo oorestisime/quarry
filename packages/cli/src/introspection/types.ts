@@ -118,4 +118,5 @@ export type ImportSpec =
   | "UUID"
   | "defineSchema"
   | "table"
+  | "type SchemaBuilder"
   | "view";

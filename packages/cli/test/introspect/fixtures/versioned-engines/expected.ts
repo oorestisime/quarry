@@ -4,13 +4,14 @@ import {
   Int8,
   String as CHString,
   table,
+  type SchemaBuilder,
   UInt32,
   UInt64,
   UInt8,
   view,
 } from "@oorestisime/quarry";
 
-export const schema = defineSchema({
+const tables = {
   leaderboard_user_dim: table.sharedReplacingMergeTree(
     {
       user_id: UInt64(),
@@ -40,10 +41,19 @@ export const schema = defineSchema({
       versionBy: "version",
     },
   ),
-}).views((db) => ({
+};
+
+const baseSchema: SchemaBuilder<typeof tables> = defineSchema(tables);
+
+const defineViews = (
+  db: Parameters<typeof baseSchema.views>[0] extends (db: infer DB) => unknown ? DB : never,
+) => ({
   active_leaderboard_users: view.as(
     db
       .selectFrom("leaderboard_user_dim")
       .selectExpr((eb) => ["user_id", eb.fn.lower("first_name").as("first_name_lower")]),
   ),
-}));
+});
+
+export const schema: SchemaBuilder<typeof tables & ReturnType<typeof defineViews>> =
+  baseSchema.views(defineViews);

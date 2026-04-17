@@ -3,12 +3,13 @@ import {
   defineSchema,
   Float64,
   table,
+  type SchemaBuilder,
   UInt32,
   UInt64,
   view,
 } from "@oorestisime/quarry";
 
-export const schema = defineSchema({
+const tables = {
   daily_metrics: table.summingMergeTree(
     {
       bucket_date: CHDate(),
@@ -25,10 +26,19 @@ export const schema = defineSchema({
       sumColumns: ["clicks"],
     },
   ),
-}).views((db) => ({
+};
+
+const baseSchema: SchemaBuilder<typeof tables> = defineSchema(tables);
+
+const defineViews = (
+  db: Parameters<typeof baseSchema.views>[0] extends (db: infer DB) => unknown ? DB : never,
+) => ({
   daily_metric_months: view.as(
     db
       .selectFrom("daily_metrics")
       .selectExpr((eb) => ["account_id", eb.fn.toYYYYMM("bucket_date").as("bucket_yyyymm")]),
   ),
-}));
+});
+
+export const schema: SchemaBuilder<typeof tables & ReturnType<typeof defineViews>> =
+  baseSchema.views(defineViews);

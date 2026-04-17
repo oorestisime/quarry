@@ -1,6 +1,14 @@
-import { Date as CHDate, Decimal, defineSchema, table, UInt64, view } from "@oorestisime/quarry";
+import {
+  Date as CHDate,
+  Decimal,
+  defineSchema,
+  table,
+  type SchemaBuilder,
+  UInt64,
+  view,
+} from "@oorestisime/quarry";
 
-export const schema = defineSchema({
+const tables = {
   partner_event: table.mergeTree(
     {
       event_date: CHDate(),
@@ -12,10 +20,19 @@ export const schema = defineSchema({
       partitionBy: ["event_date"],
     },
   ),
-}).views((db) => ({
+};
+
+const baseSchema: SchemaBuilder<typeof tables> = defineSchema(tables);
+
+const defineViews = (
+  db: Parameters<typeof baseSchema.views>[0] extends (db: infer DB) => unknown ? DB : never,
+) => ({
   partner_event_months: view.as(
     db
       .selectFrom("partner_event")
       .selectExpr((eb) => ["partner_id", eb.fn.toYYYYMM("event_date").as("event_yyyymm")]),
   ),
-}));
+});
+
+export const schema: SchemaBuilder<typeof tables & ReturnType<typeof defineViews>> =
+  baseSchema.views(defineViews);

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -42,9 +42,9 @@ describe("DDL introspection fixtures", () => {
       ),
     ).toBe(
       formatTypeScript(`
-        import { DateTime64, defineSchema, table, UInt32 } from "@oorestisime/quarry";
+        import { DateTime64, defineSchema, table, type SchemaBuilder, UInt32 } from "@oorestisime/quarry";
 
-        export const schema = defineSchema({
+        const tables = {
           users: table.mergeTree(
             {
               id: UInt32(),
@@ -54,7 +54,9 @@ describe("DDL introspection fixtures", () => {
               orderBy: ["id"],
             },
           ),
-        });
+        };
+
+        export const schema: SchemaBuilder<typeof tables> = defineSchema(tables);
       `),
     );
   });
@@ -111,5 +113,75 @@ describe("DDL introspection fixtures", () => {
 
     expect(source).toContain('eb.fn.nullIf("is_active", true).as("maybe_active")');
     expect(source).toContain('.where("is_active", "=", false)');
+  });
+
+  it("supports declaration emit for large generated schemas", () => {
+    const tempDir = mkdtempSync(resolve(projectRoot, ".tmp-introspect-types-"));
+
+    try {
+      const ddl = [
+        ...Array.from(
+          { length: 400 },
+          (_, index) => `
+          CREATE TABLE default.generated_${index} (
+            id UInt32
+          )
+          ENGINE = MergeTree
+          ORDER BY id;
+        `,
+        ),
+        `
+          CREATE VIEW default.generated_labels AS
+          SELECT id
+          FROM default.generated_0;
+        `,
+      ].join("\n");
+
+      const schemaFile = resolve(tempDir, "schema.ts");
+      const tsconfigFile = resolve(tempDir, "tsconfig.json");
+
+      writeFileSync(schemaFile, generateSchemaModuleFromDDL(ddl), "utf8");
+      writeFileSync(
+        tsconfigFile,
+        JSON.stringify(
+          {
+            compilerOptions: {
+              target: "ES2022",
+              module: "ESNext",
+              moduleResolution: "Bundler",
+              strict: true,
+              skipLibCheck: true,
+              declaration: true,
+              emitDeclarationOnly: true,
+              outDir: "./dist",
+            },
+            include: ["./schema.ts"],
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+
+      execFileSync("pnpm", ["--filter", "@oorestisime/quarry", "build"], {
+        cwd: resolve(projectRoot, "..", ".."),
+        stdio: "pipe",
+      });
+
+      try {
+        execFileSync("pnpm", ["exec", "tsc", "-p", tsconfigFile], {
+          cwd: projectRoot,
+          stdio: "pipe",
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error && "stdout" in error && "stderr" in error
+            ? `${String(error.stdout)}${String(error.stderr)}`
+            : String(error);
+        throw new Error(message);
+      }
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

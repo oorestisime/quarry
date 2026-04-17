@@ -326,19 +326,18 @@ function renderView(viewDef: ParsedView, imports: Set<ImportSpec>): string {
 }
 
 export function generateSchemaModuleFromParsed(parsed: ParsedSchema): string {
-  const imports = new Set<ImportSpec>(["defineSchema", "table"]);
+  const imports = new Set<ImportSpec>(["defineSchema", "table", "type SchemaBuilder"]);
   const tableLines = parsed.tables.map((tableDef) => renderTable(tableDef, imports));
   const importList = [...imports].sort((left, right) => left.localeCompare(right));
-
-  let schemaExpression = `defineSchema({\n${tableLines.join("\n")}\n})`;
+  const tablesExpression = `const tables = {\n${tableLines.join("\n")}\n};`;
 
   if (parsed.views.length > 0) {
     imports.add("view");
-    const updatedImportList = [...imports].sort((left, right) => left.localeCompare(right));
     const viewLines = parsed.views.map((viewDef) => renderView(viewDef, imports));
-    schemaExpression = `${schemaExpression}.views((db) => ({\n${viewLines.join("\n")}\n}))`;
-    return `import { ${updatedImportList.join(", ")} } from "@oorestisime/quarry";\n\nexport const schema = ${schemaExpression};\n`;
+    const updatedImportList = [...imports].sort((left, right) => left.localeCompare(right));
+
+    return `import { ${updatedImportList.join(", ")} } from "@oorestisime/quarry";\n\n${tablesExpression}\n\nconst baseSchema: SchemaBuilder<typeof tables> = defineSchema(tables);\n\nconst defineViews = (db: Parameters<typeof baseSchema.views>[0] extends (db: infer DB) => unknown ? DB : never) => ({\n${viewLines.join("\n")}\n});\n\nexport const schema: SchemaBuilder<typeof tables & ReturnType<typeof defineViews>> = baseSchema.views(defineViews);\n`;
   }
 
-  return `import { ${importList.join(", ")} } from "@oorestisime/quarry";\n\nexport const schema = ${schemaExpression};\n`;
+  return `import { ${importList.join(", ")} } from "@oorestisime/quarry";\n\n${tablesExpression}\n\nexport const schema: SchemaBuilder<typeof tables> = defineSchema(tables);\n`;
 }
