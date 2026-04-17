@@ -50,20 +50,32 @@ export type SelectableSourceName<DB extends DatabaseSchema> = SourceName<DB>;
 
 export type InsertableSourceName<DB extends DatabaseSchema> = TableName<DB>;
 
-export type TableRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
-  SourceColumns<DB[Table]> extends infer Row extends object
+export type Selectable<Source> =
+  SourceColumns<Source> extends infer Row extends object
     ? { [K in Extract<keyof Row, string>]: SelectValue<Row[K]> }
     : never;
+
+export type Insertable<Source> =
+  Source extends TypedView<any>
+    ? never
+    : SourceColumns<Source> extends infer Row extends object
+      ? { [K in Extract<keyof Row, string>]: InsertValue<Row[K]> }
+      : never;
+
+export type TableRow<
+  DB extends DatabaseSchema,
+  Table extends SelectableSourceName<DB>,
+> = Selectable<DB[Table]>;
 
 export type ScopeRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
   SourceColumns<DB[Table]> extends infer Row extends object
     ? { [K in Extract<keyof Row, string>]: Row[K] }
     : never;
 
-export type InsertRow<DB extends DatabaseSchema, Table extends InsertableSourceName<DB>> =
-  SourceColumns<DB[Table]> extends infer Row extends object
-    ? { [K in Extract<keyof Row, string>]: InsertValue<Row[K]> }
-    : never;
+export type InsertRow<
+  DB extends DatabaseSchema,
+  Table extends InsertableSourceName<DB>,
+> = Insertable<DB[Table]>;
 
 export type PredicateRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
   SourceColumns<DB[Table]> extends infer Row extends object

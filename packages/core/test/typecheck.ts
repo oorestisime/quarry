@@ -12,6 +12,8 @@ import {
   param,
   type ClickHouseClient,
   type InferResult,
+  type Insertable,
+  type Selectable,
   type TypedTable,
   type TypedView,
 } from "../src";
@@ -983,6 +985,20 @@ const advancedViewQuery = advancedDb
 
 type AdvancedUserRow = InferResult<typeof advancedUsersQuery>;
 type AdvancedViewRow = InferResult<typeof advancedViewQuery>;
+type SelectableAdvancedUser = Selectable<AdvancedTypecheckDB["users"]>;
+type InsertableAdvancedUser = Insertable<AdvancedTypecheckDB["users"]>;
+type SelectableAdvancedView = Selectable<AdvancedTypecheckDB["daily_users"]>;
+type SelectablePlainAdvancedRow = Selectable<{
+  created_at: ClickHouseDateTime64;
+  big_user_id: ClickHouseUInt64;
+  custom_metric: ColumnType<string, number, number>;
+}>;
+type InsertablePlainAdvancedRow = Insertable<{
+  created_at: ClickHouseDateTime64;
+  big_user_id: ClickHouseUInt64;
+  custom_metric: ColumnType<string, number, number>;
+}>;
+type AdvancedViewInsertable = Insertable<AdvancedTypecheckDB["daily_users"]>;
 
 const validAdvancedUserRow: AdvancedUserRow = {
   id: 1,
@@ -994,6 +1010,37 @@ const validAdvancedUserRow: AdvancedUserRow = {
 const validAdvancedViewRow: AdvancedViewRow = {
   signup_date: "2025-01-01",
   total_users: "42",
+};
+
+const validSelectableAdvancedUser: SelectableAdvancedUser = {
+  id: 1,
+  created_at: "2025-01-01 00:00:00.000",
+  big_user_id: "42",
+  custom_metric: "1",
+};
+
+const validInsertableAdvancedUser: InsertableAdvancedUser = {
+  id: 1,
+  created_at: new Date("2025-01-01T00:00:00.000Z"),
+  big_user_id: 42n,
+  custom_metric: 1,
+};
+
+const validSelectableAdvancedView: SelectableAdvancedView = {
+  signup_date: "2025-01-01",
+  total_users: "42",
+};
+
+const validSelectablePlainAdvancedRow: SelectablePlainAdvancedRow = {
+  created_at: "2025-01-01 00:00:00.000",
+  big_user_id: "42",
+  custom_metric: "1",
+};
+
+const validInsertablePlainAdvancedRow: InsertablePlainAdvancedRow = {
+  created_at: new Date("2025-01-01T00:00:00.000Z"),
+  big_user_id: 42n,
+  custom_metric: 1,
 };
 
 const advancedInsertResultPromise: Promise<ClickHouseInsertResult> = advancedDb
@@ -1010,7 +1057,34 @@ const advancedInsertResultPromise: Promise<ClickHouseInsertResult> = advancedDb
 
 void validAdvancedUserRow;
 void validAdvancedViewRow;
+void validSelectableAdvancedUser;
+void validInsertableAdvancedUser;
+void validSelectableAdvancedView;
+void validSelectablePlainAdvancedRow;
+void validInsertablePlainAdvancedRow;
 void advancedInsertResultPromise;
+
+const _invalidSelectableAdvancedUser: SelectableAdvancedUser = {
+  id: 1,
+  created_at: "2025-01-01 00:00:00.000",
+  big_user_id: "42",
+  // @ts-expect-error Selectable should expose select values for wrapped columns
+  custom_metric: 1,
+};
+
+const _invalidInsertableAdvancedUser: InsertableAdvancedUser = {
+  id: 1,
+  created_at: "2025-01-01 00:00:00.000",
+  big_user_id: "42",
+  // @ts-expect-error Insertable should expose insert values for wrapped columns
+  custom_metric: "1",
+};
+
+// @ts-expect-error Insertable<TypedView<...>> should resolve to never
+const _invalidAdvancedViewInsertable: AdvancedViewInsertable = {
+  signup_date: "2025-01-01",
+  total_users: "42",
+};
 
 // @ts-expect-error typed views should not be insertable
 advancedDb.insertInto("daily_users");
