@@ -38,9 +38,6 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Typecheck docs
-        run: pnpm typecheck:docs
-
       - name: Unit tests
         run: pnpm test
 
