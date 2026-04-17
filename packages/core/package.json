@@ -37,6 +37,9 @@
       "import": "./dist/index.mjs"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts vitest.integration.config.ts",
