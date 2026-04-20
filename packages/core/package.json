@@ -42,10 +42,10 @@
   },
   "scripts": {
     "build": "tsdown",
-    "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts vitest.integration.config.ts",
-    "lint:fix": "oxlint --vitest-plugin -A valid-title --fix src test vitest.config.ts vitest.integration.config.ts",
+    "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts vitest.integration.config.ts vitest.coverage.config.ts",
+    "lint:fix": "oxlint --vitest-plugin -A valid-title --fix src test vitest.config.ts vitest.integration.config.ts vitest.coverage.config.ts",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

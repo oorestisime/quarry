@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createClickHouseDB, param } from "../src";
 
 interface QueryBuilderTestDB {
   event_logs: {
     user_id: number;
     event_type: string;
+  };
+  user_session_events: {
+    user_id: number;
+    activity_key_id: number;
+    data: string | null;
   };
   typed_samples: {
     label: string;
@@ -75,6 +80,62 @@ describe("query builder validation", () => {
       "SELECT tags, length(tags) AS tag_count FROM typed_samples PREWHERE has(tags, {p0:String}) WHERE notEmpty(tags)",
     );
     expect(query.params).toEqual({ p0: "vip" });
+  });
+
+  it("compiles chained prewhere predicates with a separate where clause", () => {
+    const query = db
+      .selectFrom("user_session_events")
+      .select("data")
+      .prewhere("user_id", "=", param(42, "Int64"))
+      .prewhere("activity_key_id", "=", param(7, "UInt8"))
+      .whereNotNull("data")
+      .where("data", "!=", "")
+      .groupBy("data")
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT data FROM user_session_events PREWHERE user_id = {p0:Int64} AND activity_key_id = {p1:UInt8} WHERE data IS NOT NULL AND data != {p2:String} GROUP BY data",
+    );
+    expect(query.params).toEqual({
+      p0: 42,
+      p1: 7,
+      p2: "",
+    });
+  });
+
+  it("compiles distinct selections", () => {
+    const query = db
+      .selectFrom("event_logs as e")
+      .distinct()
+      .select("e.event_type")
+      .orderBy("e.event_type", "asc")
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT DISTINCT e.event_type FROM event_logs AS e ORDER BY e.event_type ASC",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("compiles distinct on selections", () => {
+    const query = db
+      .selectFrom("event_logs as e")
+      .distinctOn("e.user_id")
+      .select("e.user_id", "e.event_type")
+      .orderBy("e.user_id", "asc")
+      .orderBy("e.event_type", "asc")
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT DISTINCT ON (e.user_id) e.user_id, e.event_type FROM event_logs AS e ORDER BY e.user_id ASC, e.event_type ASC",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("rejects distinctOn without expressions", () => {
+    expect(() => db.selectFrom("event_logs as e").distinctOn()).toThrow(
+      "DISTINCT ON requires at least one expression.",
+    );
   });
 
   it("compiles OR groups and preserves grouping across chained where calls", () => {
@@ -198,6 +259,19 @@ describe("query builder validation", () => {
     expect(query.params).toEqual({ p0: "beta", p1: "bee" });
   });
 
+  it("compiles left anti joins", () => {
+    const query = db
+      .selectFrom("event_logs as base")
+      .leftAntiJoin("event_logs as denied", "base.user_id", "denied.user_id")
+      .select("base.user_id", "denied.event_type")
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT base.user_id, denied.event_type FROM event_logs AS base LEFT ANTI JOIN event_logs AS denied ON base.user_id = denied.user_id",
+    );
+    expect(query.params).toEqual({});
+  });
+
   it("treats plain concat strings as literals, so column refs must use eb.ref()", () => {
     const query = db
       .selectFrom("typed_samples as t")
@@ -236,6 +310,71 @@ describe("query builder validation", () => {
         .where("nickname" as never, "=", null as never),
     ).toThrow(
       'Bare null predicate values are not supported. Use whereNull()/whereNotNull() or param(null, "Nullable(...)").',
+    );
+  });
+
+  it("uses the configured client for executeTakeFirst helpers", async () => {
+    const json = vi.fn().mockResolvedValue([
+      {
+        user_id: 1,
+        event_type: "signup",
+      },
+    ]);
+    const queryClient = {
+      query: vi.fn().mockResolvedValue({ json }),
+    };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+    });
+    const query = dbWithClient
+      .selectFrom("event_logs")
+      .select("user_id", "event_type")
+      .where("user_id", "=", 1);
+
+    await expect(query.executeTakeFirst()).resolves.toEqual({
+      user_id: 1,
+      event_type: "signup",
+    });
+    await expect(query.executeTakeFirstOrThrow()).resolves.toEqual({
+      user_id: 1,
+      event_type: "signup",
+    });
+
+    expect(queryClient.query).toHaveBeenCalledTimes(2);
+    expect(queryClient.query).toHaveBeenNthCalledWith(1, {
+      query: "SELECT user_id, event_type FROM event_logs WHERE user_id = {p0:Int64}",
+      query_params: { p0: 1 },
+      format: "JSONEachRow",
+    });
+  });
+
+  it("supports overriding the configured client for executeTakeFirst helpers", async () => {
+    const defaultClient = {
+      query: vi.fn(),
+    };
+    const overrideJson = vi.fn().mockResolvedValue([]);
+    const overrideClient = {
+      query: vi.fn().mockResolvedValue({ json: overrideJson }),
+    };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({
+      client: defaultClient,
+    });
+    const query = dbWithClient.selectFrom("event_logs").selectAll();
+
+    await expect(query.executeTakeFirst(overrideClient)).resolves.toBeUndefined();
+    await expect(query.executeTakeFirstOrThrow(overrideClient)).rejects.toThrow(
+      "Query returned no rows.",
+    );
+
+    expect(defaultClient.query).not.toHaveBeenCalled();
+    expect(overrideClient.query).toHaveBeenCalledTimes(2);
+  });
+
+  it("requires a query-capable client for execution", async () => {
+    const query = db.selectFrom("event_logs").selectAll();
+
+    await expect(query.execute()).rejects.toThrow(
+      "No ClickHouse client configured. Pass one to execute() or createClickHouseDB().",
     );
   });
 });

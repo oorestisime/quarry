@@ -37,6 +37,11 @@ interface ExecutionTestDB {
     properties: string;
     version: number;
   };
+  users: {
+    id: number;
+    email: string;
+    status: string;
+  };
   typed_samples: {
     id: number;
     tags: string[];
@@ -209,6 +214,37 @@ describe("clickhouse integration", () => {
     ]);
   });
 
+  it("executes distinct selections", async () => {
+    const rows = await db
+      .selectFrom("event_logs as e")
+      .distinct()
+      .select("e.event_type")
+      .orderBy("e.event_type", "asc")
+      .execute(getContext().client);
+
+    expect(rows).toEqual([
+      { event_type: "browse" },
+      { event_type: "purchase" },
+      { event_type: "signup" },
+    ]);
+  });
+
+  it("executes distinct on selections", async () => {
+    const rows = await db
+      .selectFrom("event_logs as e")
+      .distinctOn("e.user_id")
+      .select("e.user_id", "e.event_type")
+      .orderBy("e.user_id", "asc")
+      .orderBy("e.event_type", "asc")
+      .execute(getContext().client);
+
+    expect(rows).toEqual([
+      { user_id: 1, event_type: "browse" },
+      { user_id: 2, event_type: "purchase" },
+      { user_id: 3, event_type: "signup" },
+    ]);
+  });
+
   it("executes unary having expression predicates", async () => {
     const rows = await db
       .selectFrom("event_logs as e")
@@ -222,6 +258,22 @@ describe("clickhouse integration", () => {
       { user_id: 1, event_count: "2" },
       { user_id: 2, event_count: "1" },
       { user_id: 3, event_count: "1" },
+    ]);
+  });
+
+  it("executes left anti joins and returns right-side defaults", async () => {
+    const rows = await db
+      .selectFrom("users as u")
+      .leftAntiJoin("event_logs as e", "u.id", "e.user_id")
+      .select("u.id", "u.email", "e.event_type")
+      .where("u.status", "=", "active")
+      .orderBy("u.id", "asc")
+      .limit(2)
+      .execute(getContext().client);
+
+    expect(rows).toEqual([
+      { id: 4, email: "user4@example.com", event_type: "" },
+      { id: 5, email: "user5@example.com", event_type: "" },
     ]);
   });
 });

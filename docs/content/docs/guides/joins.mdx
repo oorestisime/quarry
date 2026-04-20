@@ -1,6 +1,6 @@
 ---
 title: Joins
-description: Inner, left, and multi-condition joins, plus joining against subqueries and FINAL sources.
+description: Inner, left, and anti joins, plus joining against subqueries and FINAL sources.
 ---
 
 Quarry supports the standard join shapes plus the ClickHouse-specific extras
@@ -58,6 +58,28 @@ default. See
 before relying on the result shape.
 </Callout>
 
+## `LEFT ANTI JOIN`
+
+Use `leftAntiJoin(...)` when you want rows from the left side only if no row on
+the right side matches the join condition.
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .leftAntiJoin("event_logs as e", "u.id", "e.user_id")
+  .select("u.id", "u.email")
+  .execute();
+```
+
+This is often a better match for ClickHouse SQL than manually rewriting the
+query as `NOT IN (...)`.
+
+<Callout type="warn">
+Like `LEFT JOIN`, ClickHouse still allows selecting right-side columns from a
+`LEFT ANTI JOIN`, and unmatched rows come back as type defaults rather than
+`null` unless `join_use_nulls = 1` is enabled.
+</Callout>
+
 ## `FINAL` on a joined table source
 
 When you need `FINAL` on the right-hand side of a join, build the source
@@ -98,3 +120,5 @@ const rows = await db
 
 The aliased subquery contributes its columns to the surrounding scope, so
 `"downloads.event_count"` is type-checked exactly like a real table column.
+
+The same aliased-subquery shape also works with `leftAntiJoin(...)`.

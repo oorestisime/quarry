@@ -125,7 +125,13 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
             .join(", ")}`,
         ]
       : []),
-    `SELECT ${node.selections.map((selection) => compileSelection(selection, context)).join(", ")}`,
+    `${
+      node.distinctOn.length > 0
+        ? `SELECT DISTINCT ON (${node.distinctOn.map((expression) => compileExpr(expression, context)).join(", ")})`
+        : node.distinct
+          ? "SELECT DISTINCT"
+          : "SELECT"
+    } ${node.selections.map((selection) => compileSelection(selection, context)).join(", ")}`,
     `FROM ${compileSource(node.from, context)}`,
   ];
 

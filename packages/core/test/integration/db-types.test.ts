@@ -159,4 +159,49 @@ describe("db types integration", () => {
 
     expect(rows).toEqual(expected);
   });
+
+  it("normalizes Date arrays for typed DateTime and DateTime64 predicates", async () => {
+    await getContext().client.insert({
+      table: "typed_alias_users",
+      format: "JSONEachRow",
+      values: [
+        {
+          id: 1,
+          event_date: "2025-01-01",
+          event_date32: "2025-01-01",
+          event_time: "2025-01-03 12:34:56",
+          created_at: "2025-01-04 12:34:56.789",
+          amount: "12.34",
+          signed_total: "-42",
+          unsigned_total: "42",
+        },
+        {
+          id: 2,
+          event_date: "2025-01-02",
+          event_date32: "2025-01-02",
+          event_time: "2025-01-06 00:00:00",
+          created_at: "2025-01-05 12:34:56.123",
+          amount: "56.78",
+          signed_total: "-7",
+          unsigned_total: "7",
+        },
+      ],
+    });
+
+    const rows = await db
+      .selectFrom("typed_alias_users as t")
+      .select("t.id", "t.event_time", "t.created_at")
+      .where("t.event_time", "in", [new Date("2025-01-03T12:34:56.000Z")])
+      .where("t.created_at", "not in", [new Date("2025-01-05T12:34:56.123Z")])
+      .orderBy("t.id", "asc")
+      .execute(getContext().client);
+
+    expect(rows).toEqual([
+      {
+        id: 1,
+        event_time: "2025-01-03 12:34:56",
+        created_at: "2025-01-04 12:34:56.789",
+      },
+    ]);
+  });
 });

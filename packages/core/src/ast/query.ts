@@ -68,7 +68,7 @@ export interface SelectionNode {
 }
 
 export interface JoinNode {
-  joinType: "INNER" | "LEFT";
+  joinType: "INNER" | "LEFT" | "LEFT ANTI";
   source: SourceNode;
   on: ExprNode;
 }
@@ -103,6 +103,8 @@ export interface InsertQueryNode {
 
 export interface SelectQueryNode {
   with: CteNode[];
+  distinct: boolean;
+  distinctOn: ExprNode[];
   from?: SourceNode;
   selections: SelectionNode[];
   joins: JoinNode[];
@@ -119,6 +121,8 @@ export interface SelectQueryNode {
 export function createEmptySelectQueryNode(): SelectQueryNode {
   return {
     with: [],
+    distinct: false,
+    distinctOn: [],
     selections: [],
     joins: [],
     groupBy: [],

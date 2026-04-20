@@ -95,6 +95,56 @@ db
 You can mix plain column refs and expression builder results in the same
 array.
 
+### `distinct()`
+
+Adds a query-wide `DISTINCT` modifier. ClickHouse deduplicates on the entire
+selected row.
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .distinct()
+  .select("e.event_type");
+```
+
+This compiles to:
+
+```sql
+SELECT DISTINCT e.event_type FROM event_logs AS e
+```
+
+With one selected column, that means "distinct values of this column". With
+multiple selected columns, the distinctness applies to the full combination.
+
+### `distinctOn(...expressions)`
+
+Adds ClickHouse `DISTINCT ON (...)`. Each argument can be either a column ref
+in scope or an expression-builder callback, matching the accepted shapes for
+[`groupBy`](#groupbyexpressions).
+
+```ts
+db
+  .selectFrom("event_logs as e")
+  .distinctOn("e.user_id")
+  .select("e.user_id", "e.event_type");
+```
+
+This compiles to:
+
+```sql
+SELECT DISTINCT ON (e.user_id) e.user_id, e.event_type FROM event_logs AS e
+```
+
+The `DISTINCT ON` expressions do not have to appear in the `SELECT` list. They
+define the deduplication key, not the projected columns.
+
+<Callout type="warn">
+In ClickHouse, `DISTINCT` runs before `ORDER BY`. That means `ORDER BY` does
+not choose which row survives inside a `DISTINCT ON (...)` group. If you need a
+specific earliest/latest row per key, use an aggregate pattern such as
+`argMin(...)`, `argMax(...)`, or a grouped subquery instead.
+</Callout>
+
 ## Filtering: `where`
 
 ### `where(column, operator, value)`
@@ -193,6 +243,9 @@ query. Use it for highly selective predicates over indexed columns.
 There is also a `prewhereRef(left, operator, right)` variant matching
 `whereRef`.
 
+Repeated `prewhere(...)` calls append with `AND`, just like repeated `where(...)`
+calls.
+
 ```ts
 db
   .selectFrom("event_logs as e")
@@ -289,6 +342,22 @@ The `source` argument can be:
 - an explicit `db.table("name").as("alias")` builder (for `final()` or other
   source-level options),
 - another select query that has been aliased with `.as("alias")`.
+
+### `leftAntiJoin(source, leftRef, rightRef)` / `leftAntiJoin(source, callback)`
+
+Adds a ClickHouse `LEFT ANTI JOIN`. Use it when you want rows from the left
+side only if there is no matching row on the right side.
+
+```ts
+db
+  .selectFrom("users as u")
+  .leftAntiJoin("event_logs as e", "u.id", "e.user_id")
+  .select("u.id", "u.email");
+```
+
+Like `leftJoin`, ClickHouse still exposes right-side columns if you select
+them, and unmatched rows come back as ClickHouse default values such as `0`,
+`''`, or `false`.
 
 ## Ordering and pagination
 

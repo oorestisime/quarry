@@ -229,6 +229,34 @@ export class SelectQueryBuilder<
     return new AliasedQuery(this.toAST(), alias, this.getOutputColumns());
   }
 
+  distinct(): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
+    return this.next({
+      ...this.node,
+      distinct: true,
+      distinctOn: [],
+    });
+  }
+
+  distinctOn<const Expressions extends readonly GroupByExpression<Scope>[]>(
+    ...expressions: Expressions
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
+    if (expressions.length === 0) {
+      throw new Error("DISTINCT ON requires at least one expression.");
+    }
+
+    return this.next({
+      ...this.node,
+      distinct: true,
+      distinctOn: expressions.map((expression) => {
+        if (typeof expression === "function") {
+          return expression(new ExpressionBuilder<Scope>(this.scopeColumns)).node;
+        }
+
+        return { kind: "ref", name: expression } satisfies RefNode;
+      }),
+    });
+  }
+
   select<const Selections extends readonly SelectionExpression<Scope>[]>(
     ...selections: Selections
   ): SelectQueryBuilder<
@@ -664,8 +692,53 @@ export class SelectQueryBuilder<
     return this.addJoin("LEFT", source, leftOrCallback, right);
   }
 
+  /**
+   * ClickHouse LEFT ANTI JOIN keeps the left-side row shape and exposes right-side columns
+   * with ClickHouse default values when selected, such as `0`, `''`, or `false`.
+   *
+   * The current builder typing follows that runtime behavior.
+   */
+  leftAntiJoin<Source extends SourceExpression<Sources>>(
+    source: Source,
+    left: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    right: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+  ): SelectQueryBuilder<
+    Sources,
+    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Output
+  >;
+  leftAntiJoin<Source extends SourceExpression<Sources>>(
+    source: Source,
+    callback: (
+      expressionBuilder: ExpressionBuilder<
+        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+      >,
+    ) => Expression<unknown>,
+  ): SelectQueryBuilder<
+    Sources,
+    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Output
+  >;
+  leftAntiJoin<Source extends SourceExpression<Sources>>(
+    source: Source,
+    leftOrCallback:
+      | ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>
+      | ((
+          expressionBuilder: ExpressionBuilder<
+            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+          >,
+        ) => Expression<unknown>),
+    right?: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+  ): SelectQueryBuilder<
+    Sources,
+    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Output
+  > {
+    return this.addJoin("LEFT ANTI", source, leftOrCallback, right);
+  }
+
   private addJoin<Source extends SourceExpression<Sources>>(
-    joinType: "INNER" | "LEFT",
+    joinType: "INNER" | "LEFT" | "LEFT ANTI",
     source: Source,
     leftOrCallback:
       | string

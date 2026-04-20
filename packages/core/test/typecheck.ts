@@ -78,6 +78,11 @@ const client: ClickHouseClient = {
 };
 
 const basicQuery = db.selectFrom("event_logs as e").select("e.user_id", "e.event_type");
+const distinctQuery = db.selectFrom("event_logs as e").distinct().select("e.event_type");
+const distinctOnQuery = db
+  .selectFrom("event_logs as e")
+  .distinctOn("e.user_id")
+  .select("e.user_id", "e.event_type");
 const selectAllQuery = db.selectFrom("event_logs as e").selectAll();
 const selectAllAliasQuery = db
   .selectFrom("users as u")
@@ -143,6 +148,12 @@ const selectFromJoinSubquerySettingsQuery = db
   .limit(20)
   .offset(40)
   .settings({ join_algorithm: "grace_hash" });
+const leftAntiJoinQuery = db
+  .selectFrom("users as u")
+  .leftAntiJoin("event_logs as e", "u.id", "e.user_id")
+  .select("u.id", "u.email", "e.event_type")
+  .where("u.status", "=", "active")
+  .orderBy("u.id", "asc");
 const typeCastQuery = db
   .selectFrom("typed_samples as t")
   .selectExpr((eb) => [
@@ -251,6 +262,8 @@ const nullableGroupArrayQuery = db
   .selectExpr((eb) => [eb.fn.groupArray("t.nickname").as("nicknames")]);
 
 type BasicRow = InferResult<typeof basicQuery>;
+type DistinctRow = InferResult<typeof distinctQuery>;
+type DistinctOnRow = InferResult<typeof distinctOnQuery>;
 type SelectAllRow = InferResult<typeof selectAllQuery>;
 type SelectAllAliasRow = InferResult<typeof selectAllAliasQuery>;
 type SelectFromSubqueryRow = InferResult<typeof selectFromSubqueryQuery>;
@@ -259,6 +272,7 @@ type SelectFromCteRow = InferResult<typeof selectFromCteQuery>;
 type SelectFromMultipleCtesRow = InferResult<typeof selectFromMultipleCtesQuery>;
 type GroupedRow = InferResult<typeof groupedQuery>;
 type SelectFromJoinSubquerySettingsRow = InferResult<typeof selectFromJoinSubquerySettingsQuery>;
+type LeftAntiJoinRow = InferResult<typeof leftAntiJoinQuery>;
 type TypeCastRow = InferResult<typeof typeCastQuery>;
 type ArrayFunctionRow = InferResult<typeof arrayFunctionQuery>;
 type StringFunctionRow = InferResult<typeof stringFunctionQuery>;
@@ -268,6 +282,15 @@ type AggregateFunctionRow = InferResult<typeof aggregateFunctionQuery>;
 type NullableGroupArrayRow = InferResult<typeof nullableGroupArrayQuery>;
 
 const validRow: BasicRow = {
+  user_id: 1,
+  event_type: "signup",
+};
+
+const validDistinctRow: DistinctRow = {
+  event_type: "signup",
+};
+
+const validDistinctOnRow: DistinctOnRow = {
   user_id: 1,
   event_type: "signup",
 };
@@ -315,6 +338,12 @@ const validSelectFromJoinSubquerySettingsRow: SelectFromJoinSubquerySettingsRow 
   id: 42,
   email: "user42@example.com",
   inquiries_count: "0",
+};
+
+const validLeftAntiJoinRow: LeftAntiJoinRow = {
+  id: 42,
+  email: "user42@example.com",
+  event_type: "",
 };
 
 const validTypeCastRow: TypeCastRow = {
@@ -469,6 +498,8 @@ const validInsertFromSelectPromise: Promise<ClickHouseInsertResult> = dbWithClie
   .execute();
 
 void validRow;
+void validDistinctRow;
+void validDistinctOnRow;
 void validSelectAllRow;
 void validSelectAllAliasRow;
 void validSelectFromSubqueryRow;
@@ -477,6 +508,7 @@ void validSelectFromCteRow;
 void validSelectFromMultipleCtesRow;
 void validGroupedRow;
 void validSelectFromJoinSubquerySettingsRow;
+void validLeftAntiJoinRow;
 void validTypeCastRow;
 void validArrayFunctionRow;
 void validStringFunctionRow;

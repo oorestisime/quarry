@@ -206,4 +206,56 @@ describe("insert builder", () => {
       "Cannot compile an insert without a source",
     );
   });
+
+  it("requires an insert source before execution", async () => {
+    await expect(db.insertInto("typed_samples").execute()).rejects.toThrow(
+      "Cannot execute an insert without a source",
+    );
+  });
+
+  it("requires an insert-capable client for values execution", async () => {
+    await expect(
+      db
+        .insertInto("typed_samples")
+        .values([
+          {
+            id: 8,
+            big_user_id: "104",
+            label: "theta",
+            status: "active",
+            nickname: null,
+            tags: [],
+            amount: 3,
+            created_at: "2025-01-08 00:00:00.000",
+            location: [0, 0],
+            attributes: {},
+            "metrics.name": ["opens"],
+            "metrics.score": [3],
+          },
+        ])
+        .execute(),
+    ).rejects.toThrow(
+      "No ClickHouse insert client configured. Pass one to execute() or createClickHouseDB().",
+    );
+  });
+
+  it("requires a command-capable client for insert-select execution", async () => {
+    await expect(
+      db
+        .insertInto("daily_aggregates")
+        .fromSelect(
+          db
+            .selectFrom("event_logs as e")
+            .selectExpr((eb) => [
+              "e.user_id",
+              eb.fn.toDate("e.created_at").as("event_date"),
+              eb.fn.sum("e.amount").as("total_amount"),
+            ])
+            .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
+        )
+        .execute(),
+    ).rejects.toThrow(
+      "No ClickHouse command client configured. Pass one to execute() or createClickHouseDB().",
+    );
+  });
 });
