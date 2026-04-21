@@ -105,9 +105,6 @@ importers:
       '@clickhouse/client':
         specifier: ^1.18.2
         version: 1.18.2
-      '@oorestisime/quarry':
-        specifier: workspace:*
-        version: link:../core
       citty:
         specifier: ^0.1.6
         version: 0.1.6
