@@ -9,13 +9,14 @@ import {
   finalPrewhereSettingsCase,
   groupByAggregateCase,
   groupByHavingCase,
+  havingSubqueryCase,
+  heavyHitterFunctionsCase,
   inSubqueryCase,
   innerJoinCase,
   joinFinalTableSourceCase,
   joinSubquerySettingsCase,
   joinSubqueryAliasCase,
   jsonExtractCase,
-  havingSubqueryCase,
   multiConditionJoinCase,
   multipleCtesCase,
   arrayFunctionsCase,
@@ -193,6 +194,11 @@ describe("clickhouse integration", () => {
   it(dateTimeFunctionsCase.name, async () => {
     const rows = await dateTimeFunctionsCase.build().execute({ client: getContext().client });
     expect(rows).toEqual(dateTimeFunctionsCase.expectedRows);
+  });
+
+  it(heavyHitterFunctionsCase.name, async () => {
+    const rows = await heavyHitterFunctionsCase.build().execute({ client: getContext().client });
+    expect(rows).toEqual(heavyHitterFunctionsCase.expectedRows);
   });
 
   it("executes unary where expression predicates", async () => {

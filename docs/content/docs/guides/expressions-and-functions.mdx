@@ -109,6 +109,7 @@ The currently exposed cast helpers are:
 | ------------------------------- | --------------- |
 | `eb.fn.toInt32(value)`          | `number`        |
 | `eb.fn.toInt64(value)`          | `string`        |
+| `eb.fn.toUInt8(value)`          | `number`        |
 | `eb.fn.toUInt32(value)`         | `number`        |
 | `eb.fn.toUInt64(value)`         | `string`        |
 | `eb.fn.toFloat32(value)`        | `number`        |
@@ -154,6 +155,7 @@ Available date/time helpers:
 | Helper                                | Description                                                      |
 | ------------------------------------- | ---------------------------------------------------------------- |
 | `eb.fn.now()`                         | Current query-time `DateTime`.                                   |
+| `eb.fn.now64(precision)`              | Current query-time `DateTime64(precision)`.                      |
 | `eb.fn.today()`                       | Current query-time `Date`.                                       |
 | `eb.fn.toStartOfMonth(value)`         | Bucket to the start of the month.                                |
 | `eb.fn.toStartOfWeek(value)`          | Bucket to the start of the week.                                 |
@@ -163,6 +165,8 @@ Available date/time helpers:
 | `eb.fn.dateDiff(unit, start, end)`    | Difference between two dates/times. Returns `string` (`Int64`).  |
 | `eb.fn.dateAdd(unit, amount, value)`  | Add a relative offset without dropping to raw SQL.               |
 | `eb.fn.dateSub(unit, amount, value)`  | Subtract a relative offset.                                      |
+| `eb.fn.toYear(value)`                 | Year as integer.                                                 |
+| `eb.fn.toMonth(value)`                | Month as integer (1–12).                                         |
 | `eb.fn.toYYYYMM(value)`               | Compact integer `YYYYMM` key.                                    |
 | `eb.fn.toYYYYMMDD(value)`             | Compact integer `YYYYMMDD` key.                                  |
 
@@ -330,6 +334,31 @@ Available null helpers:
 strings are treated as column references. If you want a literal fallback,
 wrap it with `eb.val(...)`.
 
+## Conditional helpers
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .selectExpr((eb) => [
+    eb.fn.if(eb.cmp("u.status", "=", "active"), eb.ref("u.label"), eb.val("inactive")).as("status_label"),
+  ])
+  .execute();
+```
+
+## Math helpers
+
+```ts
+const rows = await db
+  .selectFrom("users as u")
+  .selectExpr((eb) => [
+    eb.fn.least(eb.ref("u.id"), eb.val(10)).as("capped_id"),
+    eb.fn.greatest(eb.ref("u.id"), eb.val(0)).as("min_id"),
+    eb.fn.ceil("u.amount").as("amount_ceil"),
+    eb.fn.floor("u.amount").as("amount_floor"),
+  ])
+  .execute();
+```
+
 ## JSON helpers
 
 ```ts
@@ -345,9 +374,9 @@ const rows = await db
 ## Aggregates and the `-If` combinator
 
 The aggregate surface covers the common statistical and set helpers you
-reach for in analytics queries: `count`, `sum`, `avg`, `min`, `max`, `uniq`,
-`uniqExact`, `groupArray`, `any`, `anyLast`, plus their `-If` combinators.
-See the [`ExpressionBuilder` reference](/docs/reference/expressions#aggregates)
+reach for in analytics queries: `count`, `countDistinct`, `sum`, `avg`, `min`,
+`max`, `uniq`, `uniqExact`, `groupArray`, `any`, `anyLast`, plus their `-If`
+combinators. See the [`ExpressionBuilder` reference](/docs/reference/expressions#aggregates)
 for the full list and return types.
 
 ```ts
@@ -356,9 +385,10 @@ const stats = await db
   .selectExpr((eb) => [
     "e.user_id",
     eb.fn.count().as("total"),
+    eb.fn.countDistinct("e.session_id").as("unique_sessions"),
     eb.fn.sum("e.amount").as("total_amount"),
     eb.fn.avg("e.amount").as("avg_amount"),
-    eb.fn.uniqExact("e.session_id").as("unique_sessions"),
+    eb.fn.uniqExact("e.session_id").as("unique_sessions_exact"),
   ])
   .groupBy("e.user_id")
   .execute();

@@ -14,6 +14,7 @@ import {
   groupByAggregateCase,
   groupByHavingCase,
   havingSubqueryCase,
+  heavyHitterFunctionsCase,
   inSubqueryCase,
   innerJoinCase,
   joinFinalTableSourceCase,
@@ -64,6 +65,7 @@ const cases = [
   nullFunctionsCase,
   dateTimeFunctionsCase,
   chainedExpressionWhereCase,
+  heavyHitterFunctionsCase,
 ];
 
 function normalizeSql(sql: string): string {

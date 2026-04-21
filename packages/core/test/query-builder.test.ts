@@ -12,9 +12,12 @@ interface QueryBuilderTestDB {
     data: string | null;
   };
   typed_samples: {
+    id: number;
     label: string;
     nickname: string | null;
+    status: "pending" | "active" | "archived";
     tags: string[];
+    amount: number;
     created_at: string;
   };
 }
@@ -177,6 +180,74 @@ describe("query builder validation", () => {
       p5: "  ",
       p6: "  ",
     });
+  });
+
+  it("compiles heavy-hitter function expressions", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        "t.id",
+        eb.fn
+          .if(eb.cmp("t.status", "=", "active"), eb.ref("t.label"), eb.val("inactive"))
+          .as("status_label"),
+        eb.fn.least(eb.ref("t.id"), eb.val(param(10, "UInt32"))).as("least_val"),
+        eb.fn.greatest(eb.ref("t.id"), eb.val(param(10, "UInt32"))).as("greatest_val"),
+        eb.fn.ceil("t.amount").as("ceil_amount"),
+        eb.fn.floor("t.amount").as("floor_amount"),
+        eb.fn.toUInt8("t.id").as("id_u8"),
+        eb.fn.toYear("t.created_at").as("created_year"),
+        eb.fn.toMonth("t.created_at").as("created_month"),
+      ])
+      .where((eb) => eb.fn.toUInt8("t.id"), ">", 0)
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT t.id, if(t.status = {p0:String}, t.label, {p1:String}) AS status_label, least(t.id, {p2:UInt32}) AS least_val, greatest(t.id, {p3:UInt32}) AS greatest_val, ceil(t.amount) AS ceil_amount, floor(t.amount) AS floor_amount, toUInt8(t.id) AS id_u8, toYear(t.created_at) AS created_year, toMonth(t.created_at) AS created_month FROM typed_samples AS t WHERE toUInt8(t.id) > {p4:Int64}",
+    );
+    expect(query.params).toEqual({
+      p0: "active",
+      p1: "inactive",
+      p2: 10,
+      p3: 10,
+      p4: 0,
+    });
+  });
+
+  it("compiles least and greatest with single argument", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn.least("t.id").as("single_least"),
+        eb.fn.greatest("t.id").as("single_greatest"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT least(t.id) AS single_least, greatest(t.id) AS single_greatest FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("compiles countDistinct aggregate", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [eb.fn.countDistinct("t.label").as("distinct_labels")])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT count(DISTINCT t.label) AS distinct_labels FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("compiles now64 with precision", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [eb.fn.now64(3).as("current_time_precise")])
+      .toSQL();
+
+    expect(query.query).toBe("SELECT now64(3) AS current_time_precise FROM typed_samples AS t");
+    expect(query.params).toEqual({});
   });
 
   it("compiles date/time function expressions", () => {

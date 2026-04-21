@@ -78,6 +78,10 @@ function compileExpr(expr: ExprNode, context: CompileContext): string {
     case "raw":
       return expr.sql;
     case "function":
+      if (expr.name === "countDistinct") {
+        return `count(DISTINCT ${expr.args.map((arg) => compileExpr(arg, context)).join(", ")})`;
+      }
+
       return `${expr.name}(${expr.args.map((arg) => compileExpr(arg, context)).join(", ")})`;
     case "subqueryExpr":
       return `(${compileQuerySql(expr.query, context)})`;

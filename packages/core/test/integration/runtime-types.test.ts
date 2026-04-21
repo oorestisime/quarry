@@ -190,6 +190,39 @@ function buildJsonSamplesQuery() {
   return db.selectFrom("json_samples").selectAll().orderBy("id", "asc");
 }
 
+function buildHeavyHitterFunctionQuery() {
+  return db
+    .selectFrom("typed_samples as t")
+    .selectExpr((eb) => [
+      "t.id",
+      eb.fn
+        .if(eb.cmp("t.status", "=", "active"), eb.ref("t.label"), eb.val("inactive"))
+        .as("status_label"),
+      eb.fn.least(eb.ref("t.id"), eb.val(param(10, "UInt32"))).as("least_val"),
+      eb.fn.greatest(eb.ref("t.id"), eb.val(param(10, "UInt32"))).as("greatest_val"),
+      eb.fn.ceil("t.amount").as("ceil_amount"),
+      eb.fn.floor("t.amount").as("floor_amount"),
+      eb.fn.toUInt8("t.id").as("id_u8"),
+      eb.fn.toYear("t.created_at").as("created_year"),
+      eb.fn.toMonth("t.created_at").as("created_month"),
+    ])
+    .where((eb) => eb.fn.toUInt8("t.id"), ">", 0)
+    .orderBy("t.id", "asc");
+}
+
+function buildCountDistinctQuery() {
+  return db
+    .selectFrom("typed_samples as t")
+    .selectExpr((eb) => [eb.fn.countDistinct("t.label").as("distinct_labels")]);
+}
+
+function buildNow64Query() {
+  return db
+    .selectFrom("typed_samples as t")
+    .selectExpr((eb) => [eb.fn.now64(3).as("current_time_precise")])
+    .limit(1);
+}
+
 type TypedSampleRow = InferResult<ReturnType<typeof buildTypedSamplesQuery>>;
 type TypeCastRow = InferResult<ReturnType<typeof buildTypeCastQuery>>;
 type ArrayFunctionRow = InferResult<ReturnType<typeof buildArrayFunctionQuery>>;
@@ -199,6 +232,7 @@ type DateTimeFunctionRow = InferResult<ReturnType<typeof buildDateTimeFunctionQu
 type NullFunctionRow = InferResult<ReturnType<typeof buildNullFunctionQuery>>;
 type AggregateFunctionRow = InferResult<ReturnType<typeof buildAggregateFunctionQuery>>;
 type JsonSampleRow = InferResult<ReturnType<typeof buildJsonSamplesQuery>>;
+type HeavyHitterFunctionRow = InferResult<ReturnType<typeof buildHeavyHitterFunctionQuery>>;
 
 const expectedRows: TypedSampleRow[] = [
   {
@@ -434,6 +468,31 @@ const expectedAggregateFunctionRows: AggregateFunctionRow[] = [
   },
 ];
 
+const expectedHeavyHitterRows: HeavyHitterFunctionRow[] = [
+  {
+    id: 1,
+    status_label: "alpha",
+    least_val: 1,
+    greatest_val: 10,
+    ceil_amount: 124,
+    floor_amount: 123,
+    id_u8: 1,
+    created_year: 2025,
+    created_month: 1,
+  },
+  {
+    id: 2,
+    status_label: "inactive",
+    least_val: 2,
+    greatest_val: 10,
+    ceil_amount: 1,
+    floor_amount: 0,
+    id_u8: 2,
+    created_year: 2025,
+    created_month: 1,
+  },
+];
+
 let context: ClickHouseTestContext | undefined;
 
 describe("clickhouse runtime types", () => {
@@ -631,5 +690,30 @@ describe("clickhouse runtime types", () => {
     expect(rows[0].nicknames).toEqual(["bee"]);
     expect(typeof rows[0].any_label).toBe("string");
     expect(typeof rows[0].any_last_label).toBe("string");
+  });
+
+  it("returns runtime-honest values for heavy-hitter helpers", async () => {
+    const rows = await buildHeavyHitterFunctionQuery().execute({ client: getContext().client });
+
+    expect(rows).toEqual(expectedHeavyHitterRows);
+    expect(typeof rows[0].ceil_amount).toBe("number");
+    expect(typeof rows[0].floor_amount).toBe("number");
+    expect(typeof rows[0].id_u8).toBe("number");
+    expect(typeof rows[0].created_year).toBe("number");
+    expect(typeof rows[0].created_month).toBe("number");
+  });
+
+  it("returns runtime-honest values for countDistinct", async () => {
+    const rows = await buildCountDistinctQuery().execute({ client: getContext().client });
+
+    expect(rows).toEqual([{ distinct_labels: "2" }]);
+    expect(typeof rows[0].distinct_labels).toBe("string");
+  });
+
+  it("returns runtime-honest values for now64", async () => {
+    const rows = await buildNow64Query().execute({ client: getContext().client });
+
+    expect(typeof rows[0].current_time_precise).toBe("string");
+    expect(rows[0].current_time_precise).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
   });
 });

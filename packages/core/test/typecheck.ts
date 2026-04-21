@@ -261,6 +261,23 @@ const nullableGroupArrayQuery = db
   .selectFrom("typed_samples as t")
   .selectExpr((eb) => [eb.fn.groupArray("t.nickname").as("nicknames")]);
 
+const heavyHitterFunctionQuery = db
+  .selectFrom("typed_samples as t")
+  .selectExpr((eb) => [
+    eb.fn
+      .if(eb.cmp("t.status", "=", "active"), eb.ref("t.label"), eb.val("inactive"))
+      .as("status_label"),
+    eb.fn.least(eb.ref("t.id"), eb.val(param(10, "UInt32"))).as("least_val"),
+    eb.fn.greatest(eb.ref("t.id"), eb.val(param(10, "UInt32"))).as("greatest_val"),
+    eb.fn.ceil("t.amount").as("ceil_amount"),
+    eb.fn.floor("t.amount").as("floor_amount"),
+    eb.fn.countDistinct("t.label").as("distinct_labels"),
+    eb.fn.now64(3).as("current_time_precise"),
+    eb.fn.toUInt8("t.id").as("id_u8"),
+    eb.fn.toYear("t.created_at").as("created_year"),
+    eb.fn.toMonth("t.created_at").as("created_month"),
+  ]);
+
 type BasicRow = InferResult<typeof basicQuery>;
 type DistinctRow = InferResult<typeof distinctQuery>;
 type DistinctOnRow = InferResult<typeof distinctOnQuery>;
@@ -280,6 +297,7 @@ type NullableStringFunctionRow = InferResult<typeof nullableStringFunctionQuery>
 type NullFunctionRow = InferResult<typeof nullFunctionQuery>;
 type AggregateFunctionRow = InferResult<typeof aggregateFunctionQuery>;
 type NullableGroupArrayRow = InferResult<typeof nullableGroupArrayQuery>;
+type HeavyHitterFunctionRow = InferResult<typeof heavyHitterFunctionQuery>;
 
 const validRow: BasicRow = {
   user_id: 1,
@@ -435,6 +453,19 @@ const validNullableGroupArrayRow: NullableGroupArrayRow = {
   nicknames: ["bee"],
 };
 
+const validHeavyHitterFunctionRow: HeavyHitterFunctionRow = {
+  status_label: "alpha",
+  least_val: 1,
+  greatest_val: 10,
+  ceil_amount: 124,
+  floor_amount: 123,
+  distinct_labels: "2",
+  current_time_precise: "2025-01-01 00:00:00.000",
+  id_u8: 1,
+  created_year: 2025,
+  created_month: 1,
+};
+
 const executionOptions = {
   client,
   queryId: "typecheck-query-id",
@@ -527,6 +558,7 @@ void validNullableStringFunctionRow;
 void validNullFunctionRow;
 void validAggregateFunctionRow;
 void validNullableGroupArrayRow;
+void validHeavyHitterFunctionRow;
 void executionOptions;
 void validRowsPromise;
 void validFirstRowPromise;
@@ -872,6 +904,21 @@ db.selectFrom("typed_samples").where((eb) => eb.cmp("id", "=", "oops"));
 db.selectFrom("typed_samples").selectExpr((eb) => [
   // @ts-expect-error substring offset must be numeric
   eb.fn.substring("label", "2", 3).as("bad_slice"),
+]);
+
+db.selectFrom("typed_samples as t").selectExpr((eb) => [
+  // @ts-expect-error if() condition must be an Expression
+  eb.fn.if("t.status = active", eb.ref("t.label"), eb.val("inactive")).as("bad_if"),
+]);
+
+db.selectFrom("typed_samples as t").selectExpr((eb) => [
+  eb.fn.least(eb.ref("t.id")).as("single_least"),
+  eb.fn.greatest(eb.ref("t.id")).as("single_greatest"),
+]);
+
+db.selectFrom("typed_samples as t").selectExpr((eb) => [
+  // @ts-expect-error now64 precision must be numeric
+  eb.fn.now64("3").as("bad_now64"),
 ]);
 
 db.selectFrom("typed_samples as t").selectExpr((eb) => [

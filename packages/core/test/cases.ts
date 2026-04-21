@@ -722,6 +722,60 @@ export const nullFunctionsCase = defineQueryCase({
       .orderBy("t.id", "asc"),
 });
 
+export const heavyHitterFunctionsCase = defineQueryCase({
+  name: "28 heavy hitter functions",
+  file: "28_heavy_hitter_functions.sql",
+  expectedParams: {
+    p0: "active",
+    p1: "inactive",
+    p2: 10,
+    p3: 10,
+    p4: 0,
+  },
+  expectedRows: [
+    {
+      id: 1,
+      status_label: "alpha",
+      least_val: 1,
+      greatest_val: 10,
+      ceil_amount: 124,
+      floor_amount: 123,
+      id_u8: 1,
+      created_year: 2025,
+      created_month: 1,
+    },
+    {
+      id: 2,
+      status_label: "inactive",
+      least_val: 2,
+      greatest_val: 10,
+      ceil_amount: 1,
+      floor_amount: 0,
+      id_u8: 2,
+      created_year: 2025,
+      created_month: 1,
+    },
+  ],
+  build: () =>
+    db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        "t.id",
+        eb.fn
+          .if(eb.cmp("t.status", "=", "active"), eb.ref("t.label"), eb.val("inactive"))
+          .as("status_label"),
+        eb.fn.least(eb.ref("t.id"), eb.val(param(10, "UInt32"))).as("least_val"),
+        eb.fn.greatest(eb.ref("t.id"), eb.val(param(10, "UInt32"))).as("greatest_val"),
+        eb.fn.ceil("t.amount").as("ceil_amount"),
+        eb.fn.floor("t.amount").as("floor_amount"),
+        eb.fn.toUInt8("t.id").as("id_u8"),
+        eb.fn.toYear("t.created_at").as("created_year"),
+        eb.fn.toMonth("t.created_at").as("created_month"),
+      ])
+      .where((eb) => eb.fn.toUInt8("t.id"), ">", 0)
+      .orderBy("t.id", "asc"),
+});
+
 export const dateTimeFunctionsCase = defineQueryCase({
   name: "26 date/time functions",
   file: "26_date_time_functions.sql",

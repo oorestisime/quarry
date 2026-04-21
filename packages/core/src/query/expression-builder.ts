@@ -315,6 +315,24 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap> {
   trimRight<Value extends StringInput<Scope>>(
     value: Value,
   ): Expression<MaybeNullable<ResolveRefOrExpressionInput<Scope, Value>, string>>;
+  if<Then extends ValueInput<Scope>, Else extends ValueInput<Scope>>(
+    condition: Expression<unknown>,
+    then: Then,
+    elseValue: Else,
+  ): Expression<ResolveValueInput<Scope, Then> | ResolveValueInput<Scope, Else>>;
+  least<Values extends readonly [ValueInput<Scope>, ...ValueInput<Scope>[]]>(
+    ...values: Values
+  ): Expression<ResolveValueInputs<Scope, Values>[number]>;
+  greatest<Values extends readonly [ValueInput<Scope>, ...ValueInput<Scope>[]]>(
+    ...values: Values
+  ): Expression<ResolveValueInputs<Scope, Values>[number]>;
+  ceil<Value extends ValueInput<Scope>>(value: Value): Expression<ResolveValueInput<Scope, Value>>;
+  floor<Value extends ValueInput<Scope>>(value: Value): Expression<ResolveValueInput<Scope, Value>>;
+  countDistinct(value: ValueInput<Scope>): Expression<string>;
+  now64(precision: number): Expression<string>;
+  toUInt8(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
+  toYear(value: ExpressionInput<Scope>): Expression<number>;
+  toMonth(value: ExpressionInput<Scope>): Expression<number>;
 }
 
 export class ExpressionBuilder<Scope extends ScopeMap> {
@@ -645,6 +663,56 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
         [this.toExpr(value)],
         this.resolveMaybeNullableStringType(value),
       ),
+    if: <Then extends ValueInput<Scope>, Else extends ValueInput<Scope>>(
+      condition: Expression<unknown>,
+      then: Then,
+      elseValue: Else,
+    ) =>
+      this.callFunction<ResolveValueInput<Scope, Then> | ResolveValueInput<Scope, Else>>("if", [
+        condition.node,
+        this.toExpr(then),
+        this.toExpr(elseValue),
+      ]),
+    least: <Values extends readonly [ValueInput<Scope>, ...ValueInput<Scope>[]]>(
+      ...values: Values
+    ) =>
+      this.callFunction<ResolveValueInputs<Scope, Values>[number]>(
+        "least",
+        values.map((value) => this.toExpr(value)),
+      ),
+    greatest: <Values extends readonly [ValueInput<Scope>, ...ValueInput<Scope>[]]>(
+      ...values: Values
+    ) =>
+      this.callFunction<ResolveValueInputs<Scope, Values>[number]>(
+        "greatest",
+        values.map((value) => this.toExpr(value)),
+      ),
+    ceil: <Value extends ValueInput<Scope>>(value: Value) =>
+      this.callFunction<ResolveValueInput<Scope, Value>>(
+        "ceil",
+        [this.toExpr(value)],
+        this.resolveValueClickHouseType(value),
+      ),
+    floor: <Value extends ValueInput<Scope>>(value: Value) =>
+      this.callFunction<ResolveValueInput<Scope, Value>>(
+        "floor",
+        [this.toExpr(value)],
+        this.resolveValueClickHouseType(value),
+      ),
+    countDistinct: (value: ValueInput<Scope>) =>
+      this.callFunction<string, never>("countDistinct", [this.toExpr(value)], "UInt64"),
+    now64: (precision: number) =>
+      this.callFunction<string, string | Date>(
+        "now64",
+        [this.toIntegerLiteral(precision, "now64 precision", 9)],
+        `DateTime64(${precision})`,
+      ),
+    toUInt8: (value: ColumnRef<Scope> | Expression<unknown>) =>
+      this.callFunction<number>("toUInt8", [this.toExpr(value)], "UInt8"),
+    toYear: (value: ExpressionInput<Scope>) =>
+      this.callFunction<number>("toYear", [this.toExpr(value)], "UInt16"),
+    toMonth: (value: ExpressionInput<Scope>) =>
+      this.callFunction<number>("toMonth", [this.toExpr(value)], "UInt8"),
   };
 
   cmpRef<Left extends ColumnRef<Scope>, Right extends ColumnRef<Scope>>(

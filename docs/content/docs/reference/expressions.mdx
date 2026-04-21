@@ -210,6 +210,7 @@ inputs.
 | ----------------------------------- | -------------------------------- | ----------------------------------------------------------------- |
 | `eb.fn.count()`                     | `Expression<string>`             | `count(*)`. UInt64 → `string`.                                    |
 | `eb.fn.countIf(condition)`          | `Expression<string>`             | Counts only rows where `condition` is truthy.                     |
+| `eb.fn.countDistinct(value)`        | `Expression<string>`             | `count(DISTINCT value)`. Respects `count_distinct_implementation`. |
 | `eb.fn.sum(value)`                  | `Expression<number \| string>`   | Returns `string` for 64-bit integer columns, `number` otherwise.  |
 | `eb.fn.sumIf(value, condition)`     | `Expression<number \| string>`   | Sums only rows where `condition` is truthy.                       |
 | `eb.fn.avg(value)`                  | `Expression<number>`             | Always returns `number` (ClickHouse produces `Float64`).          |
@@ -279,6 +280,7 @@ as `string`, decimals come back as `number`, dates come back as `string`.
 | `eb.fn.toInt32(value)`                 | `Expression<number>` | `Int32`                  |
 | `eb.fn.toInt64(value)`                 | `Expression<string>` | `Int64`                  |
 | `eb.fn.toUInt32(value)`                | `Expression<number>` | `UInt32`                 |
+| `eb.fn.toUInt8(value)`                 | `Expression<number>` | `UInt8`                  |
 | `eb.fn.toUInt64(value)`                | `Expression<string>` | `UInt64`                 |
 | `eb.fn.toFloat32(value)`               | `Expression<number>` | `Float32`                |
 | `eb.fn.toFloat64(value)`               | `Expression<number>` | `Float64`                |
@@ -316,6 +318,7 @@ diffs, relative offsets, and compact integer date keys.
 | Helper                                 | Returns              | Notes                                                          |
 | -------------------------------------- | -------------------- | -------------------------------------------------------------- |
 | `eb.fn.now()`                          | `Expression<string>` | Current `DateTime` at query analysis time.                     |
+| `eb.fn.now64(precision)`               | `Expression<string>` | Current `DateTime64(precision)`. Precision must be `0..9`.     |
 | `eb.fn.today()`                        | `Expression<string>` | Current `Date`.                                                |
 | `eb.fn.toStartOfMonth(value)`          | `Expression<string>` | Start of the month.                                            |
 | `eb.fn.toStartOfWeek(value)`           | `Expression<string>` | Start of the week.                                             |
@@ -325,6 +328,8 @@ diffs, relative offsets, and compact integer date keys.
 | `eb.fn.dateDiff(unit, start, end)`     | `Expression<string>` | Returns ClickHouse `Int64`, so Quarry types it as `string`.    |
 | `eb.fn.dateAdd(unit, amount, value)`   | `Expression<string>` | Adds a unit-specific offset (`day`, `hour`, `month`, etc.).    |
 | `eb.fn.dateSub(unit, amount, value)`   | `Expression<string>` | Subtracts a unit-specific offset.                              |
+| `eb.fn.toYear(value)`                  | `Expression<number>` | Year as `UInt16`.                                              |
+| `eb.fn.toMonth(value)`                 | `Expression<number>` | Month as `UInt8` (1–12).                                       |
 | `eb.fn.toYYYYMM(value)`                | `Expression<number>` | Compact `UInt32` year/month key.                               |
 | `eb.fn.toYYYYMMDD(value)`              | `Expression<number>` | Compact `UInt32` year/month/day key.                           |
 
@@ -403,6 +408,39 @@ db
     eb.fn.coalesce("u.nickname", "u.email").as("display_name"),
     eb.fn.coalesce("u.nickname", eb.val("Unknown")).as("display_name_with_fallback"),
     eb.fn.ifNull("u.nickname", "Unknown").as("nickname_or_default"),
+  ]);
+```
+
+### Conditional helpers
+
+| Helper                             | Returns                | Notes                                                                              |
+| ---------------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| `eb.fn.if(condition, then, else)`  | `Expression<Then \| Else>` | ClickHouse `if`. Return type is the union of the two branch types.              |
+
+```ts
+db
+  .selectFrom("users as u")
+  .selectExpr((eb) => [
+    eb.fn.if(eb.cmp("u.status", "=", "active"), eb.ref("u.label"), eb.val("inactive")).as("status_label"),
+  ]);
+```
+
+### Math helpers
+
+| Helper                        | Returns              | Notes                                                   |
+| ----------------------------- | -------------------- | ------------------------------------------------------- |
+| `eb.fn.least(...values)`      | `Expression<T>`      | Minimum of one or more values. Preserves input type.    |
+| `eb.fn.greatest(...values)`   | `Expression<T>`      | Maximum of one or more values. Preserves input type.    |
+| `eb.fn.ceil(value)`           | `Expression<T>`      | Rounds up. Preserves the resolved input type.           |
+| `eb.fn.floor(value)`          | `Expression<T>`      | Rounds down. Preserves the resolved input type.         |
+
+```ts
+db
+  .selectFrom("users as u")
+  .selectExpr((eb) => [
+    eb.fn.least(eb.ref("u.id"), eb.val(10)).as("capped_id"),
+    eb.fn.ceil("u.amount").as("amount_ceil"),
+    eb.fn.floor("u.amount").as("amount_floor"),
   ]);
 ```
 
