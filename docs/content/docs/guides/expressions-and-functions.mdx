@@ -394,3 +394,32 @@ One query gives you total events, signup count, purchase count, and
 purchase revenue &mdash; all computed in a single pass. In standard SQL you
 would need `CASE WHEN ... END` expressions inside each aggregate; ClickHouse
 (and Quarry) lets you write it directly.
+
+## Reusing expressions externally
+
+If you build predicates in a helper function or an external package, you can
+return an `Expression` object and pass it directly to `where`, `prewhere`, or
+`having` instead of using a callback:
+
+```ts
+import { ExpressionBuilder } from "@oorestisime/quarry";
+
+function buildVipPredicate(eb: ExpressionBuilder<any>) {
+  return eb.and([
+    eb.fn.has("u.tags", "premium"),
+    eb.cmp("u.status", "=", "active"),
+  ]);
+}
+
+const eb = new ExpressionBuilder<any>();
+const vipPredicate = buildVipPredicate(eb);
+
+const rows = await db
+  .selectFrom("users as u")
+  .select("u.id")
+  .where(vipPredicate)
+  .execute();
+```
+
+Multiple `.where(expression)` calls are combined with `AND`, just like the
+callback and positional forms.

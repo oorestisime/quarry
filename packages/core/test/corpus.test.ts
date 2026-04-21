@@ -6,6 +6,7 @@ import { createClickHouseDB } from "../src";
 import {
   aggregateFunctionsCase,
   arrayFunctionsCase,
+  chainedExpressionWhereCase,
   cteJoinCase,
   cteLeftJoinBaseTableCase,
   dateTimeFunctionsCase,
@@ -62,6 +63,7 @@ const cases = [
   aggregateFunctionsCase,
   nullFunctionsCase,
   dateTimeFunctionsCase,
+  chainedExpressionWhereCase,
 ];
 
 function normalizeSql(sql: string): string {

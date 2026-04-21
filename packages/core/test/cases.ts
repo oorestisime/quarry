@@ -1,4 +1,4 @@
-import { createClickHouseDB, param, type ExecutableQuery } from "../src";
+import { createClickHouseDB, param, ExpressionBuilder, type ExecutableQuery } from "../src";
 
 export interface SpikeDB {
   event_logs: {
@@ -771,4 +771,23 @@ export const dateTimeFunctionsCase = defineQueryCase({
         eb.fn.toYYYYMMDD("t.created_at").as("created_yyyymmdd"),
       ])
       .orderBy("t.id", "asc"),
+});
+
+export const chainedExpressionWhereCase = defineQueryCase({
+  name: "27 chained expression where",
+  file: "27_chained_expression_where.sql",
+  expectedParams: { p0: "active", p1: "trial" },
+  expectedRows: [{ id: 1, label: "alpha" }],
+  build: () => {
+    const eb = new ExpressionBuilder<any>();
+    const statusExpr = eb.cmp("t.status", "=", "active");
+    const tagsExpr = eb.fn.has("t.tags", "trial");
+
+    return db
+      .selectFrom("typed_samples as t")
+      .select("t.id", "t.label")
+      .where(statusExpr)
+      .where(tagsExpr)
+      .orderBy("t.id", "asc");
+  },
 });

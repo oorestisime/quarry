@@ -3,6 +3,7 @@ import { createClickHouseDB } from "../../src";
 import { startClickHouse, stopClickHouse, type ClickHouseTestContext } from "./clickhouse";
 import {
   aggregateFunctionsCase,
+  chainedExpressionWhereCase,
   cteLeftJoinBaseTableCase,
   cteJoinCase,
   finalPrewhereSettingsCase,
@@ -102,6 +103,11 @@ describe("clickhouse integration", () => {
   it(whereRefCase.name, async () => {
     const rows = await whereRefCase.build().execute({ client: getContext().client });
     expect(rows).toEqual(whereRefCase.expectedRows);
+  });
+
+  it(chainedExpressionWhereCase.name, async () => {
+    const rows = await chainedExpressionWhereCase.build().execute({ client: getContext().client });
+    expect(rows).toEqual(chainedExpressionWhereCase.expectedRows);
   });
 
   it(groupByAggregateCase.name, async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createClickHouseDB, param } from "../src";
+import { createClickHouseDB, param, ExpressionBuilder, Expression } from "../src";
 
 interface QueryBuilderTestDB {
   event_logs: {
@@ -294,6 +294,70 @@ describe("query builder validation", () => {
       .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
       .groupBy("e.user_id")
       .having((eb) => eb.raw<number>("count() > 0"))
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT e.user_id, count() AS event_count FROM event_logs AS e GROUP BY e.user_id HAVING count() > 0",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("accepts pre-built Expression objects in where, prewhere, and having", () => {
+    const eb = new ExpressionBuilder<any>();
+    const tagExpr = eb.fn.has("tags", "vip");
+    const notEmptyExpr = eb.fn.notEmpty("label");
+
+    const query = db
+      .selectFrom("typed_samples")
+      .selectAll()
+      .prewhere(tagExpr)
+      .where(notEmptyExpr)
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT * FROM typed_samples PREWHERE has(tags, {p0:String}) WHERE notEmpty(label)",
+    );
+    expect(query.params).toEqual({ p0: "vip" });
+  });
+
+  it("accepts structurally-typed expression-like objects (not just instanceof Expression)", () => {
+    const eb = new ExpressionBuilder<any>();
+    const realExpr = eb.cmp("label", "=", "a");
+    // Simulate a cross-package or wrapped value that satisfies the type
+    // but is not the exact local constructor instance.
+    const structuralExpr = {
+      node: realExpr.node,
+      clickhouseType: realExpr.clickhouseType,
+    } as Expression<unknown>;
+
+    const query = db.selectFrom("typed_samples").selectAll().where(structuralExpr).toSQL();
+
+    expect(query.query).toBe("SELECT * FROM typed_samples WHERE label = {p0:String}");
+    expect(query.params).toEqual({ p0: "a" });
+  });
+
+  it("chains pre-built Expression objects with AND via appendCondition", () => {
+    const eb = new ExpressionBuilder<any>();
+    const expr1 = eb.cmp("label", "=", "a");
+    const expr2 = eb.cmp("nickname", "=", "b");
+
+    const query = db.selectFrom("typed_samples").selectAll().where(expr1).where(expr2).toSQL();
+
+    expect(query.query).toBe(
+      "SELECT * FROM typed_samples WHERE label = {p0:String} AND nickname = {p1:String}",
+    );
+    expect(query.params).toEqual({ p0: "a", p1: "b" });
+  });
+
+  it("accepts pre-built Expression in having", () => {
+    const eb = new ExpressionBuilder<any>();
+    const havingExpr = eb.raw<number>("count() > 0");
+
+    const query = db
+      .selectFrom("event_logs as e")
+      .selectExpr((eb2) => ["e.user_id", eb2.fn.count().as("event_count")])
+      .groupBy("e.user_id")
+      .having(havingExpr)
       .toSQL();
 
     expect(query.query).toBe(

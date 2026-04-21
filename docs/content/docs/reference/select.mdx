@@ -204,6 +204,21 @@ db
   .where((eb) => eb.fn.toUInt32("e.user_id"), ">", 0);
 ```
 
+### `where(expression)`
+
+Pass a pre-built `Expression` object directly. This is useful when an external
+package or helper function composes a predicate tree and you want to inject it
+into the query.
+
+```ts
+import { ExpressionBuilder } from "@oorestisime/quarry";
+
+const eb = new ExpressionBuilder<any>();
+const isPremium = eb.fn.has("u.tags", "premium");
+
+db.selectFrom("users as u").select("u.id").where(isPremium);
+```
+
 ### `whereRef(left, operator, right)`
 
 Compare two column references. Both sides must be columns in scope.
@@ -239,6 +254,7 @@ query. Use it for highly selective predicates over indexed columns.
 - `prewhere(column, operator, subquery)`
 - `prewhere((eb) => expression)`
 - `prewhere((eb) => expression, operator, value)`
+- `prewhere(expression)`
 
 There is also a `prewhereRef(left, operator, right)` variant matching
 `whereRef`.
@@ -272,7 +288,8 @@ db
   .having("event_count", ">", param(1, "Int64"));
 ```
 
-`having` accepts the same callback overloads as `where`.
+`having` accepts the same callback overloads as `where`, including the
+pre-built `Expression` object form.
 
 ## `groupBy(...expressions)`
 
