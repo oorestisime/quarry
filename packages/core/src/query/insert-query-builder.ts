@@ -1,10 +1,12 @@
 import type { InsertQueryNode } from "../ast/query";
 import { compileInsertQuery, type CompiledInsertQuery } from "../compiler/query-compiler";
-import type {
-  ClickHouseClient,
-  ClickHouseInsertResult,
-  CommandCapableClickHouseClient,
-  InsertCapableClickHouseClient,
+import {
+  toClickHouseExecutionParams,
+  type ClickHouseClient,
+  type ClickHouseInsertResult,
+  type CommandCapableClickHouseClient,
+  type ClickHouseExecutionOptions,
+  type InsertCapableClickHouseClient,
 } from "../client";
 import { normalizeInsertValue } from "../input-normalization";
 import type { Simplify } from "../type-utils";
@@ -89,15 +91,13 @@ export class InsertQueryBuilder<Table extends string, Row extends object> {
     return resolvedClient as CommandCapableClickHouseClient;
   }
 
-  async execute(): Promise<ClickHouseInsertResult>;
-  async execute(client: ClickHouseClient): Promise<ClickHouseInsertResult>;
-  async execute(client?: ClickHouseClient): Promise<ClickHouseInsertResult> {
+  async execute(options?: ClickHouseExecutionOptions): Promise<ClickHouseInsertResult> {
     if (!this.node.source) {
       throw new Error("Cannot execute an insert without a source");
     }
 
     if (this.node.source.kind === "values") {
-      const resolvedClient = this.getInsertClient(client);
+      const resolvedClient = this.getInsertClient(options?.client);
       const values = this.node.source.rows.map((row) => normalizeInsertValue(row)) as Row[];
 
       return resolvedClient.insert({
@@ -105,14 +105,16 @@ export class InsertQueryBuilder<Table extends string, Row extends object> {
         values,
         format: "JSONEachRow",
         columns: this.node.columns as [string, ...string[]] | undefined,
+        ...toClickHouseExecutionParams(options ?? {}),
       });
     }
 
-    const resolvedClient = this.getCommandClient(client);
+    const resolvedClient = this.getCommandClient(options?.client);
     const compiled = this.toSQL();
     const result = await resolvedClient.command({
       query: compiled.query,
       query_params: compiled.params,
+      ...toClickHouseExecutionParams(options ?? {}),
     });
 
     return {

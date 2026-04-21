@@ -82,7 +82,7 @@ describe("clickhouse insert integration", () => {
           "metrics.score": [7],
         },
       ])
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(insertResult.executed).toBe(true);
 
@@ -90,7 +90,7 @@ describe("clickhouse insert integration", () => {
       .selectFrom("typed_samples")
       .selectAll()
       .where("id", "=", 3)
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -124,7 +124,7 @@ describe("clickhouse insert integration", () => {
           },
         },
       ])
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(insertResult.executed).toBe(true);
 
@@ -132,7 +132,7 @@ describe("clickhouse insert integration", () => {
       .selectFrom("json_samples")
       .selectAll()
       .where("id", "=", 3)
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(rows).toEqual([
       {
@@ -175,7 +175,7 @@ describe("clickhouse insert integration", () => {
           .where("e.created_at", ">=", param("2025-01-01", "Date"))
           .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
       )
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(insertResult.executed).toBe(true);
 
@@ -184,7 +184,7 @@ describe("clickhouse insert integration", () => {
       .selectAll()
       .orderBy("user_id", "asc")
       .orderBy("event_date", "asc")
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(rows).toEqual([
       {

@@ -66,7 +66,7 @@ describe("decimal runtime validation", () => {
       .selectFrom("decimal_runtime_samples as d")
       .selectAll()
       .orderBy("d.id", "asc")
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(rows).toEqual([
       {

@@ -465,18 +465,25 @@ compiled.params;
 // { p0: "alice@example.com" }
 ```
 
-### `execute(client?)`
+### `execute(options?)`
 
 Runs the query against ClickHouse and returns all rows as `Output[]`.
 
 If you passed a client to `createClickHouseDB({ client })`, that client is
-used by default. You can pass a different client per call if you need to:
+used by default. You can override it per call and pass driver-level execution
+settings when needed:
 
 ```ts
 const rows = await db
   .selectFrom("users as u")
   .select("u.id", "u.email")
-  .execute();
+  .execute({
+    client: otherClient,
+    queryId: "users-list",
+    clickhouse_settings: {
+      max_threads: 1,
+    },
+  });
 ```
 
 Throws if no client is configured:
@@ -487,7 +494,10 @@ The result is parsed from `JSONEachRow`, so the runtime types follow the
 [runtime semantics](/docs/concepts/runtime-semantics) rules
 (`UInt64` → `string`, etc.).
 
-### `executeTakeFirst(client?)`
+The same options shape is supported by `executeTakeFirst()` and
+`executeTakeFirstOrThrow()`.
+
+### `executeTakeFirst(options?)`
 
 Runs the query and returns the first row, or `undefined` if there were none.
 
@@ -500,7 +510,7 @@ const user = await db
 //      ^?
 ```
 
-### `executeTakeFirstOrThrow(client?)`
+### `executeTakeFirstOrThrow(options?)`
 
 Same as `executeTakeFirst`, but throws `Query returned no rows.` instead of
 returning `undefined`.

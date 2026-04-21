@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createClickHouseDB, param } from "../src";
 
 interface InsertTestDB {
@@ -205,6 +205,111 @@ describe("insert builder", () => {
     expect(() => db.insertInto("typed_samples").toSQL()).toThrow(
       "Cannot compile an insert without a source",
     );
+  });
+
+  it("forwards query_id and clickhouse_settings to values inserts", async () => {
+    const client = {
+      query: vi.fn(),
+      insert: vi.fn().mockResolvedValue({
+        executed: true,
+        query_id: "insert-query-id",
+      }),
+    };
+
+    await db
+      .insertInto("typed_samples")
+      .values([
+        {
+          id: 8,
+          big_user_id: "104",
+          label: "theta",
+          status: "active",
+          nickname: null,
+          tags: [],
+          amount: 3,
+          created_at: "2025-01-08 00:00:00.000",
+          location: [0, 0],
+          attributes: {},
+          "metrics.name": ["opens"],
+          "metrics.score": [3],
+        },
+      ])
+      .execute({
+        client,
+        queryId: "values-query-id",
+        clickhouse_settings: {
+          async_insert: 1,
+          wait_for_async_insert: 0,
+        },
+      });
+
+    expect(client.insert).toHaveBeenCalledWith({
+      table: "typed_samples",
+      values: [
+        {
+          id: 8,
+          big_user_id: "104",
+          label: "theta",
+          status: "active",
+          nickname: null,
+          tags: [],
+          amount: 3,
+          created_at: "2025-01-08 00:00:00.000",
+          location: [0, 0],
+          attributes: {},
+          "metrics.name": ["opens"],
+          "metrics.score": [3],
+        },
+      ],
+      format: "JSONEachRow",
+      columns: undefined,
+      query_id: "values-query-id",
+      clickhouse_settings: {
+        async_insert: 1,
+        wait_for_async_insert: 0,
+      },
+    });
+  });
+
+  it("forwards query_id and clickhouse_settings to insert-select commands", async () => {
+    const client = {
+      query: vi.fn(),
+      command: vi.fn().mockResolvedValue({
+        query_id: "command-query-id",
+      }),
+    };
+
+    await db
+      .insertInto("daily_aggregates")
+      .columns("user_id", "event_date", "total_amount")
+      .fromSelect(
+        db
+          .selectFrom("event_logs as e")
+          .selectExpr((eb) => [
+            "e.user_id",
+            eb.fn.toDate("e.created_at").as("event_date"),
+            eb.fn.sum("e.amount").as("total_amount"),
+          ])
+          .where("e.created_at", ">=", param("2025-01-01", "Date"))
+          .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
+      )
+      .execute({
+        client,
+        queryId: "insert-select-query-id",
+        clickhouse_settings: {
+          async_insert: 1,
+        },
+      });
+
+    expect(client.command).toHaveBeenCalledWith({
+      query:
+        "INSERT INTO daily_aggregates (user_id, event_date, total_amount) SELECT e.user_id, toDate(e.created_at) AS event_date, sum(e.amount) AS total_amount FROM event_logs AS e WHERE e.created_at >= {p0:Date} GROUP BY e.user_id, toDate(e.created_at)",
+      query_params: { p0: "2025-01-01" },
+      query_id: "insert-select-query-id",
+      clickhouse_settings: {
+        async_insert: 1,
+      },
+    });
   });
 
   it("requires an insert source before execution", async () => {

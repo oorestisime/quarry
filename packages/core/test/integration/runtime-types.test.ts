@@ -454,7 +454,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("returns raw JSONEachRow-compatible values for awkward ClickHouse types", async () => {
-    const rows = await buildTypedSamplesQuery().execute(getContext().client);
+    const rows = await buildTypedSamplesQuery().execute({ client: getContext().client });
 
     expect(rows).toEqual(expectedRows);
     expect(typeof rows[0].id).toBe("number");
@@ -472,7 +472,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("returns structured objects for JSON columns with typed paths", async () => {
-    const rows = await buildJsonSamplesQuery().execute(getContext().client);
+    const rows = await buildJsonSamplesQuery().execute({ client: getContext().client });
 
     expect(rows).toEqual(expectedJsonRows);
     expect(typeof rows[0].payload.user.id).toBe("string");
@@ -484,7 +484,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("returns runtime-honest values for type conversion helpers", async () => {
-    const rows = await buildTypeCastQuery().execute(getContext().client);
+    const rows = await buildTypeCastQuery().execute({ client: getContext().client });
 
     expect(rows).toEqual(expectedTypeCastRows);
     expect(typeof rows[0].id_i32).toBe("number");
@@ -502,7 +502,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("returns runtime-honest values for array function helpers", async () => {
-    const rows = await buildArrayFunctionQuery().execute(getContext().client);
+    const rows = await buildArrayFunctionQuery().execute({ client: getContext().client });
 
     expect(rows).toEqual(expectedArrayFunctionRows);
     expect(typeof rows[0].has_trial).toBe("number");
@@ -514,7 +514,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("returns runtime-honest values for string function helpers", async () => {
-    const rows = await buildStringFunctionQuery().execute(getContext().client);
+    const rows = await buildStringFunctionQuery().execute({ client: getContext().client });
 
     expect(rows).toEqual(expectedStringFunctionRows);
     expect(typeof rows[0].has_ph).toBe("number");
@@ -531,7 +531,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("propagates nulls through nullable string helpers", async () => {
-    const rows = await buildNullableStringFunctionQuery().execute(getContext().client);
+    const rows = await buildNullableStringFunctionQuery().execute({ client: getContext().client });
 
     expect(rows).toEqual(expectedNullableStringFunctionRows);
     expect(rows[0].nickname_has_e).toBeNull();
@@ -559,7 +559,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("returns runtime-honest values for date/time helpers", async () => {
-    const rows = await buildDateTimeFunctionQuery().execute(getContext().client);
+    const rows = await buildDateTimeFunctionQuery().execute({ client: getContext().client });
 
     expect(
       rows.map(
@@ -594,7 +594,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("returns runtime-honest values for null helpers", async () => {
-    const rows = await buildNullFunctionQuery().execute(getContext().client);
+    const rows = await buildNullFunctionQuery().execute({ client: getContext().client });
 
     expect(rows).toEqual(expectedNullFunctionRows);
     expect(typeof rows[0].nickname_is_null).toBe("number");
@@ -610,7 +610,7 @@ describe("clickhouse runtime types", () => {
   });
 
   it("returns runtime-honest values for aggregate helpers", async () => {
-    const rows = await buildAggregateFunctionQuery().execute(getContext().client);
+    const rows = await buildAggregateFunctionQuery().execute({ client: getContext().client });
 
     expect(rows).toEqual(expectedAggregateFunctionRows);
     expect(typeof rows[0].sample_count).toBe("string");

@@ -1,4 +1,9 @@
-export type { ClickHouseInsertResult, ClickHouseClient } from "./client";
+export type {
+  ClickHouseInsertResult,
+  ClickHouseClient,
+  ClickHouseExecutionOptions,
+  ClickHouseSettings,
+} from "./client";
 export type { CompiledQuery } from "./compiler/query-compiler";
 export type {
   ClickHouseDate,

@@ -1,7 +1,12 @@
 import type { ExprNode, RefNode, SelectQueryNode, SelectionNode } from "../ast/query";
 import type { QueryColumn, QueryColumnMap } from "../column-metadata";
 import { compileSelectQuery, type CompiledQuery } from "../compiler/query-compiler";
-import type { ClickHouseClient, QueryCapableClickHouseClient } from "../client";
+import {
+  toClickHouseExecutionParams,
+  type ClickHouseClient,
+  type ClickHouseExecutionOptions,
+  type QueryCapableClickHouseClient,
+} from "../client";
 import type { DatabaseSchema, ScopeMap, Simplify } from "../type-utils";
 import { Expression, AliasedExpression, ExpressionBuilder } from "./expression-builder";
 import {
@@ -78,9 +83,9 @@ function parseSelectionParts(selection: string): { expr: string; alias?: string 
 
 export interface ExecutableQuery<Output> {
   toSQL(): CompiledQuery;
-  execute(client?: ClickHouseClient): Promise<Output[]>;
-  executeTakeFirst(client?: ClickHouseClient): Promise<Output | undefined>;
-  executeTakeFirstOrThrow(client?: ClickHouseClient): Promise<Output>;
+  execute(options?: ClickHouseExecutionOptions): Promise<Output[]>;
+  executeTakeFirst(options?: ClickHouseExecutionOptions): Promise<Output | undefined>;
+  executeTakeFirstOrThrow(options?: ClickHouseExecutionOptions): Promise<Output>;
 }
 
 function parseSelectionString(selection: string): SelectionNode {
@@ -867,31 +872,26 @@ export class SelectQueryBuilder<
     return resolvedClient;
   }
 
-  async execute(): Promise<Output[]>;
-  async execute(client: ClickHouseClient): Promise<Output[]>;
-  async execute(client = this.client): Promise<Output[]> {
-    const resolvedClient = this.getClient(client);
+  async execute(options?: ClickHouseExecutionOptions): Promise<Output[]> {
+    const resolvedClient = this.getClient(options?.client);
     const compiled = this.toSQL();
     const result = await resolvedClient.query({
       query: compiled.query,
       query_params: compiled.params,
       format: "JSONEachRow",
+      ...toClickHouseExecutionParams(options ?? {}),
     });
 
     return result.json<Output>();
   }
 
-  async executeTakeFirst(): Promise<Output | undefined>;
-  async executeTakeFirst(client: ClickHouseClient): Promise<Output | undefined>;
-  async executeTakeFirst(client = this.client): Promise<Output | undefined> {
-    const rows = client ? await this.execute(client) : await this.execute();
+  async executeTakeFirst(options?: ClickHouseExecutionOptions): Promise<Output | undefined> {
+    const rows = await this.execute(options);
     return rows[0];
   }
 
-  async executeTakeFirstOrThrow(): Promise<Output>;
-  async executeTakeFirstOrThrow(client: ClickHouseClient): Promise<Output>;
-  async executeTakeFirstOrThrow(client = this.client): Promise<Output> {
-    const row = client ? await this.executeTakeFirst(client) : await this.executeTakeFirst();
+  async executeTakeFirstOrThrow(options?: ClickHouseExecutionOptions): Promise<Output> {
+    const row = await this.executeTakeFirst(options);
 
     if (row === undefined) {
       throw new Error("Query returned no rows.");

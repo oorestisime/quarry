@@ -348,7 +348,37 @@ describe("query builder validation", () => {
     });
   });
 
-  it("supports overriding the configured client for executeTakeFirst helpers", async () => {
+  it("forwards query_id and clickhouse_settings through execute", async () => {
+    const json = vi.fn().mockResolvedValue([]);
+    const queryClient = {
+      query: vi.fn().mockResolvedValue({ json }),
+    };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+    });
+    const query = dbWithClient.selectFrom("event_logs").selectAll();
+
+    await query.execute({
+      queryId: "select-query-id",
+      clickhouse_settings: {
+        max_threads: 1,
+        wait_end_of_query: true,
+      },
+    });
+
+    expect(queryClient.query).toHaveBeenCalledWith({
+      query: "SELECT * FROM event_logs",
+      query_params: {},
+      format: "JSONEachRow",
+      query_id: "select-query-id",
+      clickhouse_settings: {
+        max_threads: 1,
+        wait_end_of_query: true,
+      },
+    });
+  });
+
+  it("supports overriding the configured client through execution options", async () => {
     const defaultClient = {
       query: vi.fn(),
     };
@@ -361,13 +391,28 @@ describe("query builder validation", () => {
     });
     const query = dbWithClient.selectFrom("event_logs").selectAll();
 
-    await expect(query.executeTakeFirst(overrideClient)).resolves.toBeUndefined();
-    await expect(query.executeTakeFirstOrThrow(overrideClient)).rejects.toThrow(
-      "Query returned no rows.",
-    );
+    const options = {
+      client: overrideClient,
+      queryId: "override-query-id",
+      clickhouse_settings: {
+        max_threads: 2,
+      },
+    };
+
+    await expect(query.executeTakeFirst(options)).resolves.toBeUndefined();
+    await expect(query.executeTakeFirstOrThrow(options)).rejects.toThrow("Query returned no rows.");
 
     expect(defaultClient.query).not.toHaveBeenCalled();
     expect(overrideClient.query).toHaveBeenCalledTimes(2);
+    expect(overrideClient.query).toHaveBeenNthCalledWith(1, {
+      query: "SELECT * FROM event_logs",
+      query_params: {},
+      format: "JSONEachRow",
+      query_id: "override-query-id",
+      clickhouse_settings: {
+        max_threads: 2,
+      },
+    });
   });
 
   it("requires a query-capable client for execution", async () => {

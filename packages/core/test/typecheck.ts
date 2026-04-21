@@ -435,9 +435,20 @@ const validNullableGroupArrayRow: NullableGroupArrayRow = {
   nicknames: ["bee"],
 };
 
-const validRowsPromise: Promise<BasicRow[]> = basicQuery.execute(client);
-const validFirstRowPromise: Promise<BasicRow | undefined> = basicQuery.executeTakeFirst(client);
-const validFirstOrThrowRowPromise: Promise<BasicRow> = basicQuery.executeTakeFirstOrThrow(client);
+const executionOptions = {
+  client,
+  queryId: "typecheck-query-id",
+  clickhouse_settings: {
+    max_threads: 1,
+    wait_end_of_query: true,
+  },
+};
+
+const validRowsPromise: Promise<BasicRow[]> = basicQuery.execute(executionOptions);
+const validFirstRowPromise: Promise<BasicRow | undefined> =
+  basicQuery.executeTakeFirst(executionOptions);
+const validFirstOrThrowRowPromise: Promise<BasicRow> =
+  basicQuery.executeTakeFirstOrThrow(executionOptions);
 
 const dbWithClient = createClickHouseDB<TypecheckDB>({ client });
 const validRowsWithoutPassingClient: Promise<BasicRow[]> = dbWithClient
@@ -453,7 +464,7 @@ const validInsertResultPromise: Promise<ClickHouseInsertResult> = dbWithClient
       status: "active",
     },
   ])
-  .execute();
+  .execute(executionOptions);
 const validTypedSamplesInsertPromise: Promise<ClickHouseInsertResult> = dbWithClient
   .insertInto("typed_samples")
   .values([
@@ -472,7 +483,7 @@ const validTypedSamplesInsertPromise: Promise<ClickHouseInsertResult> = dbWithCl
       "metrics.score": [7],
     },
   ])
-  .execute();
+  .execute(executionOptions);
 const validJsonInsertPromise: Promise<ClickHouseInsertResult> = dbWithClient
   .insertInto("json_samples")
   .values([
@@ -486,7 +497,7 @@ const validJsonInsertPromise: Promise<ClickHouseInsertResult> = dbWithClient
       },
     },
   ])
-  .execute();
+  .execute(executionOptions);
 const validInsertFromSelectPromise: Promise<ClickHouseInsertResult> = dbWithClient
   .insertInto("users")
   .columns("id", "email", "status")
@@ -495,7 +506,7 @@ const validInsertFromSelectPromise: Promise<ClickHouseInsertResult> = dbWithClie
       .selectFrom("users as u")
       .selectExpr((eb) => ["u.id", "u.email", eb.val("active").as("status")]),
   )
-  .execute();
+  .execute(executionOptions);
 
 void validRow;
 void validDistinctRow;
@@ -516,6 +527,7 @@ void validNullableStringFunctionRow;
 void validNullFunctionRow;
 void validAggregateFunctionRow;
 void validNullableGroupArrayRow;
+void executionOptions;
 void validRowsPromise;
 void validFirstRowPromise;
 void validFirstOrThrowRowPromise;

@@ -107,13 +107,13 @@ describe("db types integration", () => {
           unsigned_total: 42n,
         },
       ])
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     const rows = await db
       .selectFrom("typed_alias_users as t")
       .selectAll()
       .orderBy("t.id", "asc")
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(rows).toEqual([
       {
@@ -154,7 +154,7 @@ describe("db types integration", () => {
 
     type Row = InferResult<typeof query>;
 
-    const rows = await query.execute(getContext().client);
+    const rows = await query.execute({ client: getContext().client });
     const expected: Row[] = [{ signup_date: "2025-01-01", total_users: "42" }];
 
     expect(rows).toEqual(expected);
@@ -194,7 +194,7 @@ describe("db types integration", () => {
       .where("t.event_time", "in", [new Date("2025-01-03T12:34:56.000Z")])
       .where("t.created_at", "not in", [new Date("2025-01-05T12:34:56.123Z")])
       .orderBy("t.id", "asc")
-      .execute(getContext().client);
+      .execute({ client: getContext().client });
 
     expect(rows).toEqual([
       {
