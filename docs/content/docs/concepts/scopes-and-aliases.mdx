@@ -169,6 +169,25 @@ const result = await db
   .select("u.id", "u.email");
 ```
 
+You can also pass a pre-built `SelectQueryBuilder` directly instead of a
+callback. This is useful when a CTE is assembled conditionally in a helper
+and then spliced into the main query:
+
+```ts
+function buildActiveUsersCte(includeSignup: boolean) {
+  let query = db.selectFrom("event_logs as e").select("e.user_id");
+  if (includeSignup) {
+    query = query.where("e.event_type", "=", "signup");
+  }
+  return query;
+}
+
+const result = await db
+  .with("active_users", buildActiveUsersCte(true))
+  .selectFrom("active_users as au")
+  .select("au.user_id");
+```
+
 After `.with(...)`, the CTE name is part of the schema available to the
 next `selectFrom`. You can chain multiple `.with` calls to define more than
 one CTE.

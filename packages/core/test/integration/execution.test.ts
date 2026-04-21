@@ -288,4 +288,27 @@ describe("clickhouse integration", () => {
       { id: 5, email: "user5@example.com", event_type: "" },
     ]);
   });
+
+  it("executes CTEs built conditionally and passed as pre-built SelectQueryBuilder", async () => {
+    function buildActiveUsersCte(includeSignup: boolean) {
+      let query = db.selectFrom("event_logs as e").select("e.user_id").groupBy("e.user_id");
+      if (includeSignup) {
+        query = query.where("e.event_type", "=", "signup");
+      }
+      return query;
+    }
+
+    const rows = await db
+      .with("active_users", buildActiveUsersCte(true))
+      .selectFrom("active_users as au")
+      .innerJoin("users as u", "u.id", "au.user_id")
+      .select("u.id", "u.email")
+      .orderBy("u.id", "asc")
+      .execute({ client: getContext().client });
+
+    expect(rows).toEqual([
+      { id: 1, email: "alice@example.com" },
+      { id: 3, email: "cory@example.com" },
+    ]);
+  });
 });

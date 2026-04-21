@@ -64,9 +64,36 @@ const rows = await db
   .execute();
 ```
 
-Each callback receives a fresh `db` value for building that CTE query. That
-keeps each CTE definition self-contained rather than mutating the outer query
-builder in place.
+### Pre-built query builders
+
+You can also pass a pre-built `SelectQueryBuilder` directly instead of a
+callback. This is useful when a CTE is assembled conditionally in a helper
+function and then spliced into the main query:
+
+```ts
+function buildActiveUsersCte(includeSignup: boolean) {
+  let query = db
+    .selectFrom("event_logs as e")
+    .select("e.user_id")
+    .groupBy("e.user_id");
+
+  if (includeSignup) {
+    query = query.where("e.event_type", "=", "signup");
+  }
+
+  return query;
+}
+
+const rows = await db
+  .with("active_users", buildActiveUsersCte(true))
+  .selectFrom("active_users as au")
+  .innerJoin("users as u", "u.id", "au.user_id")
+  .select("u.id", "u.email")
+  .execute();
+```
+
+The query builder is cloned via `toAST()`, so the original instance remains
+safe to reuse or modify afterwards.
 
 <Callout type="warn">
 Prefer unique CTE names instead of reusing real table or view names. Quarry's

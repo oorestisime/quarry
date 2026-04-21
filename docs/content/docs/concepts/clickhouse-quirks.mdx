@@ -31,7 +31,7 @@ For the runtime type story (UInt64 → string, etc.), see
 | Multi-condition joins       | ✅ | Via the callback form: `innerJoin(source, (eb) => eb.and([...]))` |
 | Subquery as source          | ✅ | `.as("alias")` on a select builder |
 | Subquery in `IN` predicate  | ✅ | `where("col", "in", subquery)` |
-| `WITH cte AS (...)` (CTEs)  | ✅ | `db.with(name, callback)` |
+| `WITH cte AS (...)` (CTEs)  | ✅ | `db.with(name, callback)` or `db.with(name, queryBuilder)` |
 | `WHERE`                     | ✅ | Positional and callback forms |
 | `PREWHERE`                  | ✅ | Same shape as `where` |
 | `GROUP BY`                  | ✅ | Column refs and expression callbacks (not aliases) |

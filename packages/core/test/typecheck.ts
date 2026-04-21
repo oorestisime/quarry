@@ -115,6 +115,13 @@ const withMultipleCtes = db
       .innerJoin("users as u", "u.id", "au.user_id")
       .select("u.id", "u.email"),
   );
+
+const prebuiltCteQuery = db
+  .selectFrom("event_logs as e")
+  .select("e.user_id")
+  .where("e.event_type", "=", "signup")
+  .groupBy("e.user_id");
+const withPrebuiltCte = db.with("active_users", prebuiltCteQuery);
 const selectFromSubqueryQuery = db.selectFrom(signupsSubquery).selectAll("signups");
 const selectFromFinalTableSourceQuery = db
   .selectFrom(finalEventLogsSource)
@@ -123,6 +130,9 @@ const selectFromCteQuery = withActiveUsers.selectFrom("active_users as au").sele
 const selectFromMultipleCtesQuery = withMultipleCtes
   .selectFrom("active_user_emails as aue")
   .select("aue.id", "aue.email");
+const selectFromPrebuiltCteQuery = withPrebuiltCte
+  .selectFrom("active_users as au")
+  .select("au.user_id");
 const groupedQuery = db
   .selectFrom("event_logs as e")
   .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
@@ -287,6 +297,7 @@ type SelectFromSubqueryRow = InferResult<typeof selectFromSubqueryQuery>;
 type SelectFromFinalTableSourceRow = InferResult<typeof selectFromFinalTableSourceQuery>;
 type SelectFromCteRow = InferResult<typeof selectFromCteQuery>;
 type SelectFromMultipleCtesRow = InferResult<typeof selectFromMultipleCtesQuery>;
+type SelectFromPrebuiltCteRow = InferResult<typeof selectFromPrebuiltCteQuery>;
 type GroupedRow = InferResult<typeof groupedQuery>;
 type SelectFromJoinSubquerySettingsRow = InferResult<typeof selectFromJoinSubquerySettingsQuery>;
 type LeftAntiJoinRow = InferResult<typeof leftAntiJoinQuery>;
@@ -345,6 +356,10 @@ const validSelectFromCteRow: SelectFromCteRow = {
 const validSelectFromMultipleCtesRow: SelectFromMultipleCtesRow = {
   id: 1,
   email: "alice@example.com",
+};
+
+const validSelectFromPrebuiltCteRow: SelectFromPrebuiltCteRow = {
+  user_id: 1,
 };
 
 const validGroupedRow: GroupedRow = {
@@ -548,6 +563,7 @@ void validSelectFromSubqueryRow;
 void validSelectFromFinalTableSourceRow;
 void validSelectFromCteRow;
 void validSelectFromMultipleCtesRow;
+void validSelectFromPrebuiltCteRow;
 void validGroupedRow;
 void validSelectFromJoinSubquerySettingsRow;
 void validLeftAntiJoinRow;

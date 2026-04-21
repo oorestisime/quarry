@@ -49,6 +49,8 @@ The options object is rendered live from the source:
 - `db.insertInto(...)` &mdash; start an `INSERT` query
 - `db.with(name, callback)` &mdash; add a CTE that the rest of the chain can
   reference
+- `db.with(name, queryBuilder)` &mdash; add a CTE from a pre-built
+  `SelectQueryBuilder`
 - `db.table(name)` &mdash; build an explicit table source (for `FINAL`,
   custom aliases, etc.)
 

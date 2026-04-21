@@ -557,4 +557,24 @@ describe("query builder validation", () => {
       "No ClickHouse client configured. Pass one to execute() or createClickHouseDB().",
     );
   });
+
+  it("accepts a pre-built SelectQueryBuilder in .with()", () => {
+    const prebuilt = db
+      .selectFrom("event_logs as e")
+      .select("e.user_id")
+      .where("e.event_type", "=", "signup")
+      .groupBy("e.user_id");
+
+    const query = db
+      .with("active_users", prebuilt)
+      .selectFrom("active_users as au")
+      .select("au.user_id")
+      .orderBy("au.user_id", "asc")
+      .toSQL();
+
+    expect(query.query).toBe(
+      "WITH active_users AS (SELECT e.user_id FROM event_logs AS e WHERE e.event_type = {p0:String} GROUP BY e.user_id) SELECT au.user_id FROM active_users AS au ORDER BY au.user_id ASC",
+    );
+    expect(query.params).toEqual({ p0: "signup" });
+  });
 });

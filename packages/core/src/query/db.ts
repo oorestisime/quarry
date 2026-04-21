@@ -31,9 +31,20 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
 
   with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any>>(
     name: Name,
+    query: Query,
+  ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>>;
+  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any>>(
+    name: Name,
     callback: (db: ClickHouseDB<DB, Sources>) => Query,
+  ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>>;
+  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any>>(
+    name: Name,
+    callbackOrQuery: ((db: ClickHouseDB<DB, Sources>) => Query) | Query,
   ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>> {
-    const query = callback(new ClickHouseDB<DB, Sources>(this.client, []));
+    const query =
+      typeof callbackOrQuery === "function"
+        ? callbackOrQuery(new ClickHouseDB<DB, Sources>(this.client, []))
+        : callbackOrQuery;
 
     return new ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>>(
       this.client,
