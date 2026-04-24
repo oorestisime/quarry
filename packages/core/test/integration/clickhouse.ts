@@ -180,6 +180,12 @@ async function resetFixtureSchema(client: ReturnType<typeof createClient>): Prom
   await client.command({ query: "DROP TABLE IF EXISTS json_samples" });
   await client.command({ query: "DROP TABLE IF EXISTS typed_samples" });
   await client.command({ query: "DROP TABLE IF EXISTS users" });
+  await client.command({ query: "DROP DICTIONARY IF EXISTS partner_rate_ranges" });
+  await client.command({ query: "DROP DICTIONARY IF EXISTS partner_country_rates" });
+  await client.command({ query: "DROP DICTIONARY IF EXISTS partner_rates" });
+  await client.command({ query: "DROP TABLE IF EXISTS dict_range_source" });
+  await client.command({ query: "DROP TABLE IF EXISTS dict_composite_source" });
+  await client.command({ query: "DROP TABLE IF EXISTS dict_source" });
 
   await client.command({
     query: `
@@ -284,4 +290,153 @@ async function resetFixtureSchema(client: ReturnType<typeof createClient>): Prom
     values: jsonSamplesFixture,
     format: "JSONEachRow",
   });
+
+  await client.command({
+    query: `
+      CREATE TABLE dict_source (
+        id UInt32,
+        rate_cents UInt32,
+        currency String
+      )
+      ENGINE = Memory
+    `,
+  });
+
+  await client.insert({
+    table: "dict_source",
+    values: [
+      { id: 1, rate_cents: 100, currency: "USD" },
+      { id: 2, rate_cents: 200, currency: "EUR" },
+    ],
+    format: "JSONEachRow",
+  });
+
+  await client.command({
+    query: `
+      CREATE DICTIONARY partner_rates (
+        id UInt32,
+        rate_cents UInt32,
+        currency String
+      )
+      PRIMARY KEY id
+      SOURCE(CLICKHOUSE(
+        host '127.0.0.1'
+        port 9000
+        user 'test'
+        password 'test'
+        db 'default'
+        table 'dict_source'
+      ))
+      LAYOUT(FLAT())
+      LIFETIME(0)
+    `,
+  });
+
+  await client.command({ query: "SYSTEM RELOAD DICTIONARY partner_rates" });
+
+  await client.command({
+    query: `
+      CREATE TABLE dict_composite_source (
+        partner_id UInt32,
+        country_code String,
+        rate_cents UInt32
+      )
+      ENGINE = Memory
+    `,
+  });
+
+  await client.insert({
+    table: "dict_composite_source",
+    values: [
+      { partner_id: 1, country_code: "US", rate_cents: 110 },
+      { partner_id: 1, country_code: "CA", rate_cents: 120 },
+      { partner_id: 2, country_code: "US", rate_cents: 210 },
+    ],
+    format: "JSONEachRow",
+  });
+
+  await client.command({
+    query: `
+      CREATE DICTIONARY partner_country_rates (
+        partner_id UInt32,
+        country_code String,
+        rate_cents UInt32
+      )
+      PRIMARY KEY partner_id, country_code
+      SOURCE(CLICKHOUSE(
+        host '127.0.0.1'
+        port 9000
+        user 'test'
+        password 'test'
+        db 'default'
+        table 'dict_composite_source'
+      ))
+      LAYOUT(COMPLEX_KEY_HASHED())
+      LIFETIME(0)
+    `,
+  });
+
+  await client.command({ query: "SYSTEM RELOAD DICTIONARY partner_country_rates" });
+
+  await client.command({
+    query: `
+      CREATE TABLE dict_range_source (
+        partner_id UInt32,
+        start_date Date,
+        end_date Date,
+        rate_cents UInt32
+      )
+      ENGINE = Memory
+    `,
+  });
+
+  await client.insert({
+    table: "dict_range_source",
+    values: [
+      {
+        partner_id: 1,
+        start_date: "2025-01-01",
+        end_date: "2025-01-31",
+        rate_cents: 100,
+      },
+      {
+        partner_id: 1,
+        start_date: "2025-02-01",
+        end_date: "2025-02-28",
+        rate_cents: 150,
+      },
+      {
+        partner_id: 2,
+        start_date: "2025-01-01",
+        end_date: "2025-12-31",
+        rate_cents: 200,
+      },
+    ],
+    format: "JSONEachRow",
+  });
+
+  await client.command({
+    query: `
+      CREATE DICTIONARY partner_rate_ranges (
+        partner_id UInt32,
+        start_date Date,
+        end_date Date,
+        rate_cents UInt32
+      )
+      PRIMARY KEY partner_id
+      SOURCE(CLICKHOUSE(
+        host '127.0.0.1'
+        port 9000
+        user 'test'
+        password 'test'
+        db 'default'
+        table 'dict_range_source'
+      ))
+      LAYOUT(RANGE_HASHED())
+      RANGE(MIN start_date MAX end_date)
+      LIFETIME(0)
+    `,
+  });
+
+  await client.command({ query: "SYSTEM RELOAD DICTIONARY partner_rate_ranges" });
 }

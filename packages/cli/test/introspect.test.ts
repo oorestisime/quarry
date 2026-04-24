@@ -1,11 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { createClient } from "@clickhouse/client";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildTypeScriptModuleResult,
+  fetchDictionaryAttributes,
   filterExcludedObjects,
   formatIntrospectionFailureReport,
   formatIntrospectionSummaryReport,
   resolveConnectionOptions,
 } from "../src/introspect";
+
+vi.mock("@clickhouse/client", () => ({
+  createClient: vi.fn(),
+}));
 
 describe("CLI introspection helpers", () => {
   it("uses include and exclude patterns from command args", () => {
@@ -187,6 +193,7 @@ describe("CLI introspection helpers", () => {
       generatedObjects: 4,
       generatedTables: 2,
       generatedViews: 2,
+      generatedDictionaries: 0,
       skippedObjects: 0,
     });
   });
@@ -216,10 +223,113 @@ describe("CLI introspection helpers", () => {
       },
     ]);
     expect(formatIntrospectionSummaryReport(result.summary)).toBe(
-      "Generated 1 object: 1 table, 0 views. Skipped 1 object.",
+      "Generated 1 object: 1 table, 0 views, 0 dictionaries. Skipped 1 object.",
     );
     expect(formatIntrospectionFailureReport(result.failures)).toContain(
       "Skipped 1 unsupported objects:",
     );
+  });
+
+  it("builds dictionary interfaces with TypedDictionary wrapper", () => {
+    const result = buildTypeScriptModuleResult(
+      [{ name: "users", engine: "MergeTree" }],
+      [
+        { objectName: "users", name: "id", clickhouseType: "UInt32", position: 1 },
+        { objectName: "users", name: "name", clickhouseType: "String", position: 2 },
+      ],
+      {},
+      [
+        {
+          name: "partner_rates",
+          columns: [
+            { objectName: "partner_rates", name: "id", clickhouseType: "UInt32", position: 1 },
+            {
+              objectName: "partner_rates",
+              name: "rate_cents",
+              clickhouseType: "UInt32",
+              position: 2,
+            },
+            {
+              objectName: "partner_rates",
+              name: "currency",
+              clickhouseType: "String",
+              position: 3,
+            },
+          ],
+        },
+      ],
+    );
+
+    expect(result.source).toContain("TypedDictionary");
+    expect(result.source).toContain("export interface PartnerRates {");
+    expect(result.source).toContain("rate_cents: number;");
+    expect(result.source).toContain("currency: string;");
+    expect(result.source).toContain("export interface Dictionaries");
+    expect(result.source).toContain("partner_rates: TypedDictionary<PartnerRates>;");
+    expect(result.source).toContain("export interface DB extends Tables, Views, Dictionaries {}");
+    expect(result.summary).toEqual({
+      generatedObjects: 2,
+      generatedTables: 1,
+      generatedViews: 0,
+      generatedDictionaries: 1,
+      skippedObjects: 0,
+    });
+  });
+
+  it("fetches dictionary attributes from system.dictionary_attributes", async () => {
+    const close = vi.fn();
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([{ count: "1" }]) })
+      .mockResolvedValueOnce({
+        json: vi.fn().mockResolvedValue([
+          { objectName: "partner_rates", name: "rate_cents", clickhouseType: "UInt32" },
+          { objectName: "partner_rates", name: "currency", clickhouseType: "String" },
+        ]),
+      });
+    vi.mocked(createClient).mockReturnValueOnce({ query, close } as never);
+
+    await expect(
+      fetchDictionaryAttributes({
+        url: "http://localhost:8123",
+        database: "default",
+      }),
+    ).resolves.toEqual([
+      { objectName: "partner_rates", name: "rate_cents", clickhouseType: "UInt32", position: 1 },
+      { objectName: "partner_rates", name: "currency", clickhouseType: "String", position: 2 },
+    ]);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to system.dictionaries attribute arrays", async () => {
+    const close = vi.fn();
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([{ count: "0" }]) })
+      .mockResolvedValueOnce({
+        json: vi.fn().mockResolvedValue([
+          {
+            objectName: "partner_rates",
+            name: "rate_cents",
+            clickhouseType: "UInt32",
+            position: 1,
+          },
+          { objectName: "partner_rates", name: "currency", clickhouseType: "String", position: 1 },
+        ]),
+      });
+    vi.mocked(createClient).mockReturnValueOnce({ query, close } as never);
+
+    await expect(
+      fetchDictionaryAttributes({
+        url: "http://localhost:8123",
+        database: "default",
+      }),
+    ).resolves.toEqual([
+      { objectName: "partner_rates", name: "rate_cents", clickhouseType: "UInt32", position: 1 },
+      { objectName: "partner_rates", name: "currency", clickhouseType: "String", position: 1 },
+    ]);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });

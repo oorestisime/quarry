@@ -1,4 +1,5 @@
 import { createClickHouseDB, param, ExpressionBuilder, type ExecutableQuery } from "../src";
+import type { TypedDictionary } from "../src";
 
 export interface SpikeDB {
   event_logs: {
@@ -29,6 +30,10 @@ export interface SpikeDB {
     amount: number;
     created_at: string;
   };
+  partner_rates: TypedDictionary<{
+    rate_cents: number;
+    currency: string;
+  }>;
 }
 
 let db = createClickHouseDB<SpikeDB>();
@@ -844,4 +849,60 @@ export const chainedExpressionWhereCase = defineQueryCase({
       .where(tagsExpr)
       .orderBy("t.id", "asc");
   },
+});
+
+export const dictGetCase = defineQueryCase({
+  name: "29 dictGet",
+  file: "29_dict_get.sql",
+  expectedParams: { p0: [1, 2] },
+  expectedRows: [
+    { id: 1, rate_cents: 100 },
+    { id: 2, rate_cents: 200 },
+  ],
+  build: () =>
+    db
+      .selectFrom("users as u")
+      .selectExpr((eb) => [
+        "u.id",
+        eb.fn.dictGet("partner_rates", "rate_cents", "u.id").as("rate_cents"),
+      ])
+      .where("u.id", "in", [1, 2])
+      .orderBy("u.id", "asc"),
+});
+
+export const dictGetOrDefaultCase = defineQueryCase({
+  name: "30 dictGetOrDefault",
+  file: "30_dict_get_or_default.sql",
+  expectedParams: { p0: "USD", p1: [1, 2, 3] },
+  expectedRows: [
+    { id: 1, currency: "USD" },
+    { id: 2, currency: "EUR" },
+    { id: 3, currency: "USD" },
+  ],
+  build: () =>
+    db
+      .selectFrom("users as u")
+      .selectExpr((eb) => [
+        "u.id",
+        eb.fn.dictGetOrDefault("partner_rates", "currency", "u.id", "USD").as("currency"),
+      ])
+      .where("u.id", "in", [1, 2, 3])
+      .orderBy("u.id", "asc"),
+});
+
+export const dictHasCase = defineQueryCase({
+  name: "31 dictHas",
+  file: "31_dict_has.sql",
+  expectedParams: { p0: [1, 2, 3] },
+  expectedRows: [
+    { id: 1, has_rate: 1 },
+    { id: 2, has_rate: 1 },
+    { id: 3, has_rate: 0 },
+  ],
+  build: () =>
+    db
+      .selectFrom("users as u")
+      .selectExpr((eb) => ["u.id", eb.fn.dictHas("partner_rates", "u.id").as("has_rate")])
+      .where("u.id", "in", [1, 2, 3])
+      .orderBy("u.id", "asc"),
 });

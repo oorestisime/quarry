@@ -59,6 +59,72 @@ You do not need `TypedTable` for ordinary handwritten schemas because a plain
 object already behaves like a table. It is mainly useful for symmetry with
 generated introspection output.
 
+## TypedDictionary
+
+`TypedDictionary<Row>` marks a source as a ClickHouse dictionary.
+
+```ts
+import type { TypedDictionary } from "@oorestisime/quarry";
+
+interface DB {
+  partner_rates: TypedDictionary<{
+    rate_cents: number;
+    currency: string;
+  }>;
+}
+```
+
+Dictionaries are not queryable tables. You cannot `selectFrom` or `insertInto`
+a dictionary. Instead, you use the typed `dictGet`, `dictGetOrDefault`, and
+`dictHas` functions from the expression builder.
+
+```ts
+db.selectFrom("events as e").selectExpr((eb) => [
+  eb.fn.dictGet("partner_rates", "rate_cents", "e.partner_id").as("rate"),
+  eb.fn.dictHas("partner_rates", "e.partner_id").as("has_rate"),
+]);
+```
+
+### What the Row interface contains
+
+The `Row` type in `TypedDictionary<Row>` contains **only attribute columns** —
+the columns you can retrieve with `dictGet`. It does not include:
+
+- **Primary key columns** — these are the lookup input, not a retrievable value.
+  This applies to all layouts: `HASHED`, `COMPLEX_KEY_HASHED`, `RANGE_HASHED`,
+  `CACHE`, `DIRECT`, `IP_TRIE`, and every other layout.
+- **Range columns** (for `RANGE_HASHED` layouts) — these are internal engine
+  mechanics used to select the correct row, not queryable attributes.
+
+This matches ClickHouse runtime behavior: `dictGet('dict', 'key_col', key)`
+fails at runtime when `'key_col'` is a primary key, not an attribute.
+
+For example, with a `RANGE_HASHED` dictionary:
+
+```sql
+CREATE DICTIONARY partner_revenue_dict (
+    partner_id Int64,          -- PRIMARY KEY (not in TypedDictionary)
+    start_date Date,           -- RANGE MIN (not in TypedDictionary)
+    end_date Date,             -- RANGE MAX (not in TypedDictionary)
+    revenue_per_user Decimal(10, 4),  -- attribute
+    partner_name String        -- attribute
+)
+PRIMARY KEY partner_id
+LAYOUT(RANGE_HASHED())
+RANGE(MIN start_date MAX end_date)
+```
+
+The generated interface will only contain the attributes:
+
+```ts
+interface DB {
+  partner_revenue_dict: TypedDictionary<{
+    revenue_per_user: number;
+    partner_name: string;
+  }>;
+}
+```
+
 ## ColumnType
 
 `ColumnType<Select, Insert, Where>` lets a column read as one type while

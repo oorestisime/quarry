@@ -211,9 +211,9 @@ export type SelectionExpression<Scope extends ScopeMap> =
   | SelectionString<Scope>
   | AliasedExpression<unknown, string, unknown>;
 
-export type GroupByExpression<Scope extends ScopeMap> =
+export type GroupByExpression<Scope extends ScopeMap, Dicts extends DatabaseSchema = never> =
   | ColumnRef<Scope>
-  | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>);
+  | ((expressionBuilder: ExpressionBuilder<Scope, Dicts>) => Expression<unknown>);
 
 type SelectionResult<Scope extends ScopeMap, Selection> = Selection extends string
   ? { [K in SelectionOutputKey<Selection>]: SelectionOutputValue<Scope, Selection> }

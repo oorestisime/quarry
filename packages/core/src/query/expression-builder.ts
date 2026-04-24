@@ -1,7 +1,13 @@
 import type { ExprNode } from "../ast/query";
 import type { QueryColumnMap } from "../column-metadata";
 import type { ClickHouseParam } from "../param";
-import type { ScopeMap } from "../type-utils";
+import type {
+  DatabaseSchema,
+  DictionaryAttributeName,
+  DictionaryAttributeType,
+  DictionaryName,
+  ScopeMap,
+} from "../type-utils";
 import { escapeSingleQuotedString } from "../utils/string";
 import { createValueNode, isQueryLike, toSubqueryExpr } from "./helpers";
 import type {
@@ -161,7 +167,7 @@ type CoalesceResult<Types extends readonly unknown[]> =
   | Exclude<Types[number], null>
   | (AllNullable<Types> extends true ? null : never);
 
-interface ExpressionBuilderFunctions<Scope extends ScopeMap> {
+interface ExpressionBuilderFunctions<Scope extends ScopeMap, Dicts extends DatabaseSchema> {
   count(): Expression<string>;
   countIf(condition: Expression<unknown>): Expression<string>;
   now(): Expression<string>;
@@ -333,9 +339,32 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap> {
   toUInt8(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
   toYear(value: ExpressionInput<Scope>): Expression<number>;
   toMonth(value: ExpressionInput<Scope>): Expression<number>;
+  dictGet<Dict extends DictionaryName<Dicts>, Attr extends DictionaryAttributeName<Dicts, Dict>>(
+    dictName: Dict,
+    attrName: Attr,
+    key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
+    rangeDate?: ExpressionInput<Scope>,
+  ): Expression<DictionaryAttributeType<Dicts, Dict, Attr>>;
+  dictGetOrDefault<
+    Dict extends DictionaryName<Dicts>,
+    Attr extends DictionaryAttributeName<Dicts, Dict>,
+  >(
+    dictName: Dict,
+    attrName: Attr,
+    key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
+    defaultValue:
+      | ParamLike<DictionaryAttributeType<Dicts, Dict, Attr>>
+      | Expression<DictionaryAttributeType<Dicts, Dict, Attr>>,
+    rangeDate?: ExpressionInput<Scope>,
+  ): Expression<DictionaryAttributeType<Dicts, Dict, Attr>>;
+  dictHas<Dict extends DictionaryName<Dicts>>(
+    dictName: Dict,
+    key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
+    rangeDate?: ExpressionInput<Scope>,
+  ): Expression<number>;
 }
 
-export class ExpressionBuilder<Scope extends ScopeMap> {
+export class ExpressionBuilder<Scope extends ScopeMap, Dicts extends DatabaseSchema = never> {
   constructor(private readonly scopeColumns?: ScopeColumnMap) {}
 
   ref<Ref extends ColumnRef<Scope>>(
@@ -379,7 +408,7 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
     });
   }
 
-  readonly fn: ExpressionBuilderFunctions<Scope> = {
+  readonly fn: ExpressionBuilderFunctions<Scope, Dicts> = {
     count: () => this.callFunction<string, string | number | bigint>("count", [], "UInt64"),
     countIf: (condition: Expression<unknown>) =>
       this.callFunction<string, string | number | bigint>("countIf", [condition.node], "UInt64"),
@@ -713,6 +742,62 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
       this.callFunction<number>("toYear", [this.toExpr(value)], "UInt16"),
     toMonth: (value: ExpressionInput<Scope>) =>
       this.callFunction<number>("toMonth", [this.toExpr(value)], "UInt8"),
+    dictGet: <
+      Dict extends DictionaryName<Dicts>,
+      Attr extends DictionaryAttributeName<Dicts, Dict>,
+    >(
+      dictName: Dict,
+      attrName: Attr,
+      key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
+      rangeDate?: ExpressionInput<Scope>,
+    ) => {
+      const args: ExprNode[] = [
+        this.toStringLiteral(dictName),
+        this.toStringLiteral(attrName),
+        this.toDictionaryKeyExpr(key),
+      ];
+      if (rangeDate !== undefined) {
+        args.push(this.toExpr(rangeDate));
+      }
+      return this.callFunction<DictionaryAttributeType<Dicts, Dict, Attr>>("dictGet", args);
+    },
+    dictGetOrDefault: <
+      Dict extends DictionaryName<Dicts>,
+      Attr extends DictionaryAttributeName<Dicts, Dict>,
+    >(
+      dictName: Dict,
+      attrName: Attr,
+      key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
+      defaultValue:
+        | ParamLike<DictionaryAttributeType<Dicts, Dict, Attr>>
+        | Expression<DictionaryAttributeType<Dicts, Dict, Attr>>,
+      rangeDate?: ExpressionInput<Scope>,
+    ) => {
+      const args: ExprNode[] = [
+        this.toStringLiteral(dictName),
+        this.toStringLiteral(attrName),
+        this.toDictionaryKeyExpr(key),
+        this.toValueExpr(defaultValue),
+      ];
+      if (rangeDate !== undefined) {
+        args.push(this.toExpr(rangeDate));
+      }
+      return this.callFunction<DictionaryAttributeType<Dicts, Dict, Attr>>(
+        "dictGetOrDefault",
+        args,
+      );
+    },
+    dictHas: <Dict extends DictionaryName<Dicts>>(
+      dictName: Dict,
+      key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
+      rangeDate?: ExpressionInput<Scope>,
+    ) => {
+      const args: ExprNode[] = [this.toStringLiteral(dictName), this.toDictionaryKeyExpr(key)];
+      if (rangeDate !== undefined) {
+        args.push(this.toExpr(rangeDate));
+      }
+      return this.callFunction<number>("dictHas", args, "UInt8");
+    },
   };
 
   cmpRef<Left extends ColumnRef<Scope>, Right extends ColumnRef<Scope>>(
@@ -783,6 +868,14 @@ export class ExpressionBuilder<Scope extends ScopeMap> {
 
   private toDateTimeUnitLiteral(unit: DateTimeUnitInput): ExprNode {
     return this.toStringLiteral(this.toDateTimeUnit(unit).literal);
+  }
+
+  private toDictionaryKeyExpr(
+    key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
+  ): ExprNode {
+    return Array.isArray(key)
+      ? { kind: "function", name: "tuple", args: key.map((item) => this.toExpr(item)) }
+      : this.toExpr(key as ExpressionInput<Scope>);
   }
 
   private toExpr(value: ExpressionInput<Scope>): ExprNode {

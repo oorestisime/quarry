@@ -15,6 +15,7 @@ type TypeScriptImportSpec =
   | "ClickHouseDecimal"
   | "ClickHouseInt64"
   | "ClickHouseUInt64"
+  | "TypedDictionary"
   | "TypedTable"
   | "TypedView";
 
@@ -253,10 +254,11 @@ function renderColumns(
 function renderSourceBlock(
   name: string,
   interfaceName: string,
-  kind: "table" | "view",
+  kind: "table" | "view" | "dictionary",
   imports: Set<TypeScriptImportSpec>,
 ): string {
-  const wrapper = kind === "table" ? "TypedTable" : "TypedView";
+  const wrapper =
+    kind === "table" ? "TypedTable" : kind === "view" ? "TypedView" : "TypedDictionary";
   imports.add(wrapper);
   return `  ${renderPropertyKey(name)}: ${wrapper}<${interfaceName}>;`;
 }
@@ -283,9 +285,11 @@ function renderRowInterface(
 export function generateTypeScriptSchemaModule(
   tables: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
   views: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
+  dictionaries?: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
 ): string {
   const imports = new Set<TypeScriptImportSpec>();
-  const sources = [...tables, ...views];
+  const dicts = dictionaries ?? [];
+  const sources = [...tables, ...views, ...dicts];
   const interfaceNames = buildInterfaceNames(sources);
   const rowInterfaces = sources.map((source) =>
     renderRowInterface(interfaceNames.get(source.name)!, source.columns, imports),
@@ -302,8 +306,24 @@ export function generateTypeScriptSchemaModule(
       renderSourceBlock(view.name, interfaceNames.get(view.name)!, "view", imports),
     ),
   );
+  const dictsBlock = renderInterfaceBlock(
+    "Dictionaries",
+    dicts.map((dict) =>
+      renderSourceBlock(dict.name, interfaceNames.get(dict.name)!, "dictionary", imports),
+    ),
+  );
   const importList = [...imports].sort((left, right) => left.localeCompare(right));
   const importBlock = `import type { ${importList.join(", ")} } from "@oorestisime/quarry";\n\n`;
 
-  return `${importBlock}${rowInterfaces.join("\n\n")}\n\n${tablesBlock}\n\n${viewsBlock}\n\nexport interface DB extends Tables, Views {}\n`;
+  const blocks = [tablesBlock, viewsBlock];
+  if (dicts.length > 0) {
+    blocks.push(dictsBlock);
+  }
+
+  const dbExtends = ["Tables", "Views"];
+  if (dicts.length > 0) {
+    dbExtends.push("Dictionaries");
+  }
+
+  return `${importBlock}${rowInterfaces.join("\n\n")}\n\n${blocks.join("\n\n")}\n\nexport interface DB extends ${dbExtends.join(", ")} {}\n`;
 }

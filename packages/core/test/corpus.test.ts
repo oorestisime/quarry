@@ -10,6 +10,9 @@ import {
   cteJoinCase,
   cteLeftJoinBaseTableCase,
   dateTimeFunctionsCase,
+  dictGetCase,
+  dictGetOrDefaultCase,
+  dictHasCase,
   finalPrewhereSettingsCase,
   groupByAggregateCase,
   groupByHavingCase,
@@ -66,6 +69,9 @@ const cases = [
   dateTimeFunctionsCase,
   chainedExpressionWhereCase,
   heavyHitterFunctionsCase,
+  dictGetCase,
+  dictGetOrDefaultCase,
+  dictHasCase,
 ];
 
 function normalizeSql(sql: string): string {

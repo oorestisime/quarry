@@ -14,6 +14,7 @@ export type {
   ClickHouseInt64,
   ClickHouseUInt64,
   ColumnType,
+  TypedDictionary,
   TypedTable,
   TypedView,
 } from "./db-types";

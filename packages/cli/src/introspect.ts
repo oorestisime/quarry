@@ -43,6 +43,7 @@ export interface IntrospectionSummary {
   readonly generatedObjects: number;
   readonly generatedTables: number;
   readonly generatedViews: number;
+  readonly generatedDictionaries: number;
   readonly skippedObjects: number;
 }
 
@@ -69,6 +70,16 @@ interface SystemColumnRow {
   readonly name: string;
   readonly type: string;
   readonly position: number;
+}
+
+interface SystemDictionaryRow {
+  readonly name: string;
+}
+
+interface SystemDictionaryAttributeRow {
+  readonly objectName: string;
+  readonly name: string;
+  readonly clickhouseType: string;
 }
 
 const MAX_FAILURE_DETAILS = 40;
@@ -160,7 +171,12 @@ export function formatIntrospectionFailureReport(
 }
 
 export function formatIntrospectionSummaryReport(summary: IntrospectionSummary): string {
-  const report = `Generated ${pluralize(summary.generatedObjects, "object")}: ${pluralize(summary.generatedTables, "table")}, ${pluralize(summary.generatedViews, "view")}.`;
+  const parts = [
+    pluralize(summary.generatedTables, "table"),
+    pluralize(summary.generatedViews, "view"),
+    pluralize(summary.generatedDictionaries, "dictionary", "dictionaries"),
+  ];
+  const report = `Generated ${pluralize(summary.generatedObjects, "object")}: ${parts.join(", ")}.`;
   return summary.skippedObjects > 0
     ? `${report} Skipped ${pluralize(summary.skippedObjects, "object")}.`
     : report;
@@ -226,9 +242,10 @@ export function buildTypeScriptModuleResult(
   objects: readonly IntrospectionObject[],
   columns: readonly TypeScriptIntrospectionColumn[],
   headerOptions?: IntrospectionSchemaHeaderOptions,
+  dictionaries?: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
 ): IntrospectionResult {
-  if (objects.length === 0) {
-    throw new Error("No tables or views were available to introspect.");
+  if (objects.length === 0 && (!dictionaries || dictionaries.length === 0)) {
+    throw new Error("No tables, views, or dictionaries were available to introspect.");
   }
 
   const orderedObjects = [...objects].sort(sortObjects);
@@ -264,26 +281,27 @@ export function buildTypeScriptModuleResult(
     }
   }
 
-  if (tables.length + views.length === 0) {
+  if (tables.length + views.length === 0 && (!dictionaries || dictionaries.length === 0)) {
     throw new Error(
       failures.length > 0
         ? formatIntrospectionFailureReport(
             failures,
             "Could not generate trusted TypeScript DB types for",
           )
-        : "No supported tables or views were available to introspect.",
+        : "No supported tables, views, or dictionaries were available to introspect.",
     );
   }
 
   return {
     source: tryFormatTypeScript(
-      `${formatSchemaModuleHeader(headerOptions)}\n\n${generateTypeScriptSchemaModule(tables, views)}`,
+      `${formatSchemaModuleHeader(headerOptions)}\n\n${generateTypeScriptSchemaModule(tables, views, dictionaries)}`,
     ),
     failures,
     summary: {
-      generatedObjects: tables.length + views.length,
+      generatedObjects: tables.length + views.length + (dictionaries?.length ?? 0),
       generatedTables: tables.length,
       generatedViews: views.length,
+      generatedDictionaries: dictionaries?.length ?? 0,
       skippedObjects: failures.length,
     },
   };
@@ -367,6 +385,133 @@ export async function fetchDatabaseColumns(
   }
 }
 
+export async function fetchDictionaryObjects(
+  options: IntrospectionConnectionOptions,
+): Promise<IntrospectionObject[]> {
+  const client = createClient({
+    url: options.url,
+    username: options.user,
+    password: options.password,
+    request_timeout: 30_000,
+  });
+
+  try {
+    const result = await client.query({
+      query: `
+        SELECT
+          name,
+          'Dictionary' AS engine
+        FROM system.dictionaries
+        WHERE database = {database:String}
+      `,
+      query_params: {
+        database: options.database,
+      },
+      format: "JSONEachRow",
+    });
+
+    const rows = await result.json<SystemDictionaryRow>();
+    return rows.map((row) => ({
+      name: row.name,
+      engine: "Dictionary",
+    }));
+  } finally {
+    await client.close();
+  }
+}
+
+export async function fetchDictionaryAttributes(
+  options: IntrospectionConnectionOptions,
+): Promise<TypeScriptIntrospectionColumn[]> {
+  const client = createClient({
+    url: options.url,
+    username: options.user,
+    password: options.password,
+    request_timeout: 30_000,
+  });
+
+  async function tableExists(tableName: string): Promise<boolean> {
+    try {
+      const result = await client.query({
+        query: `SELECT count() AS count FROM system.tables WHERE database = 'system' AND name = {tableName:String}`,
+        query_params: { tableName },
+        format: "JSONEachRow",
+      });
+      const rows = await result.json<{ count: string }>();
+      return Number(rows[0]?.count ?? 0) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async function fetchFromDictionaryAttributes(): Promise<TypeScriptIntrospectionColumn[]> {
+    const result = await client.query({
+      query: `
+        SELECT
+          dictionary AS objectName,
+          name,
+          type AS clickhouseType,
+          1 AS position
+        FROM system.dictionary_attributes
+        WHERE database = {database:String}
+        ORDER BY dictionary ASC, name ASC
+      `,
+      query_params: { database: options.database },
+      format: "JSONEachRow",
+    });
+    const rows = await result.json<SystemDictionaryAttributeRow>();
+    return rows.map((row, index) => ({
+      objectName: row.objectName,
+      name: row.name,
+      clickhouseType: row.clickhouseType,
+      position: index + 1,
+    }));
+  }
+
+  async function fetchFromDictionariesViaSubquery(): Promise<TypeScriptIntrospectionColumn[]> {
+    const result = await client.query({
+      query: `
+        SELECT
+          dict_name AS objectName,
+          attr_name AS name,
+          attr_type AS clickhouseType,
+          1 AS position
+        FROM (
+          SELECT name AS dict_name, attribute.names, attribute.types
+          FROM system.dictionaries
+          WHERE database = {database:String}
+        )
+        ARRAY JOIN attribute.names AS attr_name, attribute.types AS attr_type
+        ORDER BY objectName ASC, name ASC
+      `,
+      query_params: { database: options.database },
+      format: "JSONEachRow",
+    });
+    interface SubqueryRow {
+      readonly objectName: string;
+      readonly name: string;
+      readonly clickhouseType: string;
+      readonly position: number;
+    }
+    const rows = await result.json<SubqueryRow>();
+    return rows.map((row) => ({
+      objectName: row.objectName,
+      name: row.name,
+      clickhouseType: row.clickhouseType,
+      position: row.position,
+    }));
+  }
+
+  try {
+    if (await tableExists("dictionary_attributes")) {
+      return await fetchFromDictionaryAttributes();
+    }
+    return await fetchFromDictionariesViaSubquery();
+  } finally {
+    await client.close();
+  }
+}
+
 export async function writeSchemaModule(source: string, outPath: string): Promise<void> {
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, source, "utf8");
@@ -381,14 +526,55 @@ export async function introspectDatabase(args: IntrospectArgs): Promise<Introspe
     options.excludePattern,
   );
   const objects = args.tablesOnly ? filteredObjects.filter(isTableLikeObject) : filteredObjects;
-  if (objects.length === 0) {
+
+  let dictionaries:
+    | Array<{ name: string; columns: readonly TypeScriptIntrospectionColumn[] }>
+    | undefined;
+  if (!args.tablesOnly) {
+    const dictObjects = await fetchDictionaryObjects(options);
+    const filteredDicts = filterExcludedObjects(
+      dictObjects,
+      options.includePattern,
+      options.excludePattern,
+    );
+    const dictColumns = await fetchDictionaryAttributes(options);
+    const columnsByDict = new Map<string, TypeScriptIntrospectionColumn[]>();
+    for (const column of dictColumns) {
+      // Handle both bare names and qualified names (e.g. "default.dict_name")
+      let dictName = column.objectName;
+      const parts = dictName.split(".");
+      if (parts.length > 1 && !filteredDicts.some((d) => d.name === dictName)) {
+        dictName = parts[parts.length - 1]!;
+      }
+      const existing = columnsByDict.get(dictName);
+      if (existing) {
+        existing.push(column);
+      } else {
+        columnsByDict.set(dictName, [column]);
+      }
+    }
+
+    dictionaries = filteredDicts
+      .map((dict) => ({
+        name: dict.name,
+        columns: columnsByDict.get(dict.name) ?? [],
+      }))
+      .filter((dict) => dict.columns.length > 0);
+  }
+
+  if (objects.length === 0 && (!dictionaries || dictionaries.length === 0)) {
     throw new Error(
       args.tablesOnly
         ? `No table-like objects found in database '${options.database}'.`
-        : `No tables or views found in database '${options.database}'.`,
+        : `No tables, views, or dictionaries found in database '${options.database}'.`,
     );
   }
 
   const columns = await fetchDatabaseColumns(options);
-  return buildTypeScriptModuleResult(objects, columns, buildSchemaHeaderOptions(args, options));
+  return buildTypeScriptModuleResult(
+    objects,
+    columns,
+    buildSchemaHeaderOptions(args, options),
+    dictionaries,
+  );
 }

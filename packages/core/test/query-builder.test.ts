@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createClickHouseDB, param, ExpressionBuilder, Expression } from "../src";
+import type { TypedDictionary } from "../src";
 
 interface QueryBuilderTestDB {
   event_logs: {
@@ -20,6 +21,10 @@ interface QueryBuilderTestDB {
     amount: number;
     created_at: string;
   };
+  partner_rates: TypedDictionary<{
+    rate_cents: number;
+    currency: string;
+  }>;
 }
 
 const db = createClickHouseDB<QueryBuilderTestDB>();
@@ -576,5 +581,122 @@ describe("query builder validation", () => {
       "WITH active_users AS (SELECT e.user_id FROM event_logs AS e WHERE e.event_type = {p0:String} GROUP BY e.user_id) SELECT au.user_id FROM active_users AS au ORDER BY au.user_id ASC",
     );
     expect(query.params).toEqual({ p0: "signup" });
+  });
+
+  it("compiles dictGet with single key", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [eb.fn.dictGet("partner_rates", "rate_cents", "t.id").as("rate")])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT dictGet('partner_rates', 'rate_cents', t.id) AS rate FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("compiles dictGet with composite key", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn.dictGet("partner_rates", "rate_cents", ["t.id", "t.label"]).as("composite_rate"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT dictGet('partner_rates', 'rate_cents', tuple(t.id, t.label)) AS composite_rate FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("compiles dictGetOrDefault with fallback value", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn.dictGetOrDefault("partner_rates", "currency", "t.label", "USD").as("currency"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT dictGetOrDefault('partner_rates', 'currency', t.label, {p0:String}) AS currency FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({ p0: "USD" });
+  });
+
+  it("compiles dictHas", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [eb.fn.dictHas("partner_rates", "t.id").as("has_rate")])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT dictHas('partner_rates', t.id) AS has_rate FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("compiles dictGet with range date for RANGE_HASHED", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn.dictGet("partner_rates", "rate_cents", "t.id", "t.created_at").as("rate_at_date"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT dictGet('partner_rates', 'rate_cents', t.id, t.created_at) AS rate_at_date FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("compiles dictGetOrDefault with range date for RANGE_HASHED", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn
+          .dictGetOrDefault("partner_rates", "currency", "t.id", "USD", "t.created_at")
+          .as("currency_at_date"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT dictGetOrDefault('partner_rates', 'currency', t.id, {p0:String}, t.created_at) AS currency_at_date FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({ p0: "USD" });
+  });
+
+  it("compiles dictHas with range date for RANGE_HASHED", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn.dictHas("partner_rates", "t.id", "t.created_at").as("has_rate_at_date"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT dictHas('partner_rates', t.id, t.created_at) AS has_rate_at_date FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("compiles nested dictGet with param range date", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn
+          .dictGet(
+            "partner_rates",
+            "rate_cents",
+            eb.fn.dictGet("partner_rates", "rate_cents", "t.id"),
+            eb.fn.toDate(eb.fn.coalesce("t.created_at", eb.val(param("1970-01-01", "Date")))),
+          )
+          .as("nested_rate"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT dictGet('partner_rates', 'rate_cents', dictGet('partner_rates', 'rate_cents', t.id), toDate(coalesce(t.created_at, {p0:Date}))) AS nested_rate FROM typed_samples AS t",
+    );
+    expect(query.params).toEqual({ p0: "1970-01-01" });
   });
 });

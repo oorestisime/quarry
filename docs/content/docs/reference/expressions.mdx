@@ -502,6 +502,56 @@ or a string-typed `Expression`. `like`, `ilike`, and `substring` accept the
 same on the value side and `ParamLike<string>` on the pattern/length side
 (so you can pass a literal string, a `param(...)`, or another expression).
 
+### Dictionary helpers
+
+Dictionary functions require the dictionary to be declared in the schema with
+`TypedDictionary<Row>`. The `dictName` and `attrName` arguments are then
+type-checked at compile time, and the return type is inferred from the
+schema.
+
+| Helper                                                        | Returns                                  |
+| ------------------------------------------------------------- | ---------------------------------------- |
+| `eb.fn.dictGet(dict, attr, key)`                              | `Expression<AttrType>`                   |
+| `eb.fn.dictGetOrDefault(dict, attr, key, default)`            | `Expression<AttrType>`                   |
+| `eb.fn.dictHas(dict, key)`                                    | `Expression<number>`                     |
+
+The `key` argument can be a single column reference or an array of column
+references for composite keys (compiled to `tuple(...)` in SQL).
+
+For `RANGE_HASHED` dictionaries, an optional `rangeDate` argument provides the
+date or datetime for the range lookup:
+
+```ts
+interface DB {
+  events: { partner_id: number; event_date: string };
+  partner_rates: TypedDictionary<{
+    rate_cents: number;
+    currency: string;
+  }>;
+}
+
+db.selectFrom("events as e").selectExpr((eb) => [
+  // Single key lookup
+  eb.fn.dictGet("partner_rates", "rate_cents", "e.partner_id").as("rate"),
+  // Composite key lookup
+  eb.fn.dictGet("partner_rates", "rate_cents", ["e.partner_id", "e.event_date"]).as("composite_rate"),
+  // RANGE_HASHED lookup with date
+  eb.fn.dictGet("partner_rates", "rate_cents", "e.partner_id", "e.event_date").as("rate_at_date"),
+  // Lookup with fallback
+  eb.fn.dictGetOrDefault("partner_rates", "currency", "e.partner_id", "USD").as("currency"),
+  // RANGE_HASHED lookup with fallback and date
+  eb.fn.dictGetOrDefault("partner_rates", "currency", "e.partner_id", "USD", "e.event_date").as("currency_at_date"),
+  // Check existence
+  eb.fn.dictHas("partner_rates", "e.partner_id").as("has_rate"),
+  // RANGE_HASHED existence check with date
+  eb.fn.dictHas("partner_rates", "e.partner_id", "e.event_date").as("has_rate_at_date"),
+]);
+```
+
+`dictGetOrDefault` type-checks the `default` value against the schema attribute
+type, so a mismatch (e.g. passing `"USD"` for a `number` attribute) produces a
+compile error.
+
 ## The `Expression<T>` and `AliasedExpression<T, Alias>` classes
 
 `eb.*` always returns an `Expression<T>`. You can give it a name with

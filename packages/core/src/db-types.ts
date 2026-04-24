@@ -14,6 +14,11 @@ export interface TypedView<Row extends object> {
   readonly __sourceRow?: Row;
 }
 
+export interface TypedDictionary<Row extends object> {
+  readonly __sourceKind?: "dictionary";
+  readonly __sourceRow?: Row;
+}
+
 export type ClickHouseDate = ColumnType<string, string, string>;
 
 export type ClickHouseDate32 = ColumnType<string, string, string>;

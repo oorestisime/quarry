@@ -1,5 +1,5 @@
 import type { QueryColumn } from "./column-metadata";
-import type { ColumnType, TypedTable, TypedView } from "./db-types";
+import type { ColumnType, TypedDictionary, TypedTable, TypedView } from "./db-types";
 
 export type DatabaseSchema = object;
 export type ScopeMap = Record<string, Record<string, unknown>>;
@@ -35,18 +35,34 @@ type SourceColumns<Source> =
     ? { [K in Extract<keyof Row, string>]: Row[K] }
     : Source extends TypedView<infer Row>
       ? { [K in Extract<keyof Row, string>]: Row[K] }
-      : Source extends object
-        ? { [K in Extract<keyof Source, string>]: Source[K] }
-        : never;
+      : Source extends TypedDictionary<any>
+        ? never
+        : Source extends object
+          ? { [K in Extract<keyof Source, string>]: Source[K] }
+          : never;
 
-export type TableName<DB extends DatabaseSchema> = Extract<
+export type DictionaryName<DB extends DatabaseSchema> = Extract<
   {
-    [K in SourceName<DB>]: DB[K] extends TypedView<any> ? never : K;
+    [K in SourceName<DB>]: DB[K] extends TypedDictionary<any> ? K : never;
   }[SourceName<DB>],
   string
 >;
 
-export type SelectableSourceName<DB extends DatabaseSchema> = SourceName<DB>;
+type NonDictionarySourceName<DB extends DatabaseSchema> = Extract<
+  {
+    [K in SourceName<DB>]: DB[K] extends TypedDictionary<any> ? never : K;
+  }[SourceName<DB>],
+  string
+>;
+
+export type TableName<DB extends DatabaseSchema> = Extract<
+  {
+    [K in NonDictionarySourceName<DB>]: DB[K] extends TypedView<any> ? never : K;
+  }[NonDictionarySourceName<DB>],
+  string
+>;
+
+export type SelectableSourceName<DB extends DatabaseSchema> = NonDictionarySourceName<DB>;
 
 export type InsertableSourceName<DB extends DatabaseSchema> = TableName<DB>;
 
@@ -83,3 +99,17 @@ export type PredicateRow<DB extends DatabaseSchema, Table extends SelectableSour
     : never;
 
 export type QueryRow<T> = T extends object ? { [K in Extract<keyof T, string>]: T[K] } : never;
+
+export type DictionaryRow<DB extends DatabaseSchema, Name extends DictionaryName<DB>> =
+  DB[Name] extends TypedDictionary<infer Row> ? Row : never;
+
+export type DictionaryAttributeName<
+  DB extends DatabaseSchema,
+  Name extends DictionaryName<DB>,
+> = Extract<keyof DictionaryRow<DB, Name>, string>;
+
+export type DictionaryAttributeType<
+  DB extends DatabaseSchema,
+  Name extends DictionaryName<DB>,
+  Attr extends DictionaryAttributeName<DB, Name>,
+> = SelectValue<DictionaryRow<DB, Name>[Attr]>;

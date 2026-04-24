@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createClickHouseDB } from "../../src";
+import { createClickHouseDB, param } from "../../src";
 import { startClickHouse, stopClickHouse, type ClickHouseTestContext } from "./clickhouse";
 import {
   aggregateFunctionsCase,
   chainedExpressionWhereCase,
   cteLeftJoinBaseTableCase,
   cteJoinCase,
+  dictGetCase,
+  dictGetOrDefaultCase,
+  dictHasCase,
   finalPrewhereSettingsCase,
   groupByAggregateCase,
   groupByHavingCase,
@@ -29,6 +32,7 @@ import {
   typeCastFunctionsCase,
   whereRefCase,
 } from "../cases";
+import type { TypedDictionary } from "../../src";
 
 interface ExecutionTestDB {
   event_logs: {
@@ -48,6 +52,16 @@ interface ExecutionTestDB {
     id: number;
     tags: string[];
   };
+  partner_rates: TypedDictionary<{
+    rate_cents: number;
+    currency: string;
+  }>;
+  partner_country_rates: TypedDictionary<{
+    rate_cents: number;
+  }>;
+  partner_rate_ranges: TypedDictionary<{
+    rate_cents: number;
+  }>;
 }
 
 const db = createClickHouseDB<ExecutionTestDB>();
@@ -309,6 +323,78 @@ describe("clickhouse integration", () => {
     expect(rows).toEqual([
       { id: 1, email: "alice@example.com" },
       { id: 3, email: "cory@example.com" },
+    ]);
+  });
+
+  it(dictGetCase.name, async () => {
+    const rows = await dictGetCase.build().execute({ client: getContext().client });
+    expect(rows).toEqual(dictGetCase.expectedRows);
+  });
+
+  it(dictGetOrDefaultCase.name, async () => {
+    const rows = await dictGetOrDefaultCase.build().execute({ client: getContext().client });
+    expect(rows).toEqual(dictGetOrDefaultCase.expectedRows);
+  });
+
+  it(dictHasCase.name, async () => {
+    const rows = await dictHasCase.build().execute({ client: getContext().client });
+    expect(rows).toEqual(dictHasCase.expectedRows);
+  });
+
+  it("executes dictGet with composite dictionary keys", async () => {
+    const rows = await db
+      .selectFrom("users as u")
+      .selectExpr((eb) => [
+        "u.id",
+        eb.fn
+          .dictGet("partner_country_rates", "rate_cents", ["u.id", eb.val("US")])
+          .as("us_rate_cents"),
+      ])
+      .where("u.id", "in", [1, 2])
+      .orderBy("u.id", "asc")
+      .execute({ client: getContext().client });
+
+    expect(rows).toEqual([
+      { id: 1, us_rate_cents: 110 },
+      { id: 2, us_rate_cents: 210 },
+    ]);
+  });
+
+  it("executes dictGet with RANGE_HASHED lookup dates", async () => {
+    const rows = await db
+      .selectFrom("users as u")
+      .selectExpr((eb) => [
+        "u.id",
+        eb.fn
+          .dictGet("partner_rate_ranges", "rate_cents", "u.id", eb.val(param("2025-02-10", "Date")))
+          .as("rate_cents"),
+      ])
+      .where("u.id", "in", [1, 2])
+      .orderBy("u.id", "asc")
+      .execute({ client: getContext().client });
+
+    expect(rows).toEqual([
+      { id: 1, rate_cents: 150 },
+      { id: 2, rate_cents: 200 },
+    ]);
+  });
+
+  it("executes dictGetOrDefault with explicit default params", async () => {
+    const rows = await db
+      .selectFrom("users as u")
+      .selectExpr((eb) => [
+        "u.id",
+        eb.fn
+          .dictGetOrDefault("partner_rates", "currency", "u.id", param("GBP", "String"))
+          .as("currency"),
+      ])
+      .where("u.id", "in", [2, 3])
+      .orderBy("u.id", "asc")
+      .execute({ client: getContext().client });
+
+    expect(rows).toEqual([
+      { id: 2, currency: "EUR" },
+      { id: 3, currency: "GBP" },
     ]);
   });
 });

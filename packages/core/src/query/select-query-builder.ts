@@ -7,7 +7,7 @@ import {
   type ClickHouseExecutionOptions,
   type QueryCapableClickHouseClient,
 } from "../client";
-import type { DatabaseSchema, ScopeMap, Simplify } from "../type-utils";
+import type { DatabaseSchema, DictionaryName, ScopeMap, Simplify } from "../type-utils";
 import { Expression, AliasedExpression, ExpressionBuilder } from "./expression-builder";
 import {
   appendCondition,
@@ -67,6 +67,11 @@ type SelectAllColumns<
 >;
 
 type ScopeColumnMap = Record<string, QueryColumnMap>;
+type DictsFrom<DB extends DatabaseSchema> = Pick<DB, DictionaryName<DB>>;
+type EB<Scope extends ScopeMap, Sources extends DatabaseSchema> = ExpressionBuilder<
+  Scope,
+  DictsFrom<Sources>
+>;
 
 function parseSelectionParts(selection: string): { expr: string; alias?: string } {
   const match = selection.match(/^(.*?)\s+as\s+(.*?)$/i);
@@ -127,6 +132,10 @@ export class SelectQueryBuilder<
     nextOutputColumns: QueryColumnMap | undefined = this.outputColumns,
   ): SelectQueryBuilder<Sources, NextScope, NextOutput, NextOutputColumns> {
     return new SelectQueryBuilder(nextNode, this.client, nextScopeColumns, nextOutputColumns);
+  }
+
+  private eb(): ExpressionBuilder<Scope, DictsFrom<Sources>> {
+    return new ExpressionBuilder(this.scopeColumns);
   }
 
   private getPredicateClickHouseType(ref: ColumnRef<Scope>): string | undefined {
@@ -254,7 +263,7 @@ export class SelectQueryBuilder<
       distinct: true,
       distinctOn: expressions.map((expression) => {
         if (typeof expression === "function") {
-          return expression(new ExpressionBuilder<Scope>(this.scopeColumns)).node;
+          return expression(this.eb()).node;
         }
 
         return { kind: "ref", name: expression } satisfies RefNode;
@@ -341,18 +350,18 @@ export class SelectQueryBuilder<
   }
 
   selectExpr<const Selections extends readonly SelectionExpression<Scope>[]>(
-    selectionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Selections,
+    selectionFactory: (expressionBuilder: EB<Scope, Sources>) => Selections,
   ): SelectQueryBuilder<
     Sources,
     Scope,
     Simplify<Output & SelectionOutput<Scope, Selections>>,
     Simplify<OutputColumns & SelectionOutputColumns<Scope, Selections>>
   > {
-    return this.select(...selectionFactory(new ExpressionBuilder<Scope>(this.scopeColumns)));
+    return this.select(...selectionFactory(this.eb()));
   }
 
   where(
-    predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
+    predicateFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<unknown>,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   where<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
@@ -365,12 +374,12 @@ export class SelectQueryBuilder<
     value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   where<Value, Operator extends PredicateOperator>(
-    expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
+    expressionFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<Value>,
     operator: Operator,
     value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   where<Value, Operator extends PredicateOperator>(
-    expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
+    expressionFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<Value>,
     operator: Operator,
     value: ExpressionPredicateValue<Value, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
@@ -378,7 +387,7 @@ export class SelectQueryBuilder<
   where(
     input:
       | ColumnRef<Scope>
-      | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>)
+      | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
     value?: unknown,
@@ -387,7 +396,7 @@ export class SelectQueryBuilder<
       if (typeof input === "function") {
         return this.addExpressionCondition(
           "where",
-          input as (eb: ExpressionBuilder<Scope>) => Expression<unknown>,
+          input as (eb: EB<Scope, Sources>) => Expression<unknown>,
         );
       }
       return this.next({
@@ -398,9 +407,7 @@ export class SelectQueryBuilder<
 
     return this.addPredicate(
       "where",
-      input as
-        | ColumnRef<Scope>
-        | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
+      input as ColumnRef<Scope> | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>),
       operator!,
       value,
     );
@@ -423,7 +430,7 @@ export class SelectQueryBuilder<
   }
 
   prewhere(
-    predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
+    predicateFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<unknown>,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   prewhere<Ref extends ColumnRef<Scope>, Operator extends PredicateOperator>(
     column: Ref,
@@ -436,12 +443,12 @@ export class SelectQueryBuilder<
     value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   prewhere<Value, Operator extends PredicateOperator>(
-    expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
+    expressionFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<Value>,
     operator: Operator,
     value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   prewhere<Value, Operator extends PredicateOperator>(
-    expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
+    expressionFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<Value>,
     operator: Operator,
     value: ExpressionPredicateValue<Value, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
@@ -451,7 +458,7 @@ export class SelectQueryBuilder<
   prewhere(
     input:
       | ColumnRef<Scope>
-      | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>)
+      | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
     value?: unknown,
@@ -460,7 +467,7 @@ export class SelectQueryBuilder<
       if (typeof input === "function") {
         return this.addExpressionCondition(
           "prewhere",
-          input as (eb: ExpressionBuilder<Scope>) => Expression<unknown>,
+          input as (eb: EB<Scope, Sources>) => Expression<unknown>,
         );
       }
       return this.next({
@@ -471,9 +478,7 @@ export class SelectQueryBuilder<
 
     return this.addPredicate(
       "prewhere",
-      input as
-        | ColumnRef<Scope>
-        | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
+      input as ColumnRef<Scope> | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>),
       operator!,
       value,
     );
@@ -524,7 +529,7 @@ export class SelectQueryBuilder<
   }
 
   having(
-    predicateFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
+    predicateFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<unknown>,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   having<Ref extends HavingRef<Scope, Output>, Operator extends PredicateOperator>(
     column: Ref,
@@ -537,12 +542,12 @@ export class SelectQueryBuilder<
     value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   having<Value, Operator extends PredicateOperator>(
-    expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
+    expressionFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<Value>,
     operator: Operator,
     value: QueryLike,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
   having<Value, Operator extends PredicateOperator>(
-    expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<Value>,
+    expressionFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<Value>,
     operator: Operator,
     value: HavingValue<Value, Operator>,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns>;
@@ -552,7 +557,7 @@ export class SelectQueryBuilder<
   having(
     input:
       | HavingRef<Scope, Output>
-      | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>)
+      | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
     value?: unknown,
@@ -561,7 +566,7 @@ export class SelectQueryBuilder<
       if (typeof input === "function") {
         return this.addExpressionCondition(
           "having",
-          input as (eb: ExpressionBuilder<Scope>) => Expression<unknown>,
+          input as (eb: EB<Scope, Sources>) => Expression<unknown>,
         );
       }
       return this.next({
@@ -570,10 +575,10 @@ export class SelectQueryBuilder<
       });
     }
 
-    const expressionBuilder = new ExpressionBuilder<Scope>(this.scopeColumns);
+    const expressionBuilder = this.eb();
     const predicateInput = input as
       | HavingRef<Scope, Output>
-      | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>);
+      | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>);
     const leftExpr =
       typeof predicateInput === "function"
         ? predicateInput(expressionBuilder).node
@@ -599,7 +604,7 @@ export class SelectQueryBuilder<
         ...this.node.groupBy,
         ...expressions.map((expression) => {
           if (typeof expression === "function") {
-            return expression(new ExpressionBuilder<Scope>(this.scopeColumns)).node;
+            return expression(this.eb()).node;
           }
 
           return { kind: "ref", name: expression } satisfies RefNode;
@@ -610,13 +615,11 @@ export class SelectQueryBuilder<
 
   private addPredicate(
     key: "where" | "prewhere",
-    input:
-      | ColumnRef<Scope>
-      | ((expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>),
+    input: ColumnRef<Scope> | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>),
     operator: PredicateOperator | undefined,
     value: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
-    const expressionBuilder = new ExpressionBuilder<Scope>(this.scopeColumns);
+    const expressionBuilder = this.eb();
     const leftExpr =
       typeof input === "function"
         ? input(expressionBuilder).node
@@ -646,14 +649,11 @@ export class SelectQueryBuilder<
 
   private addExpressionCondition(
     key: "where" | "prewhere" | "having",
-    expressionFactory: (expressionBuilder: ExpressionBuilder<Scope>) => Expression<unknown>,
+    expressionFactory: (expressionBuilder: EB<Scope, Sources>) => Expression<unknown>,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     return this.next({
       ...this.node,
-      [key]: appendCondition(
-        this.node[key],
-        expressionFactory(new ExpressionBuilder<Scope>(this.scopeColumns)).node,
-      ),
+      [key]: appendCondition(this.node[key], expressionFactory(this.eb()).node),
     });
   }
 
@@ -670,7 +670,8 @@ export class SelectQueryBuilder<
     source: Source,
     callback: (
       expressionBuilder: ExpressionBuilder<
-        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+        DictsFrom<Sources>
       >,
     ) => Expression<unknown>,
   ): SelectQueryBuilder<
@@ -684,7 +685,8 @@ export class SelectQueryBuilder<
       | ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            DictsFrom<Sources>
           >,
         ) => Expression<unknown>),
     right?: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
@@ -716,7 +718,8 @@ export class SelectQueryBuilder<
     source: Source,
     callback: (
       expressionBuilder: ExpressionBuilder<
-        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+        DictsFrom<Sources>
       >,
     ) => Expression<unknown>,
   ): SelectQueryBuilder<
@@ -730,7 +733,8 @@ export class SelectQueryBuilder<
       | ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            DictsFrom<Sources>
           >,
         ) => Expression<unknown>),
     right?: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
@@ -761,7 +765,8 @@ export class SelectQueryBuilder<
     source: Source,
     callback: (
       expressionBuilder: ExpressionBuilder<
-        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+        DictsFrom<Sources>
       >,
     ) => Expression<unknown>,
   ): SelectQueryBuilder<
@@ -775,7 +780,8 @@ export class SelectQueryBuilder<
       | ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            DictsFrom<Sources>
           >,
         ) => Expression<unknown>),
     right?: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
@@ -794,7 +800,8 @@ export class SelectQueryBuilder<
       | string
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            DictsFrom<Sources>
           >,
         ) => Expression<unknown>),
     right?: string,
@@ -809,7 +816,8 @@ export class SelectQueryBuilder<
       ? { ...this.scopeColumns, [resolvedSource.alias]: resolvedSource.columns }
       : this.scopeColumns;
     const joinedScopeBuilder = new ExpressionBuilder<
-      Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>
+      Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+      DictsFrom<Sources>
     >(nextScopeColumns);
     const on: ExprNode =
       typeof leftOrCallback === "function"
