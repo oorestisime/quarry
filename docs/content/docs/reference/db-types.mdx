@@ -172,6 +172,9 @@ the ClickHouse JS client.
 ## Generated output
 
 The CLI introspection flow uses these helpers automatically.
+When ClickHouse metadata is broader than your application type, such as a JSON
+payload column that should be `UserPayload`, configure column type overrides in
+the [introspection guide](/docs/guides/introspection#type-overrides).
 
 ```ts
 import type {

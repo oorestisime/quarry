@@ -7,6 +7,19 @@ export interface TypeScriptIntrospectionColumn {
   readonly position: number;
 }
 
+export interface TypeScriptTypeImport {
+  readonly from: string;
+  readonly name: string;
+  readonly as?: string;
+}
+
+export type TypeScriptColumnTypeOverrides = ReadonlyMap<string, ReadonlyMap<string, string>>;
+
+export interface TypeScriptSchemaModuleOptions {
+  readonly imports?: readonly TypeScriptTypeImport[];
+  readonly typeOverrides?: TypeScriptColumnTypeOverrides;
+}
+
 type TypeScriptImportSpec =
   | "ClickHouseDate"
   | "ClickHouseDate32"
@@ -26,6 +39,34 @@ interface TypeScriptIntrospectionSource {
 
 function renderPropertyKey(value: string): string {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? value : JSON.stringify(value);
+}
+
+function renderImportName(spec: TypeScriptTypeImport): string {
+  return spec.as ? `${spec.name} as ${spec.as}` : spec.name;
+}
+
+function renderConfiguredImportBlocks(imports: readonly TypeScriptTypeImport[] = []): string {
+  const importsByModule = new Map<string, TypeScriptTypeImport[]>();
+  for (const spec of imports) {
+    const existing = importsByModule.get(spec.from);
+    if (existing) {
+      existing.push(spec);
+    } else {
+      importsByModule.set(spec.from, [spec]);
+    }
+  }
+
+  return [...importsByModule]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([from, specs]) => {
+      const importList = specs
+        .slice()
+        .sort((left, right) => (left.as ?? left.name).localeCompare(right.as ?? right.name))
+        .map(renderImportName)
+        .join(", ");
+      return `import type { ${importList} } from ${JSON.stringify(from)};`;
+    })
+    .join("\n");
 }
 
 function toInterfaceBaseName(value: string): string {
@@ -238,16 +279,20 @@ export function renderTypeScriptType(
 }
 
 function renderColumns(
+  sourceName: string,
   columns: readonly TypeScriptIntrospectionColumn[],
   imports: Set<TypeScriptImportSpec>,
+  typeOverrides?: TypeScriptColumnTypeOverrides,
 ): string {
+  const sourceOverrides = typeOverrides?.get(sourceName);
   return columns
     .slice()
     .sort((left, right) => left.position - right.position)
-    .map(
-      (column) =>
-        `    ${renderPropertyKey(column.name)}: ${renderTypeScriptType(column.clickhouseType, imports)};`,
-    )
+    .map((column) => {
+      const type =
+        sourceOverrides?.get(column.name) ?? renderTypeScriptType(column.clickhouseType, imports);
+      return `    ${renderPropertyKey(column.name)}: ${type};`;
+    })
     .join("\n");
 }
 
@@ -272,11 +317,13 @@ function renderInterfaceBlock(name: string, entries: readonly string[]): string 
 }
 
 function renderRowInterface(
+  sourceName: string,
   name: string,
   columns: readonly TypeScriptIntrospectionColumn[],
   imports: Set<TypeScriptImportSpec>,
+  typeOverrides?: TypeScriptColumnTypeOverrides,
 ): string {
-  const columnsBlock = renderColumns(columns, imports);
+  const columnsBlock = renderColumns(sourceName, columns, imports, typeOverrides);
   return columnsBlock.length > 0
     ? `export interface ${name} {\n${columnsBlock}\n}`
     : `export interface ${name} {}`;
@@ -286,13 +333,20 @@ export function generateTypeScriptSchemaModule(
   tables: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
   views: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
   dictionaries?: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
+  options: TypeScriptSchemaModuleOptions = {},
 ): string {
   const imports = new Set<TypeScriptImportSpec>();
   const dicts = dictionaries ?? [];
   const sources = [...tables, ...views, ...dicts];
   const interfaceNames = buildInterfaceNames(sources);
   const rowInterfaces = sources.map((source) =>
-    renderRowInterface(interfaceNames.get(source.name)!, source.columns, imports),
+    renderRowInterface(
+      source.name,
+      interfaceNames.get(source.name)!,
+      source.columns,
+      imports,
+      options.typeOverrides,
+    ),
   );
   const tablesBlock = renderInterfaceBlock(
     "Tables",
@@ -313,7 +367,13 @@ export function generateTypeScriptSchemaModule(
     ),
   );
   const importList = [...imports].sort((left, right) => left.localeCompare(right));
-  const importBlock = `import type { ${importList.join(", ")} } from "@oorestisime/quarry";\n\n`;
+  const configuredImportBlock = renderConfiguredImportBlocks(options.imports);
+  const importBlock = [
+    `import type { ${importList.join(", ")} } from "@oorestisime/quarry";`,
+    configuredImportBlock,
+  ]
+    .filter((block) => block.length > 0)
+    .join("\n");
 
   const blocks = [tablesBlock, viewsBlock];
   if (dicts.length > 0) {
@@ -325,5 +385,5 @@ export function generateTypeScriptSchemaModule(
     dbExtends.push("Dictionaries");
   }
 
-  return `${importBlock}${rowInterfaces.join("\n\n")}\n\n${blocks.join("\n\n")}\n\nexport interface DB extends ${dbExtends.join(", ")} {}\n`;
+  return `${importBlock}\n\n${rowInterfaces.join("\n\n")}\n\n${blocks.join("\n\n")}\n\nexport interface DB extends ${dbExtends.join(", ")} {}\n`;
 }

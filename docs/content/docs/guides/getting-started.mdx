@@ -54,9 +54,12 @@ semantics instead of asking you to maintain a second schema DSL.
 If you already have a database and want help bootstrapping the `DB` type, use
 the CLI introspection flow instead of writing the interface by hand.
 
-```ts
+```bash
 npx @oorestisime/quarry-cli introspect --database analytics --out db.ts
 ```
+
+For repeatable generation, the introspection guide shows how to keep connection
+options, filters, and column type overrides in `quarry.introspect.json`.
 
 ## Build and execute a query
 

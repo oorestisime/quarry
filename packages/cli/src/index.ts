@@ -6,6 +6,7 @@ import {
   formatIntrospectionFailureReport,
   formatIntrospectionSummaryReport,
   introspectDatabase,
+  resolveIntrospectionArgs,
   writeSchemaModule,
 } from "./introspect";
 
@@ -77,17 +78,22 @@ const introspectCommand = defineCommand({
       type: "string",
       description: "Regex blocklist for object names.",
     },
+    config: {
+      type: "string",
+      description: "Path to a JSON introspection config file.",
+    },
   },
   async run({ args }) {
     const stopSpinner = startSpinner("Introspecting ClickHouse schema...");
 
     try {
-      const result = await introspectDatabase(args);
+      const resolvedArgs = await resolveIntrospectionArgs(args);
+      const result = await introspectDatabase(resolvedArgs);
       stopSpinner();
 
-      if (args.out) {
-        await writeSchemaModule(result.source, args.out);
-        process.stderr.write(`Wrote generated TypeScript DB types to ${args.out}\n`);
+      if (resolvedArgs.out) {
+        await writeSchemaModule(result.source, resolvedArgs.out);
+        process.stderr.write(`Wrote generated TypeScript DB types to ${resolvedArgs.out}\n`);
       } else {
         process.stdout.write(result.source);
       }

@@ -1,14 +1,18 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import process from "node:process";
 import { createClient } from "@clickhouse/client";
 import {
   generateTypeScriptSchemaModule,
+  type TypeScriptColumnTypeOverrides,
   type TypeScriptIntrospectionColumn,
+  type TypeScriptTypeImport,
 } from "./introspection/ts-generator";
 
 export interface IntrospectArgs {
+  readonly _configResolved?: boolean;
+  readonly config?: string;
   readonly url?: string;
   readonly user?: string;
   readonly password?: string;
@@ -17,7 +21,24 @@ export interface IntrospectArgs {
   readonly tablesOnly?: boolean;
   readonly includePattern?: string;
   readonly excludePattern?: string;
+  readonly imports?: readonly TypeScriptTypeImport[];
+  readonly typeOverrides?: TypeScriptColumnTypeOverrides;
 }
+
+export interface IntrospectionConfig {
+  readonly url?: string;
+  readonly user?: string;
+  readonly password?: string;
+  readonly database?: string;
+  readonly out?: string;
+  readonly tablesOnly?: boolean;
+  readonly includePattern?: string;
+  readonly excludePattern?: string;
+  readonly imports?: Record<string, readonly ImportConfigSpec[]>;
+  readonly typeOverrides?: Record<string, Record<string, string>>;
+}
+
+type ImportConfigSpec = string | { readonly name: string; readonly as?: string };
 
 export interface IntrospectionConnectionOptions {
   readonly url: string;
@@ -54,10 +75,12 @@ export interface IntrospectionResult {
 }
 
 export interface IntrospectionSchemaHeaderOptions {
+  readonly config?: string;
   readonly database?: string;
   readonly tablesOnly?: boolean;
   readonly includePattern?: string;
   readonly excludePattern?: string;
+  readonly overriddenColumns?: number;
 }
 
 interface SystemTableRow {
@@ -83,6 +106,19 @@ interface SystemDictionaryAttributeRow {
 }
 
 const MAX_FAILURE_DETAILS = 40;
+const CONFIG_KEYS = new Set([
+  "url",
+  "user",
+  "password",
+  "database",
+  "out",
+  "tablesOnly",
+  "includePattern",
+  "excludePattern",
+  "imports",
+  "typeOverrides",
+]);
+const IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -114,32 +150,175 @@ function isTableLikeObject(object: IntrospectionObject): boolean {
   return object.engine !== "View";
 }
 
-function formatSchemaHeaderValue(value: string | boolean): string {
-  return typeof value === "string" ? JSON.stringify(value) : String(value);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stripUndefinedArgs(args: IntrospectArgs): IntrospectArgs {
+  return Object.fromEntries(
+    Object.entries(args).filter(([, value]) => value !== undefined),
+  ) as IntrospectArgs;
+}
+
+function validateStringField(
+  config: Record<string, unknown>,
+  key: keyof IntrospectionConfig,
+): string | undefined {
+  const value = config[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`Invalid introspection config: '${key}' must be a string.`);
+  }
+  return value;
+}
+
+function validateBooleanField(
+  config: Record<string, unknown>,
+  key: keyof IntrospectionConfig,
+): boolean | undefined {
+  const value = config[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "boolean") {
+    throw new Error(`Invalid introspection config: '${key}' must be a boolean.`);
+  }
+  return value;
+}
+
+function validateImportName(value: string, label: string): void {
+  if (!IDENTIFIER_PATTERN.test(value)) {
+    throw new Error(`Invalid introspection config: ${label} must be a TypeScript identifier.`);
+  }
+}
+
+function validateOverrideType(value: string, sourceName: string, columnName: string): void {
+  if (value.trim().length === 0 || value !== value.trim() || /[;\r\n]/.test(value)) {
+    throw new Error(
+      `Invalid introspection config: type override for '${sourceName}.${columnName}' must be a single-line TypeScript type expression.`,
+    );
+  }
+}
+
+function normalizeConfiguredImports(value: unknown): readonly TypeScriptTypeImport[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new Error("Invalid introspection config: 'imports' must be an object.");
+  }
+
+  const localNames = new Set<string>();
+  const imports: TypeScriptTypeImport[] = [];
+  for (const [from, specs] of Object.entries(value)) {
+    if (from.length === 0) {
+      throw new Error("Invalid introspection config: import module path must not be empty.");
+    }
+    if (!Array.isArray(specs)) {
+      throw new Error(`Invalid introspection config: imports for '${from}' must be an array.`);
+    }
+
+    for (const spec of specs) {
+      let normalized: TypeScriptTypeImport;
+      if (typeof spec === "string") {
+        validateImportName(spec, `import '${spec}'`);
+        normalized = { from, name: spec };
+      } else if (isRecord(spec)) {
+        const name = spec.name;
+        const alias = spec.as;
+        if (typeof name !== "string") {
+          throw new Error(`Invalid introspection config: import from '${from}' is missing a name.`);
+        }
+        validateImportName(name, `import '${name}'`);
+        if (alias !== undefined && typeof alias !== "string") {
+          throw new Error(
+            `Invalid introspection config: import alias for '${name}' must be a string.`,
+          );
+        }
+        if (alias !== undefined) {
+          validateImportName(alias, `import alias '${alias}'`);
+        }
+        normalized = alias ? { from, name, as: alias } : { from, name };
+      } else {
+        throw new Error(
+          `Invalid introspection config: imports for '${from}' must be strings or objects.`,
+        );
+      }
+
+      const localName = normalized.as ?? normalized.name;
+      if (localNames.has(localName)) {
+        throw new Error(`Invalid introspection config: duplicate imported type '${localName}'.`);
+      }
+      localNames.add(localName);
+      imports.push(normalized);
+    }
+  }
+
+  return imports;
+}
+
+function normalizeTypeOverrides(value: unknown): TypeScriptColumnTypeOverrides | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new Error("Invalid introspection config: 'typeOverrides' must be an object.");
+  }
+
+  const overrides = new Map<string, Map<string, string>>();
+  for (const [sourceName, sourceOverrides] of Object.entries(value)) {
+    if (!isRecord(sourceOverrides)) {
+      throw new Error(
+        `Invalid introspection config: typeOverrides for '${sourceName}' must be an object.`,
+      );
+    }
+
+    const columns = new Map<string, string>();
+    for (const [columnName, type] of Object.entries(sourceOverrides)) {
+      if (typeof type !== "string") {
+        throw new Error(
+          `Invalid introspection config: type override for '${sourceName}.${columnName}' must be a string.`,
+        );
+      }
+      validateOverrideType(type, sourceName, columnName);
+      columns.set(columnName, type);
+    }
+    overrides.set(sourceName, columns);
+  }
+
+  return overrides;
+}
+
+function validateImportedTypesAreUsed(
+  imports?: readonly TypeScriptTypeImport[],
+  typeOverrides?: TypeScriptColumnTypeOverrides,
+): void {
+  if (!imports || imports.length === 0) {
+    return;
+  }
+
+  const overrideTypes = [...(typeOverrides?.values() ?? [])].flatMap((sourceOverrides) => [
+    ...sourceOverrides.values(),
+  ]);
+  for (const spec of imports) {
+    const localName = spec.as ?? spec.name;
+    const referencePattern = new RegExp(`\\b${localName}\\b`);
+    if (!overrideTypes.some((type) => referencePattern.test(type))) {
+      throw new Error(
+        `Invalid introspection config: imported type '${localName}' is not referenced by any type override.`,
+      );
+    }
+  }
 }
 
 function pluralize(count: number, singular: string, plural = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function formatSchemaModuleHeader(options: IntrospectionSchemaHeaderOptions = {}): string {
-  const entries = [
-    ["database", options.database],
-    ["tablesOnly", options.tablesOnly],
-    ["includePattern", options.includePattern],
-    ["excludePattern", options.excludePattern],
-  ].filter((entry): entry is [string, string | boolean] => entry[1] !== undefined);
-
-  const lines = ["// This file is autogenerated by `quarry introspect`. Do not edit manually."];
-
-  if (entries.length > 0) {
-    lines.push(
-      "// Generated with:",
-      ...entries.map(([name, value]) => `// - ${name}: ${formatSchemaHeaderValue(value)}`),
-    );
-  }
-
-  return lines.join("\n");
+function formatSchemaModuleHeader(): string {
+  return "// This file is autogenerated by `quarry introspect`. Do not edit manually.";
 }
 
 function buildSchemaHeaderOptions(
@@ -151,6 +330,57 @@ function buildSchemaHeaderOptions(
     tablesOnly: args.tablesOnly ?? false,
     ...(args.includePattern ? { includePattern: args.includePattern } : {}),
     ...(args.excludePattern ? { excludePattern: args.excludePattern } : {}),
+  };
+}
+
+export async function loadIntrospectionConfig(configPath: string): Promise<IntrospectArgs> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(configPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `Could not read introspection config '${configPath}': ${getErrorMessage(error)}`,
+    );
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid introspection config: root value must be an object.");
+  }
+
+  for (const key of Object.keys(parsed)) {
+    if (!CONFIG_KEYS.has(key)) {
+      throw new Error(`Invalid introspection config: unknown key '${key}'.`);
+    }
+  }
+
+  const imports = normalizeConfiguredImports(parsed.imports);
+  const typeOverrides = normalizeTypeOverrides(parsed.typeOverrides);
+  validateImportedTypesAreUsed(imports, typeOverrides);
+
+  return {
+    url: validateStringField(parsed, "url"),
+    user: validateStringField(parsed, "user"),
+    password: validateStringField(parsed, "password"),
+    database: validateStringField(parsed, "database"),
+    out: validateStringField(parsed, "out"),
+    tablesOnly: validateBooleanField(parsed, "tablesOnly"),
+    includePattern: validateStringField(parsed, "includePattern"),
+    excludePattern: validateStringField(parsed, "excludePattern"),
+    imports,
+    typeOverrides,
+  };
+}
+
+export async function resolveIntrospectionArgs(args: IntrospectArgs): Promise<IntrospectArgs> {
+  if (args._configResolved) {
+    return args;
+  }
+
+  const configArgs = args.config ? await loadIntrospectionConfig(args.config) : {};
+  return {
+    ...configArgs,
+    ...stripUndefinedArgs(args),
+    _configResolved: true,
   };
 }
 
@@ -238,11 +468,45 @@ export function filterExcludedObjects(
   });
 }
 
+function validateTypeOverrideTargets(
+  sources: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
+  typeOverrides?: TypeScriptColumnTypeOverrides,
+): void {
+  if (!typeOverrides) {
+    return;
+  }
+
+  const columnsBySource = new Map(
+    sources.map((source) => [source.name, new Set(source.columns.map((column) => column.name))]),
+  );
+
+  for (const [sourceName, sourceOverrides] of typeOverrides) {
+    const sourceColumns = columnsBySource.get(sourceName);
+    if (!sourceColumns) {
+      throw new Error(
+        `Invalid introspection config: type override references unknown source '${sourceName}'.`,
+      );
+    }
+
+    for (const columnName of sourceOverrides.keys()) {
+      if (!sourceColumns.has(columnName)) {
+        throw new Error(
+          `Invalid introspection config: type override references unknown column '${sourceName}.${columnName}'.`,
+        );
+      }
+    }
+  }
+}
+
 export function buildTypeScriptModuleResult(
   objects: readonly IntrospectionObject[],
   columns: readonly TypeScriptIntrospectionColumn[],
-  headerOptions?: IntrospectionSchemaHeaderOptions,
+  _headerOptions?: IntrospectionSchemaHeaderOptions,
   dictionaries?: readonly { name: string; columns: readonly TypeScriptIntrospectionColumn[] }[],
+  generatorOptions: {
+    readonly imports?: readonly TypeScriptTypeImport[];
+    readonly typeOverrides?: TypeScriptColumnTypeOverrides;
+  } = {},
 ): IntrospectionResult {
   if (objects.length === 0 && (!dictionaries || dictionaries.length === 0)) {
     throw new Error("No tables, views, or dictionaries were available to introspect.");
@@ -292,9 +556,14 @@ export function buildTypeScriptModuleResult(
     );
   }
 
+  validateTypeOverrideTargets(
+    [...tables, ...views, ...(dictionaries ?? [])],
+    generatorOptions.typeOverrides,
+  );
+
   return {
     source: tryFormatTypeScript(
-      `${formatSchemaModuleHeader(headerOptions)}\n\n${generateTypeScriptSchemaModule(tables, views, dictionaries)}`,
+      `${formatSchemaModuleHeader()}\n\n${generateTypeScriptSchemaModule(tables, views, dictionaries, generatorOptions)}`,
     ),
     failures,
     summary: {
@@ -518,19 +787,22 @@ export async function writeSchemaModule(source: string, outPath: string): Promis
 }
 
 export async function introspectDatabase(args: IntrospectArgs): Promise<IntrospectionResult> {
-  const options = resolveConnectionOptions(args);
-  const allObjects = await fetchDatabaseObjects(options, args.tablesOnly);
+  const resolvedArgs = await resolveIntrospectionArgs(args);
+  const options = resolveConnectionOptions(resolvedArgs);
+  const allObjects = await fetchDatabaseObjects(options, resolvedArgs.tablesOnly);
   const filteredObjects = filterExcludedObjects(
     allObjects,
     options.includePattern,
     options.excludePattern,
   );
-  const objects = args.tablesOnly ? filteredObjects.filter(isTableLikeObject) : filteredObjects;
+  const objects = resolvedArgs.tablesOnly
+    ? filteredObjects.filter(isTableLikeObject)
+    : filteredObjects;
 
   let dictionaries:
     | Array<{ name: string; columns: readonly TypeScriptIntrospectionColumn[] }>
     | undefined;
-  if (!args.tablesOnly) {
+  if (!resolvedArgs.tablesOnly) {
     const dictObjects = await fetchDictionaryObjects(options);
     const filteredDicts = filterExcludedObjects(
       dictObjects,
@@ -564,7 +836,7 @@ export async function introspectDatabase(args: IntrospectArgs): Promise<Introspe
 
   if (objects.length === 0 && (!dictionaries || dictionaries.length === 0)) {
     throw new Error(
-      args.tablesOnly
+      resolvedArgs.tablesOnly
         ? `No table-like objects found in database '${options.database}'.`
         : `No tables, views, or dictionaries found in database '${options.database}'.`,
     );
@@ -574,7 +846,11 @@ export async function introspectDatabase(args: IntrospectArgs): Promise<Introspe
   return buildTypeScriptModuleResult(
     objects,
     columns,
-    buildSchemaHeaderOptions(args, options),
+    buildSchemaHeaderOptions(resolvedArgs, options),
     dictionaries,
+    {
+      imports: resolvedArgs.imports,
+      typeOverrides: resolvedArgs.typeOverrides,
+    },
   );
 }

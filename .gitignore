@@ -28,3 +28,8 @@ docs/.next/
 docs/.source/
 docs/out/
 docs/next-env.d.ts
+
+
+# Ignore local introspection runs
+quarry.introspect.json
+schema.d.ts
