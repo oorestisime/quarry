@@ -31,6 +31,29 @@ const db = createClickHouseDB<DB>({
 });
 ```
 
+## Retries
+
+Pass `retries` to retry failed select query execution from this DB handle:
+
+```ts
+const db = createClickHouseDB<DB>({
+  client: createClient({ url: "https://example.clickhouse.cloud:8443" }),
+  retries: {
+    attempts: 3,
+    delayMs: 100,
+  },
+});
+```
+
+`attempts` is the total number of attempts, including the first immediate call,
+and must be a positive integer. `delayMs` is the fixed delay between failed
+attempts, and must be a non-negative finite number.
+
+Retries only apply to likely transient select execution failures such as socket
+errors, request timeouts, and temporary HTTP responses like `503`. Quarry does
+not retry inserts or commands because retrying writes can duplicate data unless
+the write path is idempotent.
+
 Introspection output uses named row interfaces plus `TypedTable<...>` /
 `TypedView<...>` wrappers, but handwritten schemas can stay as plain objects if
 you prefer.

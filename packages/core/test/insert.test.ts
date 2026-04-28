@@ -312,6 +312,44 @@ describe("insert builder", () => {
     });
   });
 
+  it("does not retry value inserts when DB-level retries are configured", async () => {
+    const client = {
+      query: vi.fn(),
+      insert: vi.fn().mockRejectedValue(new Error("socket hang up")),
+    };
+    const dbWithRetries = createClickHouseDB<InsertTestDB>({
+      client,
+      retries: {
+        attempts: 3,
+        delayMs: 0,
+      },
+    });
+
+    await expect(
+      dbWithRetries
+        .insertInto("typed_samples")
+        .values([
+          {
+            id: 8,
+            big_user_id: "104",
+            label: "theta",
+            status: "active",
+            nickname: null,
+            tags: [],
+            amount: 3,
+            created_at: "2025-01-08 00:00:00.000",
+            location: [0, 0],
+            attributes: {},
+            "metrics.name": ["opens"],
+            "metrics.score": [3],
+          },
+        ])
+        .execute(),
+    ).rejects.toThrow("socket hang up");
+
+    expect(client.insert).toHaveBeenCalledTimes(1);
+  });
+
   it("requires an insert source before execution", async () => {
     await expect(db.insertInto("typed_samples").execute()).rejects.toThrow(
       "Cannot execute an insert without a source",

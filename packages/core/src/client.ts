@@ -59,6 +59,11 @@ export interface ClickHouseExecutionOptions {
   clickhouse_settings?: ClickHouseSettings;
 }
 
+export interface ClickHouseRetryOptions {
+  attempts: number;
+  delayMs: number;
+}
+
 export function toClickHouseExecutionParams(
   options: ClickHouseExecutionOptions,
 ): ClickHouseBaseParams {

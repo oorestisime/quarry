@@ -179,6 +179,26 @@ The most common time to reach for `param(...)` is for date/time values,
 unsigned integers (so the placeholder says `UInt64` instead of `Int64`),
 and decimal types.
 
+### Transient select failures
+
+ClickHouse Cloud can temporarily fail existing or new connections during events
+such as autoscaling or replica changes. If you want Quarry to retry select
+queries through that window, configure retries on the DB handle:
+
+```ts
+const db = createClickHouseDB<DB>({
+  client,
+  retries: {
+    attempts: 3,
+    delayMs: 100,
+  },
+});
+```
+
+Retries use a fixed delay and `attempts` includes the initial call. Quarry only
+retries likely transient select execution failures. It deliberately does not
+retry inserts, commands, or ordinary query errors.
+
 ### Result types come from `JSONEachRow`
 
 `execute()` calls the driver with `format: "JSONEachRow"`, which means the

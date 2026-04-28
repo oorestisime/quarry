@@ -2,6 +2,7 @@ export type {
   ClickHouseInsertResult,
   ClickHouseClient,
   ClickHouseExecutionOptions,
+  ClickHouseRetryOptions,
   ClickHouseSettings,
 } from "./client";
 export type { CompiledQuery } from "./compiler/query-compiler";

@@ -511,6 +511,12 @@ The result is parsed from `JSONEachRow`, so the runtime types follow the
 [runtime semantics](/docs/concepts/runtime-semantics) rules
 (`UInt64` → `string`, etc.).
 
+If the DB handle was created with `createClickHouseDB({ retries })`, failed
+select execution is retried according to that DB-level retry configuration.
+Retries cover both the driver's `query()` call and `JSONEachRow` response
+parsing, but only for likely transient transport or temporary availability
+failures.
+
 The same options shape is supported by `executeTakeFirst()` and
 `executeTakeFirstOrThrow()`.
 

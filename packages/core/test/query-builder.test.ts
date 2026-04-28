@@ -518,6 +518,206 @@ describe("query builder validation", () => {
     });
   });
 
+  it("retries select execution with the configured DB-level retry options", async () => {
+    const json = vi.fn().mockResolvedValue([{ user_id: 1, event_type: "signup" }]);
+    const queryClient = {
+      query: vi.fn().mockRejectedValueOnce(new Error("socket hang up")).mockResolvedValue({ json }),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 2,
+        delayMs: 0,
+      },
+    });
+
+    await expect(dbWithRetries.selectFrom("event_logs").selectAll().execute()).resolves.toEqual([
+      { user_id: 1, event_type: "signup" },
+    ]);
+
+    expect(queryClient.query).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries select execution for refused connections", async () => {
+    const connectionRefused = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8124"), {
+      code: "ECONNREFUSED",
+    });
+    const json = vi.fn().mockResolvedValue([{ user_id: 1 }]);
+    const queryClient = {
+      query: vi.fn().mockRejectedValueOnce(connectionRefused).mockResolvedValue({ json }),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 2,
+        delayMs: 0,
+      },
+    });
+
+    await expect(
+      dbWithRetries.selectFrom("event_logs").select("user_id").execute(),
+    ).resolves.toEqual([{ user_id: 1 }]);
+
+    expect(queryClient.query).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries select execution for temporary HTTP status errors", async () => {
+    const temporaryError = Object.assign(new Error("temporary response"), { statusCode: 503 });
+    const json = vi.fn().mockResolvedValue([{ user_id: 1 }]);
+    const queryClient = {
+      query: vi.fn().mockRejectedValueOnce(temporaryError).mockResolvedValue({ json }),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 2,
+        delayMs: 0,
+      },
+    });
+
+    await expect(
+      dbWithRetries.selectFrom("event_logs").select("user_id").execute(),
+    ).resolves.toEqual([{ user_id: 1 }]);
+
+    expect(queryClient.query).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry non-transient select execution errors", async () => {
+    const syntaxError = Object.assign(new Error("Syntax error"), { code: "62" });
+    const queryClient = {
+      query: vi.fn().mockRejectedValue(syntaxError),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 3,
+        delayMs: 0,
+      },
+    });
+
+    await expect(dbWithRetries.selectFrom("event_logs").selectAll().execute()).rejects.toThrow(
+      "Syntax error",
+    );
+
+    expect(queryClient.query).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry ClickHouse server errors even when the message mentions timeout", async () => {
+    const serverTimeout = Object.assign(new Error("Timeout exceeded"), { code: "159" });
+    const queryClient = {
+      query: vi.fn().mockRejectedValue(serverTimeout),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 3,
+        delayMs: 0,
+      },
+    });
+
+    await expect(dbWithRetries.selectFrom("event_logs").selectAll().execute()).rejects.toThrow(
+      "Timeout exceeded",
+    );
+
+    expect(queryClient.query).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries select execution when JSON parsing fails", async () => {
+    const queryClient = {
+      query: vi
+        .fn()
+        .mockResolvedValueOnce({ json: vi.fn().mockRejectedValue(new Error("Timeout error.")) })
+        .mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([{ user_id: 2 }]) }),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 2,
+        delayMs: 0,
+      },
+    });
+
+    await expect(
+      dbWithRetries.selectFrom("event_logs").select("user_id").execute(),
+    ).resolves.toEqual([{ user_id: 2 }]);
+
+    expect(queryClient.query).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry select execution without DB-level retry options", async () => {
+    const error = new Error("socket hang up");
+    const queryClient = {
+      query: vi.fn().mockRejectedValue(error),
+    };
+    const dbWithoutRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+    });
+
+    await expect(dbWithoutRetries.selectFrom("event_logs").selectAll().execute()).rejects.toThrow(
+      "socket hang up",
+    );
+
+    expect(queryClient.query).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops retrying select execution after the configured attempts", async () => {
+    const connectionReset = Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+    const queryClient = {
+      query: vi.fn().mockRejectedValue(connectionReset),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 3,
+        delayMs: 0,
+      },
+    });
+
+    await expect(dbWithRetries.selectFrom("event_logs").selectAll().execute()).rejects.toThrow(
+      "connection reset",
+    );
+
+    expect(queryClient.query).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects invalid retry attempts", async () => {
+    const queryClient = {
+      query: vi.fn(),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 0,
+        delayMs: 0,
+      },
+    });
+
+    await expect(dbWithRetries.selectFrom("event_logs").selectAll().execute()).rejects.toThrow(
+      "Retry attempts must be a positive integer.",
+    );
+
+    expect(queryClient.query).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid retry delays", async () => {
+    const queryClient = {
+      query: vi.fn(),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: {
+        attempts: 2,
+        delayMs: Number.NaN,
+      },
+    });
+
+    await expect(dbWithRetries.selectFrom("event_logs").selectAll().execute()).rejects.toThrow(
+      "Retry delayMs must be a non-negative finite number.",
+    );
+
+    expect(queryClient.query).not.toHaveBeenCalled();
+  });
+
   it("supports overriding the configured client through execution options", async () => {
     const defaultClient = {
       query: vi.fn(),

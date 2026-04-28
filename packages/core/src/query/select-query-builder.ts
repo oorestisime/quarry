@@ -5,6 +5,7 @@ import {
   toClickHouseExecutionParams,
   type ClickHouseClient,
   type ClickHouseExecutionOptions,
+  type ClickHouseRetryOptions,
   type QueryCapableClickHouseClient,
 } from "../client";
 import type { DatabaseSchema, DictionaryName, ScopeMap, Simplify } from "../type-utils";
@@ -120,6 +121,7 @@ export class SelectQueryBuilder<
     private readonly client?: ClickHouseClient,
     private readonly scopeColumns: ScopeColumnMap = {},
     private readonly outputColumns?: QueryColumnMap,
+    private readonly retries?: ClickHouseRetryOptions,
   ) {}
 
   private next<
@@ -131,7 +133,13 @@ export class SelectQueryBuilder<
     nextScopeColumns: ScopeColumnMap = this.scopeColumns,
     nextOutputColumns: QueryColumnMap | undefined = this.outputColumns,
   ): SelectQueryBuilder<Sources, NextScope, NextOutput, NextOutputColumns> {
-    return new SelectQueryBuilder(nextNode, this.client, nextScopeColumns, nextOutputColumns);
+    return new SelectQueryBuilder(
+      nextNode,
+      this.client,
+      nextScopeColumns,
+      nextOutputColumns,
+      this.retries,
+    );
   }
 
   private eb(): ExpressionBuilder<Scope, DictsFrom<Sources>> {
@@ -928,14 +936,17 @@ export class SelectQueryBuilder<
   async execute(options?: ClickHouseExecutionOptions): Promise<Output[]> {
     const resolvedClient = this.getClient(options?.client);
     const compiled = this.toSQL();
-    const result = await resolvedClient.query({
-      query: compiled.query,
-      query_params: compiled.params,
-      format: "JSONEachRow",
-      ...toClickHouseExecutionParams(options ?? {}),
-    });
 
-    return result.json<Output>();
+    return executeWithRetries(this.retries, async () => {
+      const result = await resolvedClient.query({
+        query: compiled.query,
+        query_params: compiled.params,
+        format: "JSONEachRow",
+        ...toClickHouseExecutionParams(options ?? {}),
+      });
+
+      return result.json<Output>();
+    });
   }
 
   async executeTakeFirst(options?: ClickHouseExecutionOptions): Promise<Output | undefined> {
@@ -962,4 +973,86 @@ function assertValidPaginationValue(kind: "LIMIT" | "OFFSET", value: number): vo
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${kind} must be a non-negative integer.`);
   }
+}
+
+async function executeWithRetries<T>(
+  retries: ClickHouseRetryOptions | undefined,
+  run: () => Promise<T>,
+): Promise<T> {
+  const attempts = getRetryAttempts(retries);
+  const delayMs = getRetryDelayMs(retries);
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= attempts || !isRetryableSelectError(error)) {
+        throw error;
+      }
+
+      await sleep(delayMs);
+    }
+  }
+}
+
+const retryableErrorCodes = new Set(["ECONNREFUSED", "ECONNRESET", "EPIPE", "ETIMEDOUT"]);
+
+const retryableStatusCodes = new Set([408, 502, 503, 504]);
+const retryableMessages = new Set(["Timeout error.", "socket hang up"]);
+
+function isRetryableSelectError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const errorWithMetadata = error as Error & {
+    code?: unknown;
+    status?: unknown;
+    statusCode?: unknown;
+  };
+
+  const code = errorWithMetadata.code;
+  if (typeof code === "string" && retryableErrorCodes.has(code)) {
+    return true;
+  }
+
+  const statusCode =
+    typeof errorWithMetadata.statusCode === "number"
+      ? errorWithMetadata.statusCode
+      : typeof errorWithMetadata.status === "number"
+        ? errorWithMetadata.status
+        : undefined;
+  if (statusCode !== undefined && retryableStatusCodes.has(statusCode)) {
+    return true;
+  }
+
+  return retryableMessages.has(error.message);
+}
+
+function getRetryAttempts(retries: ClickHouseRetryOptions | undefined): number {
+  if (!retries) {
+    return 1;
+  }
+
+  if (!Number.isInteger(retries.attempts) || retries.attempts < 1) {
+    throw new Error("Retry attempts must be a positive integer.");
+  }
+
+  return retries.attempts;
+}
+
+function getRetryDelayMs(retries: ClickHouseRetryOptions | undefined): number {
+  if (!retries) {
+    return 0;
+  }
+
+  if (!Number.isFinite(retries.delayMs) || retries.delayMs < 0) {
+    throw new Error("Retry delayMs must be a non-negative finite number.");
+  }
+
+  return retries.delayMs;
+}
+
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }

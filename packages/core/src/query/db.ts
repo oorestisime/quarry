@@ -1,6 +1,6 @@
 import type { CteNode } from "../ast/query";
 import { createEmptyInsertQueryNode, createEmptySelectQueryNode } from "../ast/query";
-import type { ClickHouseClient } from "../client";
+import type { ClickHouseClient, ClickHouseRetryOptions } from "../client";
 import type {
   DatabaseSchema,
   InferResult,
@@ -17,12 +17,14 @@ import type { ScopeFromSourceExpression, SourceExpression } from "./types";
 
 export interface CreateClickHouseDBOptions {
   client?: ClickHouseClient;
+  retries?: ClickHouseRetryOptions;
 }
 
 export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSchema = DB> {
   constructor(
     private readonly client?: ClickHouseClient,
     private readonly withs: CteNode[] = [],
+    private readonly retries?: ClickHouseRetryOptions,
   ) {}
 
   table<Table extends TableName<DB>>(table: Table): TableSourceBuilder<DB, Table> {
@@ -43,12 +45,13 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
   ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>> {
     const query =
       typeof callbackOrQuery === "function"
-        ? callbackOrQuery(new ClickHouseDB<DB, Sources>(this.client, []))
+        ? callbackOrQuery(new ClickHouseDB<DB, Sources>(this.client, [], this.retries))
         : callbackOrQuery;
 
     return new ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>>(
       this.client,
       [...this.withs, { name, query: query.toAST() }],
+      this.retries,
     );
   }
 
@@ -63,7 +66,7 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
       ? { [resolvedSource.alias]: resolvedSource.columns }
       : undefined;
 
-    return new SelectQueryBuilder(node, this.client, scopeColumns, {});
+    return new SelectQueryBuilder(node, this.client, scopeColumns, {}, this.retries);
   }
 
   insertInto<Table extends InsertableSourceName<DB>>(
@@ -75,7 +78,8 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
 
 export function createClickHouseDB<DB extends DatabaseSchema>(options?: {
   client?: ClickHouseClient;
+  retries?: ClickHouseRetryOptions;
 }): ClickHouseDB<DB>;
 export function createClickHouseDB<DB extends DatabaseSchema>(options?: CreateClickHouseDBOptions) {
-  return new ClickHouseDB<DB>(options?.client);
+  return new ClickHouseDB<DB>(options?.client, [], options?.retries);
 }
