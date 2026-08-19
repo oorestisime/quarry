@@ -5,7 +5,8 @@ description: GROUP BY, HAVING, ORDER BY, LIMIT/OFFSET, and the rules around sele
 
 This page is about the **clauses** you use when aggregating. For the list of
 aggregate **functions** themselves (`count`, `sum`, `avg`, `min`, `max`,
-`uniq`, `groupArray`, the `-If` combinators, ...) see the
+`argMin`, `argMax`, `quantile`, `uniq`, `groupArray`, the `-If` combinators,
+...) see the
 [`ExpressionBuilder` reference](/docs/reference/expressions#aggregates) and
 the [Aggregates and the `-If` combinator](/docs/guides/expressions-and-functions#aggregates-and-the--if-combinator)
 section of the expressions guide.
@@ -41,6 +42,43 @@ const rows = await db
   .limit(50)
   .offset(100)
   .execute();
+```
+
+Use `LIMIT BY` when the cap applies independently to each key, then add a
+normal `LIMIT` if you also need to cap the complete result:
+
+```ts
+const rows = await db
+  .selectFrom("event_logs as e")
+  .select("e.user_id", "e.event_type", "e.created_at")
+  .orderBy("e.created_at", "desc")
+  .limitBy(3, "e.user_id")
+  .limit(100)
+  .execute();
+```
+
+## Totals
+
+`WITH TOTALS` returns a separate aggregate row. Use `executeWithTotals()` so
+that row is not lost by the line-oriented `JSONEachRow` format:
+
+```ts
+const { rows, totals } = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.event_type", eb.fn.count().as("events")])
+  .groupBy("e.event_type")
+  .withTotals()
+  .executeWithTotals();
+```
+
+For first/last values and percentiles, use the typed aggregate helpers:
+
+```ts
+db.selectFrom("event_logs as e").selectExpr((eb) => [
+  eb.fn.argMin("e.event_type", "e.created_at").as("first_event"),
+  eb.fn.argMax("e.event_type", "e.created_at").as("last_event"),
+  eb.fn.quantile(0.95, "e.duration_ms").as("duration_p95"),
+]);
 ```
 
 ## `selectAll()` rules

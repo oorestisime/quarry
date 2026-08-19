@@ -30,6 +30,37 @@ export default function HomePage() {
             API reference
           </Link>
         </div>
+        <div className="mt-10 w-full max-w-2xl text-left rounded-xl border border-fd-border bg-fd-card overflow-hidden">
+          <div className="px-4 py-2 border-b border-fd-border text-xs text-fd-muted-foreground">
+            Install and query
+          </div>
+          <pre className="p-4 overflow-x-auto text-sm leading-relaxed">
+            <code>{`pnpm add @oorestisime/quarry @clickhouse/client
+
+const rows = await db
+  .selectFrom("events as e")
+  .selectExpr((eb) => ["e.user_id", eb.fn.count().as("events")])
+  .groupBy("e.user_id")
+  .execute();`}</code>
+          </pre>
+        </div>
+      </section>
+
+      <section className="px-6 pb-20">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+          <ValueCard
+            title="Native parameters"
+            description="Values compile to ClickHouse query_params instead of being interpolated into SQL."
+          />
+          <ValueCard
+            title="Runtime-honest types"
+            description="UInt64, Decimal, nullable values, and aggregates are typed as the driver returns them."
+          />
+          <ValueCard
+            title="Just a query builder"
+            description="No ORM, migrations, entities, or generic SQL dialect hiding ClickHouse semantics."
+          />
+        </div>
       </section>
 
       {/* Path grid */}
@@ -93,6 +124,15 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function ValueCard({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="rounded-xl border border-fd-border p-5">
+      <h2 className="font-semibold mb-2">{title}</h2>
+      <p className="text-sm leading-relaxed text-fd-muted-foreground">{description}</p>
+    </div>
   );
 }
 

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add typed `ARRAY JOIN` and `LEFT ARRAY JOIN`, including array-to-element result type refinement.
+- Add `LIMIT BY` with optional per-group offsets and expression callbacks.
+- Add `GROUP BY ... WITH TOTALS` with `executeWithTotals()` for separate typed rows and totals.
+- Add lazy `stream()` execution as an async iterable of decoded `JSONEachRow` results.
+- Add typed `argMin`, `argMax`, and parametric `quantile` aggregate helpers.
+
+### Changed
+
+- Refuse buffered or streaming `WITH TOTALS` execution when it would silently discard the separate totals result.
+- Expand the documentation with feature guides, a roadmap, corrected source links, site metadata, sitemap and robots routes, and cleaner search results.
+
 ## [0.8.0] - 2026-04-24
 
 ### Added

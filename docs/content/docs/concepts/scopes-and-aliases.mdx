@@ -48,7 +48,7 @@ db.selectFrom("event_logs")               // alias defaults to the table name
 ```
 
 The `as alias` is parsed by a tiny case-insensitive regex in
-[`parseTableExpression`](https://github.com/oorestisime/quarry/blob/main/src/query/helpers.ts).
+[`parseTableExpression`](https://github.com/oorestisime/quarry/blob/main/packages/core/src/query/helpers.ts).
 When the alias is omitted, the alias defaults to the table name (so
 `selectFrom("users")` puts `users` in scope).
 

@@ -1,0 +1,50 @@
+---
+title: Arrays and ARRAY JOIN
+description: Expand ClickHouse array columns into typed element rows with ARRAY JOIN and LEFT ARRAY JOIN.
+---
+
+ClickHouse's `ARRAY JOIN` turns each array element into a row. Quarry carries
+that transformation into TypeScript: after joining `string[]`, selecting that
+column produces `string`.
+
+```ts
+const rows = await db
+  .selectFrom("events as e")
+  .arrayJoin("e.tags")
+  .select("e.id", "e.tags")
+  .orderBy("e.id", "asc")
+  .execute();
+// Array<{ id: number; tags: string }>
+```
+
+An ordinary `ARRAY JOIN` removes a source row when the array is empty. Use
+`leftArrayJoin` to preserve it; ClickHouse supplies the element type's default
+value, such as `""` for `String` or `0` for a number.
+
+```ts
+const rows = await db
+  .selectFrom("events as e")
+  .leftArrayJoin("e.tags")
+  .select("e.id", "e.tags")
+  .execute();
+```
+
+## Builder order and multiple arrays
+
+Call `arrayJoin` or `leftArrayJoin` before selecting columns. The SQL clause is
+still emitted in ClickHouse's correct position after `FROM`; the builder-order
+rule exists so Quarry can change the column's type before inferring output.
+
+You can chain joins when expanding nested or independent arrays:
+
+```ts
+db
+  .selectFrom("events as e")
+  .arrayJoin("e.nested_tags")
+  .arrayJoin("e.nested_tags")
+  .select("e.id", "e.nested_tags");
+```
+
+The second call is accepted only when the first element is itself an array.
+Joining independent arrays produces ClickHouse's usual row multiplication, so
+consider whether the arrays are aligned before chaining them.

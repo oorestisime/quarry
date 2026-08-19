@@ -112,8 +112,9 @@ This package is still in the early alpha stage. The current API is already valid
 
 - typed selects and inserts, including `INSERT INTO ... SELECT`
 - joins, subqueries, and CTEs
-- `FINAL`, `PREWHERE`, `GROUP BY`, and `HAVING`
-- `toSQL()` and `execute()`
+- `FINAL`, `PREWHERE`, `ARRAY JOIN`, `GROUP BY WITH TOTALS`, and `LIMIT BY`
+- typed `argMin`, `argMax`, and `quantile` aggregate helpers
+- `toSQL()`, buffered execution, totals-aware execution, and streaming
 
 See the [docs site](https://ch-quarry.vercel.app) for the full supported API, runtime semantics, and concept guides.
 

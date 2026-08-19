@@ -200,9 +200,9 @@ Every aggregate returns an `Expression<T>` where `T` follows the
 [runtime-honest typing](/docs/concepts/runtime-semantics) rules: 64-bit
 integer results (`count`, `uniq`, `sum` of `UInt64`) come back as `string`;
 `avg` always returns `number` because ClickHouse produces `Float64` for it;
-`min` / `max` / `any` / `anyLast` preserve the input type; `groupArray`
+`min` / `max` / `any` / `anyLast` / `argMin` / `argMax` preserve the input type; `groupArray`
 preserves the input type except that `NULL` elements are dropped from nullable
-inputs.
+inputs. `quantile` returns `number`.
 
 #### Count and numeric
 
@@ -217,6 +217,7 @@ inputs.
 | `eb.fn.avgIf(value, condition)`     | `Expression<number>`             | Average over rows where `condition` is truthy.                    |
 | `eb.fn.min(value)`                  | `Expression<T>`                  | Minimum. Return type matches the input column type.               |
 | `eb.fn.max(value)`                  | `Expression<T>`                  | Maximum. Return type matches the input column type.               |
+| `eb.fn.quantile(level, value)`      | `Expression<number>`             | Approximate quantile. `level` must be between `0` and `1`.         |
 
 #### Distinct
 
@@ -233,6 +234,8 @@ inputs.
 | `eb.fn.groupArray(value)` | `Expression<T[]>`    | Collects all values in the group into an array. For nullable inputs, `NULL` values are dropped, so `Nullable(T)` becomes `T[]`. |
 | `eb.fn.any(value)`        | `Expression<T>`      | Returns any value from the group. Nondeterministic which one.         |
 | `eb.fn.anyLast(value)`    | `Expression<T>`      | Returns the last value seen in the group in insertion order.          |
+| `eb.fn.argMin(value, by)` | `Expression<T>`      | Returns `value` from the row where `by` is smallest.                  |
+| `eb.fn.argMax(value, by)` | `Expression<T>`      | Returns `value` from the row where `by` is largest.                   |
 
 #### Example: combining aggregates
 

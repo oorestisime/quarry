@@ -1,0 +1,28 @@
+---
+title: Roadmap
+description: The current direction for Quarry and the boundaries that keep it focused.
+---
+
+Quarry grows from real ClickHouse queries rather than aiming to cover every
+SQL production up front. The current release adds `ARRAY JOIN`, `LIMIT BY`,
+`WITH TOTALS`, streaming results, and typed `argMin`, `argMax`, and `quantile`
+helpers.
+
+## Likely next areas
+
+- More ClickHouse join variants when real query cases justify their type rules.
+- Additional high-use functions and aggregate combinators.
+- Better diagnostics when a clause combination is valid SQL but surprising at
+  runtime.
+- Continued improvements to introspection and generated column metadata.
+
+## Intentionally deferred
+
+- `UNION ALL` and `UNION DISTINCT`: useful, but typed output reconciliation and
+  parameter merging deserve a design based on real use cases.
+- A semantic layer, ORM entities, migrations, or a hosted query service.
+- Exhaustive compatibility with generic SQL dialects.
+
+If a missing feature blocks a production query, open an issue with the SQL
+shape and expected result type. Concrete examples are the strongest roadmap
+input.

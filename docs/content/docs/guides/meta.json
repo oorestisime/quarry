@@ -7,6 +7,7 @@
     "introspection",
     "expressions-and-functions",
     "joins",
+    "arrays-and-array-join",
     "ctes-and-subqueries",
     "aggregations",
     "inserts",

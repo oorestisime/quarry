@@ -27,7 +27,7 @@ For the runtime type story (UInt64 → string, etc.), see
 | `FULL OUTER JOIN`           | ❌ | Not yet |
 | `CROSS JOIN`                | ❌ | Not yet |
 | `ASOF JOIN`                 | ❌ | Not yet |
-| `ARRAY JOIN`                | ❌ | Not yet |
+| `ARRAY JOIN` / `LEFT ARRAY JOIN` | ✅ | Typed array columns become their element type; call before selecting |
 | Multi-condition joins       | ✅ | Via the callback form: `innerJoin(source, (eb) => eb.and([...]))` |
 | Subquery as source          | ✅ | `.as("alias")` on a select builder |
 | Subquery in `IN` predicate  | ✅ | `where("col", "in", subquery)` |
@@ -41,9 +41,10 @@ For the runtime type story (UInt64 → string, etc.), see
 | `ORDER BY`                  | ✅ | Accepts both real columns and aliases from `selectExpr` |
 | `LIMIT n`                   | ✅ | Validates non-negative integer |
 | `OFFSET n`                  | ✅ | Validates non-negative integer |
-| `LIMIT n BY col`            | ❌ | Not yet |
+| `LIMIT n BY col`            | ✅ | `.limitBy(n, ...expressions)`, including per-group offset |
 | `LIMIT n WITH TIES`         | ❌ | Not yet |
 | `SETTINGS k = v`            | ✅ | Query-level, merges across calls |
+| `GROUP BY ... WITH TOTALS`  | ✅ | `.withTotals().executeWithTotals()` returns rows and totals separately |
 | `SAMPLE`                    | ❌ | Not yet |
 | `UNION ALL` / `UNION DISTINCT` | ❌ | Not yet |
 | `INTERSECT` / `EXCEPT`      | ❌ | Not yet |
@@ -201,7 +202,7 @@ retry inserts, commands, or ordinary query errors.
 
 ### Result types come from `JSONEachRow`
 
-`execute()` calls the driver with `format: "JSONEachRow"`, which means the
+`execute()` and `stream()` call the driver with `format: "JSONEachRow"`, which means the
 runtime type of every column is whatever `@clickhouse/client` produces under
 that format. That is why `UInt64` and `count()` come back as `string`,
 `DateTime64` comes back as `string`, and `Decimal` comes back as `number`.
@@ -212,7 +213,9 @@ exact decimal value correctly.
 
 If you fetch the same query through a different format, the runtime types
 will be different and Quarry's typed result will lie. The library is built
-around `JSONEachRow` and that is the only format it currently supports.
+around `JSONEachRow`. The one deliberate exception is `executeWithTotals()`,
+which uses ClickHouse's `JSON` document format so it can return the separate
+`totals` object alongside `data`.
 
 ### Value inserts use `JSONEachRow`
 

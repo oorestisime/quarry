@@ -42,9 +42,9 @@ for the details.
 ### 2. AST
 
 The AST is a plain TypeScript data structure. No methods, no inheritance,
-just nested interfaces. The whole thing lives in
-[`src/ast/query.ts`](https://github.com/oorestisime/quarry/blob/main/src/ast/query.ts)
-and is around 130 lines.
+just nested interfaces. It lives in
+[`packages/core/src/ast/query.ts`](https://github.com/oorestisime/quarry/blob/main/packages/core/src/ast/query.ts)
+and remains small enough to read end-to-end.
 
 The top-level node for a select query looks like this:
 
@@ -92,8 +92,8 @@ conditions onto whatever was there before.
 ### 3. Compiler
 
 The compiler is a single pass that walks a `SelectQueryNode` and produces a
-SQL string plus a parameter map. The whole thing is around 210 lines in
-[`src/compiler/query-compiler.ts`](https://github.com/oorestisime/quarry/blob/main/src/compiler/query-compiler.ts).
+SQL string plus a parameter map. It lives in
+[`packages/core/src/compiler/query-compiler.ts`](https://github.com/oorestisime/quarry/blob/main/packages/core/src/compiler/query-compiler.ts).
 
 The two important pieces:
 
@@ -143,7 +143,7 @@ channel.
 
 When you write `where("col", "=", value)` and the value is not wrapped in
 `param(...)`, Quarry has to choose a ClickHouse type for the placeholder.
-The rules in [`inferClickHouseType`](https://github.com/oorestisime/quarry/blob/main/src/compiler/query-compiler.ts)
+The rules in [`inferClickHouseType`](https://github.com/oorestisime/quarry/blob/main/packages/core/src/compiler/query-compiler.ts)
 are intentionally simple:
 
 | JS value | ClickHouse type |
@@ -185,13 +185,13 @@ query string.
 If you want to understand any of this in more depth, the relevant files are
 small enough to read end-to-end:
 
-- [`src/ast/query.ts`](https://github.com/oorestisime/quarry/blob/main/src/ast/query.ts)
-  &mdash; ~130 lines, the AST node definitions
-- [`src/compiler/query-compiler.ts`](https://github.com/oorestisime/quarry/blob/main/src/compiler/query-compiler.ts)
-  &mdash; ~210 lines, the compiler
-- [`src/query/select-query-builder.ts`](https://github.com/oorestisime/quarry/blob/main/src/query/select-query-builder.ts)
-  &mdash; ~850 lines, the select builder (most of it is type-overload bodies)
-- [`src/query/expression-builder.ts`](https://github.com/oorestisime/quarry/blob/main/src/query/expression-builder.ts)
-  &mdash; ~800 lines, the expression builder (mostly typed `eb.fn.*` surface area)
+- [`packages/core/src/ast/query.ts`](https://github.com/oorestisime/quarry/blob/main/packages/core/src/ast/query.ts)
+  &mdash; the AST node definitions
+- [`packages/core/src/compiler/query-compiler.ts`](https://github.com/oorestisime/quarry/blob/main/packages/core/src/compiler/query-compiler.ts)
+  &mdash; the compiler
+- [`packages/core/src/query/select-query-builder.ts`](https://github.com/oorestisime/quarry/blob/main/packages/core/src/query/select-query-builder.ts)
+  &mdash; the select builder (most of it is type-overload bodies)
+- [`packages/core/src/query/expression-builder.ts`](https://github.com/oorestisime/quarry/blob/main/packages/core/src/query/expression-builder.ts)
+  &mdash; the expression builder (mostly typed `eb.fn.*` surface area)
 
 Those four files are roughly 2000 lines together today.

@@ -312,7 +312,45 @@ db
   .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at"));
 ```
 
+### `withTotals()`
+
+Adds `WITH TOTALS` to `GROUP BY`. A grouped query is required. Because
+ClickHouse returns totals separately in the `JSON` response document, execute
+this query with [`executeWithTotals()`](#executewithtotalsoptions), not
+`execute()`.
+
+```ts
+const result = await db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.event_type", eb.fn.count().as("events")])
+  .groupBy("e.event_type")
+  .withTotals()
+  .executeWithTotals();
+
+result.rows;
+result.totals;
+```
+
 ## Joins
+
+### `arrayJoin(column)` / `leftArrayJoin(column)`
+
+Expands a typed array column into one row per element. `arrayJoin` removes rows
+whose array is empty; `leftArrayJoin` preserves them with ClickHouse's default
+element value.
+
+```ts
+const tags = await db
+  .selectFrom("events as e")
+  .arrayJoin("e.tags")
+  .select("e.id", "e.tags")
+  .execute();
+// e.tags is string here, not string[]
+```
+
+Call the array-join method before `select` or `selectExpr`. This lets Quarry
+change that column from `T[]` to `T` before it infers the result type. Multiple
+array joins can be chained, including joins over nested arrays.
 
 ### `innerJoin(source, leftRef, rightRef)`
 
@@ -398,6 +436,30 @@ Throws if `n` is not a non-negative integer. Compiles to `LIMIT n`.
 ### `offset(n)`
 
 Throws if `n` is not a non-negative integer. Compiles to `OFFSET n`.
+
+### `limitBy(limit, ...expressions)`
+
+Limits rows per distinct expression combination before the query-wide
+`limit(...)`. Pass `{ limit, offset }` instead of a number to skip rows inside
+each group.
+
+```ts
+db
+  .selectFrom("events as e")
+  .select("e.user_id", "e.event_type")
+  .orderBy("e.created_at", "desc")
+  .limitBy(2, "e.user_id")
+  .limit(100);
+
+db
+  .selectFrom("events as e")
+  .selectAll()
+  .limitBy({ limit: 2, offset: 1 }, "e.user_id");
+```
+
+Each expression is either a scoped column ref or an expression-builder
+callback. At least one is required, and both values must be non-negative
+integers.
 
 ## ClickHouse-specific clauses
 
@@ -520,6 +582,33 @@ failures.
 The same options shape is supported by `executeTakeFirst()` and
 `executeTakeFirstOrThrow()`.
 
+### `executeWithTotals(options?)`
+
+Runs a query configured with `withTotals()` using ClickHouse's `JSON` document
+format and returns `{ rows, totals }`. Both fields use the query's inferred
+output type. Calling this method without `withTotals()` throws; likewise,
+calling `execute()` on a totals query throws rather than silently dropping the
+separate totals object.
+
+### `stream(options?)`
+
+Returns an `AsyncIterable<Output>` backed by the driver's `JSONEachRow` stream.
+Rows are decoded and yielded chunk by chunk, so the full result is never held
+in memory.
+
+```ts
+for await (const event of db
+  .selectFrom("event_logs as e")
+  .select("e.user_id", "e.event_type")
+  .stream()) {
+  await processEvent(event);
+}
+```
+
+The initial driver `query()` call follows the configured retry policy. Errors
+after streaming has begun are not retried because doing so could yield duplicate
+rows. Streaming totals queries is not supported; use `executeWithTotals()`.
+
 ### `executeTakeFirst(options?)`
 
 Runs the query and returns the first row, or `undefined` if there were none.
@@ -553,7 +642,7 @@ for tooling and tests &mdash; you do not need it for normal use.
 
 ## Type parameters
 
-`SelectQueryBuilder<Sources, Scope, Output>` carries three parameters that
+`SelectQueryBuilder<Sources, Scope, Output, OutputColumns>` carries four parameters that
 encode the query's type-level state:
 
 | Parameter | What it represents |
@@ -561,6 +650,7 @@ encode the query's type-level state:
 | `Sources` | The full database schema (every table you might join). |
 | `Scope`   | The aliased sources currently in scope (driven by `selectFrom` and `join` calls). Used to type-check column references. |
 | `Output`  | The shape of one row in the result. Driven by `select`, `selectAll`, and `selectExpr`. |
+| `OutputColumns` | Internal ClickHouse column metadata retained when a query becomes a subquery. |
 
 You almost never write these by hand &mdash; they are inferred from the
 methods you call.
