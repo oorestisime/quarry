@@ -1,5 +1,6 @@
 import type { SelectQueryNode } from "../ast/query";
 import type { QueryColumn, QueryColumnMap } from "../column-metadata";
+import type { ColumnType } from "../db-types";
 import type { ClickHouseParam } from "../param";
 import type {
   DatabaseSchema,
@@ -174,6 +175,41 @@ export type EmptyableColumnRef<Scope extends ScopeMap> =
 
 export type ResolveArrayElementType<Scope extends ScopeMap, Ref extends ColumnRef<Scope>> =
   NonTupleArray<ResolveColumnType<Scope, Ref>> extends readonly (infer Item)[] ? Item : never;
+
+type ArrayElement<Value> = NonTupleArray<Value> extends readonly (infer Item)[] ? Item : never;
+
+type ArrayJoinedColumn<Column> =
+  Column extends QueryColumn<infer Select, infer Where>
+    ? QueryColumn<ArrayElement<Select>, ArrayElement<Where>>
+    : Column extends ColumnType<infer Select, infer Insert, infer Where>
+      ? ColumnType<ArrayElement<Select>, ArrayElement<Insert>, ArrayElement<Where>>
+      : ArrayElement<Column>;
+
+type IsArrayJoinTarget<
+  Ref extends string,
+  Alias extends string,
+  Column extends string,
+> = Ref extends `${infer RefAlias}.${infer RefColumn}`
+  ? RefAlias extends Alias
+    ? RefColumn extends Column
+      ? true
+      : false
+    : false
+  : Ref extends Column
+    ? true
+    : false;
+
+export type ArrayJoinedScope<Scope extends ScopeMap, Ref extends string> = Simplify<{
+  [Alias in keyof Scope]: {
+    [Column in keyof Scope[Alias]]: IsArrayJoinTarget<
+      Ref,
+      Extract<Alias, string>,
+      Extract<Column, string>
+    > extends true
+      ? ArrayJoinedColumn<Scope[Alias][Column]>
+      : Scope[Alias][Column];
+  };
+}>;
 
 type SelectionAlias<T extends string> = ParseSelectionExpression<T>["alias"];
 

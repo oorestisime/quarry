@@ -1,4 +1,10 @@
-import { createClickHouseDB, param, type ClickHouseClient, type InferResult } from "../src";
+import {
+  createClickHouseDB,
+  param,
+  type ClickHouseClient,
+  type ClickHouseTotalsResult,
+  type InferResult,
+} from "../src";
 
 interface TypecheckDB {
   event_logs: {
@@ -26,6 +32,7 @@ interface TypecheckDB {
     status: "pending" | "active" | "archived";
     nickname: string | null;
     tags: string[];
+    scores: number[];
     amount: number;
     created_at: string;
     location: [number, number];
@@ -713,6 +720,53 @@ db.selectFrom("typed_samples as t").selectExpr((eb) => {
   ];
 });
 
+const advancedAggregateQuery = db
+  .selectFrom("typed_samples as t")
+  .selectExpr((eb) => [
+    eb.fn.argMin("t.label", "t.created_at").as("first_label"),
+    eb.fn.argMax("t.label", "t.created_at").as("last_label"),
+    eb.fn.quantile(0.95, "t.amount").as("amount_p95"),
+  ]);
+type AdvancedAggregateRow = InferResult<typeof advancedAggregateQuery>;
+({ first_label: "alpha", last_label: "beta", amount_p95: 123.45 }) satisfies AdvancedAggregateRow;
+
+const arrayJoinQuery = db
+  .selectFrom("typed_samples as t")
+  .arrayJoin("t.tags")
+  .select("t.id", "t.tags");
+type ArrayJoinRow = InferResult<typeof arrayJoinQuery>;
+({ id: 1, tags: "trial" }) satisfies ArrayJoinRow;
+
+const leftArrayJoinQuery = db
+  .selectFrom("typed_samples as t")
+  .leftArrayJoin("t.tags")
+  .select("t.id", "t.tags");
+type LeftArrayJoinRow = InferResult<typeof leftArrayJoinQuery>;
+({ id: 2, tags: "" }) satisfies LeftArrayJoinRow;
+
+const multipleArrayJoinsQuery = db
+  .selectFrom("typed_samples as t")
+  .arrayJoin("t.tags")
+  .arrayJoin("t.scores")
+  .select("t.id", "t.tags", "t.scores");
+type MultipleArrayJoinsRow = InferResult<typeof multipleArrayJoinsQuery>;
+({ id: 1, tags: "trial", scores: 20 }) satisfies MultipleArrayJoinsRow;
+
+db.selectFrom("event_logs as e")
+  .select("e.user_id", "e.event_type")
+  .limitBy({ limit: 2, offset: 1 }, "e.event_type")
+  .limit(20);
+
+const totalsQuery = db
+  .selectFrom("event_logs as e")
+  .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
+  .groupBy("e.event_type")
+  .withTotals();
+const totalsResult: ClickHouseTotalsResult<{ event_type: string; event_count: string }> =
+  await totalsQuery.executeWithTotals();
+void totalsResult.rows;
+void totalsResult.totals;
+
 // @ts-expect-error invalid selection column
 db.selectFrom("event_logs as e").select("e.missing_column");
 
@@ -776,6 +830,18 @@ db.selectFrom("typed_samples").where("status", "=", "paused");
 
 // @ts-expect-error array helpers reject non-array columns
 db.selectFrom("typed_samples").selectExpr((eb) => [eb.fn.length("nickname").as("bad_length")]);
+
+// @ts-expect-error ARRAY JOIN rejects non-array columns
+db.selectFrom("typed_samples").arrayJoin("nickname");
+
+// @ts-expect-error ARRAY JOIN must be configured before selecting columns
+db.selectFrom("typed_samples").select("id").arrayJoin("tags");
+
+// @ts-expect-error invalid LIMIT BY column
+db.selectFrom("event_logs as e").select("e.user_id").limitBy(1, "e.missing");
+
+// @ts-expect-error quantile levels must be numeric
+db.selectFrom("typed_samples as t").selectExpr((eb) => [eb.fn.quantile("0.95", "t.amount")]);
 
 // @ts-expect-error array helpers reject tuple columns
 db.selectFrom("typed_samples").selectExpr((eb) => [eb.fn.empty("location").as("bad_empty")]);
@@ -868,5 +934,9 @@ rows.forEach((row) => {
 
 const results = await db.selectFrom("event_logs as e").select("e.event_type").execute();
 for (const result of results) {
+  console.log(result.event_type);
+}
+
+for await (const result of db.selectFrom("event_logs as e").select("e.event_type").stream()) {
   console.log(result.event_type);
 }

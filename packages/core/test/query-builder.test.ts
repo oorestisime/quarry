@@ -18,6 +18,7 @@ interface QueryBuilderTestDB {
     nickname: string | null;
     status: "pending" | "active" | "archived";
     tags: string[];
+    scores: number[];
     amount: number;
     created_at: string;
   };
@@ -52,6 +53,253 @@ describe("query builder validation", () => {
     expect(() => db.selectFrom("event_logs").selectAll().offset(3.7)).toThrow(
       "OFFSET must be a non-negative integer.",
     );
+  });
+
+  it("compiles LIMIT BY with columns, expressions, and an optional offset", () => {
+    const query = db
+      .selectFrom("event_logs as e")
+      .select("e.user_id", "e.event_type")
+      .orderBy("e.user_id", "asc")
+      .limitBy({ limit: 2, offset: 1 }, "e.event_type", (eb) => eb.ref("e.user_id"))
+      .limit(10)
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT e.user_id, e.event_type FROM event_logs AS e ORDER BY e.user_id ASC LIMIT 1, 2 BY e.event_type, e.user_id LIMIT 10",
+    );
+    expect(query.params).toEqual({});
+  });
+
+  it("validates LIMIT BY inputs", () => {
+    expect(() => db.selectFrom("event_logs").selectAll().limitBy(-1, "event_type")).toThrow(
+      "LIMIT BY must be a non-negative integer.",
+    );
+    expect(() =>
+      db.selectFrom("event_logs").selectAll().limitBy({ limit: 1, offset: -1 }, "event_type"),
+    ).toThrow("LIMIT BY OFFSET must be a non-negative integer.");
+    expect(() => db.selectFrom("event_logs").selectAll().limitBy(1)).toThrow(
+      "LIMIT BY requires at least one expression.",
+    );
+  });
+
+  it("compiles GROUP BY WITH TOTALS and requires GROUP BY", () => {
+    const query = db
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
+      .groupBy("e.event_type")
+      .withTotals()
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT e.event_type, count() AS event_count FROM event_logs AS e GROUP BY e.event_type WITH TOTALS",
+    );
+    expect(() => db.selectFrom("event_logs").selectAll().withTotals().toSQL()).toThrow(
+      "WITH TOTALS requires a GROUP BY clause.",
+    );
+  });
+
+  it("executes WITH TOTALS through the JSON document format", async () => {
+    const json = vi.fn().mockResolvedValue({
+      data: [{ event_type: "signup", event_count: "2" }],
+      totals: { event_type: "", event_count: "4" },
+    });
+    const queryClient = {
+      query: vi.fn().mockResolvedValue({ json }),
+    };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+    const query = dbWithClient
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
+      .groupBy("e.event_type")
+      .withTotals();
+
+    await expect(query.executeWithTotals()).resolves.toEqual({
+      rows: [{ event_type: "signup", event_count: "2" }],
+      totals: { event_type: "", event_count: "4" },
+    });
+    expect(queryClient.query).toHaveBeenCalledWith({
+      query:
+        "SELECT e.event_type, count() AS event_count FROM event_logs AS e GROUP BY e.event_type WITH TOTALS",
+      query_params: {},
+      format: "JSON",
+    });
+    await expect(query.execute()).rejects.toThrow(
+      "Use executeWithTotals() to read a query configured with WITH TOTALS.",
+    );
+  });
+
+  it("forwards execution options and retries WITH TOTALS queries", async () => {
+    const json = vi.fn().mockResolvedValue({
+      data: [{ event_type: "signup", event_count: "2" }],
+      totals: { event_type: "", event_count: "2" },
+    });
+    const queryClient = {
+      query: vi.fn().mockRejectedValueOnce(new Error("socket hang up")).mockResolvedValue({ json }),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: { attempts: 2, delayMs: 0 },
+    });
+
+    const result = await dbWithRetries
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
+      .groupBy("e.event_type")
+      .withTotals()
+      .executeWithTotals({
+        queryId: "totals-query-id",
+        clickhouse_settings: { max_threads: 1 },
+      });
+
+    expect(result.totals).toEqual({ event_type: "", event_count: "2" });
+    expect(queryClient.query).toHaveBeenCalledTimes(2);
+    expect(queryClient.query).toHaveBeenNthCalledWith(2, {
+      query:
+        "SELECT e.event_type, count() AS event_count FROM event_logs AS e GROUP BY e.event_type WITH TOTALS",
+      query_params: {},
+      format: "JSON",
+      query_id: "totals-query-id",
+      clickhouse_settings: { max_threads: 1 },
+    });
+  });
+
+  it("requires withTotals() before executeWithTotals()", async () => {
+    const queryClient = { query: vi.fn() };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+
+    await expect(
+      dbWithClient.selectFrom("event_logs").selectAll().executeWithTotals(),
+    ).rejects.toThrow("executeWithTotals() requires withTotals() on the query.");
+    expect(queryClient.query).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing ClickHouse totals object", async () => {
+    const queryClient = {
+      query: vi.fn().mockResolvedValue({ json: vi.fn().mockResolvedValue({ data: [] }) }),
+    };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+    const query = dbWithClient
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
+      .groupBy("e.event_type")
+      .withTotals();
+
+    await expect(query.executeWithTotals()).rejects.toThrow(
+      "ClickHouse did not return a totals row.",
+    );
+  });
+
+  it("rejects streaming WITH TOTALS queries", async () => {
+    const queryClient = { query: vi.fn() };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+    const query = dbWithClient
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
+      .groupBy("e.event_type")
+      .withTotals();
+
+    await expect(async () => {
+      for await (const _row of query.stream()) {
+        // Consume the iterator so setup errors surface.
+      }
+    }).rejects.toThrow("Streaming WITH TOTALS queries is not supported; use executeWithTotals().");
+    expect(queryClient.query).not.toHaveBeenCalled();
+  });
+
+  it("compiles ARRAY JOIN and LEFT ARRAY JOIN", () => {
+    const arrayQuery = db
+      .selectFrom("typed_samples as t")
+      .arrayJoin("t.tags")
+      .select("t.id", "t.tags")
+      .toSQL();
+    const leftArrayQuery = db
+      .selectFrom("typed_samples as t")
+      .leftArrayJoin("t.tags")
+      .select("t.id", "t.tags")
+      .toSQL();
+    const unqualifiedArrayQuery = db
+      .selectFrom("typed_samples")
+      .arrayJoin("tags")
+      .select("id", "tags")
+      .toSQL();
+
+    expect(arrayQuery.query).toBe(
+      "SELECT t.id, t.tags AS tags FROM typed_samples AS t ARRAY JOIN t.tags",
+    );
+    expect(leftArrayQuery.query).toBe(
+      "SELECT t.id, t.tags AS tags FROM typed_samples AS t LEFT ARRAY JOIN t.tags",
+    );
+    expect(unqualifiedArrayQuery.query).toBe(
+      "SELECT id, tags AS tags FROM typed_samples ARRAY JOIN tags",
+    );
+  });
+
+  it("compiles multiple ARRAY JOIN clauses", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .arrayJoin("t.tags")
+      .arrayJoin("t.scores")
+      .select("t.id", "t.tags", "t.scores")
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT t.id, t.tags AS tags, t.scores AS scores FROM typed_samples AS t ARRAY JOIN t.tags ARRAY JOIN t.scores",
+    );
+  });
+
+  it("requires ARRAY JOIN before selecting columns", () => {
+    expect(() =>
+      (
+        db.selectFrom("typed_samples as t").select("t.id") as never as {
+          arrayJoin(column: string): unknown;
+        }
+      ).arrayJoin("t.tags"),
+    ).toThrow("ARRAY JOIN must be added before selecting columns.");
+  });
+
+  it("compiles argMin, argMax, and quantile aggregates", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn.argMin("t.label", "t.created_at").as("first_label"),
+        eb.fn.argMax("t.label", "t.created_at").as("last_label"),
+        eb.fn.quantile(0.95, "t.amount").as("amount_p95"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT argMin(t.label, t.created_at) AS first_label, argMax(t.label, t.created_at) AS last_label, quantile(0.95)(t.amount) AS amount_p95 FROM typed_samples AS t",
+    );
+  });
+
+  it("accepts quantile boundary levels", () => {
+    const query = db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn.quantile(0, "t.amount").as("amount_min"),
+        eb.fn.quantile(1, "t.amount").as("amount_max"),
+      ])
+      .toSQL();
+
+    expect(query.query).toBe(
+      "SELECT quantile(0)(t.amount) AS amount_min, quantile(1)(t.amount) AS amount_max FROM typed_samples AS t",
+    );
+  });
+
+  it("rejects invalid quantile levels", () => {
+    for (const level of [
+      -0.1,
+      1.1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]) {
+      expect(() =>
+        db
+          .selectFrom("typed_samples as t")
+          .selectExpr((eb) => [eb.fn.quantile(level, "t.amount").as("bad_quantile")]),
+      ).toThrow("quantile level must be a finite number between 0 and 1.");
+    }
   });
 
   it("gives a clearer final error for non-table sources", () => {
@@ -516,6 +764,89 @@ describe("query builder validation", () => {
         wait_end_of_query: true,
       },
     });
+  });
+
+  it("streams decoded rows without buffering the full result", async () => {
+    const stream = vi.fn().mockImplementation(async function* () {
+      yield [
+        { json: () => ({ user_id: 1, event_type: "signup" }) },
+        { json: () => ({ user_id: 2, event_type: "purchase" }) },
+      ];
+      yield [{ json: () => ({ user_id: 3, event_type: "browse" }) }];
+    });
+    const queryClient = {
+      query: vi.fn().mockResolvedValue({ json: vi.fn(), stream }),
+    };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+    const rows = [];
+
+    for await (const row of dbWithClient
+      .selectFrom("event_logs")
+      .select("user_id", "event_type")
+      .stream()) {
+      rows.push(row);
+    }
+
+    expect(rows).toEqual([
+      { user_id: 1, event_type: "signup" },
+      { user_id: 2, event_type: "purchase" },
+      { user_id: 3, event_type: "browse" },
+    ]);
+    expect(queryClient.query).toHaveBeenCalledWith({
+      query: "SELECT user_id, event_type FROM event_logs",
+      query_params: {},
+      format: "JSONEachRow",
+    });
+  });
+
+  it("forwards execution options and retries streaming queries", async () => {
+    const resultStream = vi.fn().mockImplementation(async function* () {
+      yield [{ json: () => ({ user_id: 1, event_type: "signup" }) }];
+    });
+    const queryClient = {
+      query: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("socket hang up"))
+        .mockResolvedValue({ json: vi.fn(), stream: resultStream }),
+    };
+    const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
+      client: queryClient,
+      retries: { attempts: 2, delayMs: 0 },
+    });
+    const rows = [];
+
+    for await (const row of dbWithRetries
+      .selectFrom("event_logs")
+      .select("user_id", "event_type")
+      .stream({
+        queryId: "stream-query-id",
+        clickhouse_settings: { max_threads: 1 },
+      })) {
+      rows.push(row);
+    }
+
+    expect(rows).toEqual([{ user_id: 1, event_type: "signup" }]);
+    expect(queryClient.query).toHaveBeenCalledTimes(2);
+    expect(queryClient.query).toHaveBeenNthCalledWith(2, {
+      query: "SELECT user_id, event_type FROM event_logs",
+      query_params: {},
+      format: "JSONEachRow",
+      query_id: "stream-query-id",
+      clickhouse_settings: { max_threads: 1 },
+    });
+  });
+
+  it("reports clients that do not expose result streaming", async () => {
+    const queryClient = {
+      query: vi.fn().mockResolvedValue({ json: vi.fn() }),
+    };
+    const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+
+    await expect(async () => {
+      for await (const _row of dbWithClient.selectFrom("event_logs").selectAll().stream()) {
+        // Consume the iterator so setup errors surface.
+      }
+    }).rejects.toThrow("The configured ClickHouse client does not support streaming results.");
   });
 
   it("retries select execution with the configured DB-level retry options", async () => {

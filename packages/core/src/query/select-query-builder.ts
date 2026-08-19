@@ -21,6 +21,8 @@ import {
 import { AliasedQuery } from "./source-builder";
 import type {
   AllScopeSelectionColumns,
+  ArrayColumnRef,
+  ArrayJoinedScope,
   ColumnRef,
   ExpressionPredicateValue,
   GroupByExpression,
@@ -90,8 +92,20 @@ function parseSelectionParts(selection: string): { expr: string; alias?: string 
 export interface ExecutableQuery<Output> {
   toSQL(): CompiledQuery;
   execute(options?: ClickHouseExecutionOptions): Promise<Output[]>;
+  executeWithTotals(options?: ClickHouseExecutionOptions): Promise<ClickHouseTotalsResult<Output>>;
+  stream(options?: ClickHouseExecutionOptions): AsyncIterable<Output>;
   executeTakeFirst(options?: ClickHouseExecutionOptions): Promise<Output | undefined>;
   executeTakeFirstOrThrow(options?: ClickHouseExecutionOptions): Promise<Output>;
+}
+
+export interface ClickHouseTotalsResult<Output> {
+  rows: Output[];
+  totals: Output;
+}
+
+export interface LimitByOptions {
+  limit: number;
+  offset?: number;
 }
 
 function parseSelectionString(selection: string): SelectionNode {
@@ -304,7 +318,17 @@ export class SelectQueryBuilder<
               };
             }
 
-            return parseSelectionString(selection);
+            const parsed = parseSelectionString(selection);
+            const isArrayJoinedRef = this.node.arrayJoins.some(
+              (arrayJoin) =>
+                parsed.expr.kind === "ref" &&
+                arrayJoin.expr.kind === "ref" &&
+                arrayJoin.expr.name === parsed.expr.name,
+            );
+
+            return isArrayJoinedRef && !parsed.alias && parsed.expr.kind === "ref"
+              ? { ...parsed, alias: parsed.expr.name.split(".").at(-1) }
+              : parsed;
           }),
         ],
       },
@@ -621,6 +645,13 @@ export class SelectQueryBuilder<
     });
   }
 
+  withTotals(): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
+    return this.next({
+      ...this.node,
+      withTotals: true,
+    });
+  }
+
   private addPredicate(
     key: "where" | "prewhere",
     input: ColumnRef<Scope> | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>),
@@ -873,6 +904,76 @@ export class SelectQueryBuilder<
     });
   }
 
+  limitBy<const Expressions extends readonly GroupByExpression<Scope>[]>(
+    limitOrOptions: number | LimitByOptions,
+    ...expressions: Expressions
+  ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
+    if (expressions.length === 0) {
+      throw new Error("LIMIT BY requires at least one expression.");
+    }
+
+    const options = typeof limitOrOptions === "number" ? { limit: limitOrOptions } : limitOrOptions;
+    assertValidPaginationValue("LIMIT BY", options.limit);
+    if (options.offset !== undefined) {
+      assertValidPaginationValue("LIMIT BY OFFSET", options.offset);
+    }
+
+    return this.next({
+      ...this.node,
+      limitBy: {
+        limit: options.limit,
+        ...(options.offset === undefined ? {} : { offset: options.offset }),
+        expressions: expressions.map((expression) =>
+          typeof expression === "function"
+            ? expression(this.eb()).node
+            : ({ kind: "ref", name: expression } satisfies RefNode),
+        ),
+      },
+    });
+  }
+
+  arrayJoin<Ref extends ArrayColumnRef<Scope>>(
+    this: keyof Output extends never
+      ? SelectQueryBuilder<Sources, Scope, Output, OutputColumns>
+      : never,
+    column: Ref,
+  ): SelectQueryBuilder<Sources, ArrayJoinedScope<Scope, Ref>, {}, {}> {
+    return this.addArrayJoin("ARRAY", column);
+  }
+
+  leftArrayJoin<Ref extends ArrayColumnRef<Scope>>(
+    this: keyof Output extends never
+      ? SelectQueryBuilder<Sources, Scope, Output, OutputColumns>
+      : never,
+    column: Ref,
+  ): SelectQueryBuilder<Sources, ArrayJoinedScope<Scope, Ref>, {}, {}> {
+    return this.addArrayJoin("LEFT ARRAY", column);
+  }
+
+  private addArrayJoin<Ref extends string>(
+    kind: "ARRAY" | "LEFT ARRAY",
+    column: Ref,
+  ): SelectQueryBuilder<Sources, ArrayJoinedScope<Scope, Ref>, {}, {}> {
+    if (this.node.selections.length > 0) {
+      throw new Error("ARRAY JOIN must be added before selecting columns.");
+    }
+
+    return this.next<ArrayJoinedScope<Scope, Ref>, {}, {}>(
+      {
+        ...this.node,
+        arrayJoins: [
+          ...this.node.arrayJoins,
+          {
+            kind,
+            expr: { kind: "ref", name: column },
+          },
+        ],
+      },
+      unwrapArrayJoinScopeColumn(this.scopeColumns, column),
+      {},
+    );
+  }
+
   limit(limit: number): SelectQueryBuilder<Sources, Scope, Output, OutputColumns> {
     assertValidPaginationValue("LIMIT", limit);
 
@@ -934,6 +1035,10 @@ export class SelectQueryBuilder<
   }
 
   async execute(options?: ClickHouseExecutionOptions): Promise<Output[]> {
+    if (this.node.withTotals) {
+      throw new Error("Use executeWithTotals() to read a query configured with WITH TOTALS.");
+    }
+
     const resolvedClient = this.getClient(options?.client);
     const compiled = this.toSQL();
 
@@ -947,6 +1052,69 @@ export class SelectQueryBuilder<
 
       return result.json<Output>();
     });
+  }
+
+  async executeWithTotals(
+    options?: ClickHouseExecutionOptions,
+  ): Promise<ClickHouseTotalsResult<Output>> {
+    if (!this.node.withTotals) {
+      throw new Error("executeWithTotals() requires withTotals() on the query.");
+    }
+
+    const resolvedClient = this.getClient(options?.client);
+    const compiled = this.toSQL();
+    // ClickHouseClient intentionally models Quarry's default JSONEachRow query shape.
+    // WITH TOTALS needs the driver's JSON document format for its separate totals field.
+    const queryJSON = resolvedClient.query.bind(resolvedClient) as unknown as (
+      params: ReturnType<typeof toClickHouseExecutionParams> & {
+        query: string;
+        query_params: Record<string, unknown>;
+        format: "JSON";
+      },
+    ) => Promise<ClickHouseJSONQueryResult>;
+
+    return executeWithRetries(this.retries, async () => {
+      const result = await queryJSON({
+        query: compiled.query,
+        query_params: compiled.params,
+        format: "JSON",
+        ...toClickHouseExecutionParams(options ?? {}),
+      });
+      const response = await result.json<Output>();
+
+      if (response.totals === undefined) {
+        throw new Error("ClickHouse did not return a totals row.");
+      }
+
+      return { rows: response.data, totals: response.totals };
+    });
+  }
+
+  async *stream(options?: ClickHouseExecutionOptions): AsyncIterableIterator<Output> {
+    if (this.node.withTotals) {
+      throw new Error("Streaming WITH TOTALS queries is not supported; use executeWithTotals().");
+    }
+
+    const resolvedClient = this.getClient(options?.client);
+    const compiled = this.toSQL();
+    const result = await executeWithRetries(this.retries, () =>
+      resolvedClient.query({
+        query: compiled.query,
+        query_params: compiled.params,
+        format: "JSONEachRow",
+        ...toClickHouseExecutionParams(options ?? {}),
+      }),
+    );
+
+    if (typeof result.stream !== "function") {
+      throw new Error("The configured ClickHouse client does not support streaming results.");
+    }
+
+    for await (const chunk of result.stream<Output>()) {
+      for (const row of chunk) {
+        yield row.json();
+      }
+    }
   }
 
   async executeTakeFirst(options?: ClickHouseExecutionOptions): Promise<Output | undefined> {
@@ -969,10 +1137,36 @@ export class SelectQueryBuilder<
   }
 }
 
-function assertValidPaginationValue(kind: "LIMIT" | "OFFSET", value: number): void {
+interface ClickHouseJSONQueryResult {
+  json<T>(): Promise<{ data: T[]; totals?: T }>;
+}
+
+function assertValidPaginationValue(
+  kind: "LIMIT" | "OFFSET" | "LIMIT BY" | "LIMIT BY OFFSET",
+  value: number,
+): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${kind} must be a non-negative integer.`);
   }
+}
+
+function unwrapArrayJoinScopeColumn(scopeColumns: ScopeColumnMap, ref: string): ScopeColumnMap {
+  const nextScopeColumns = structuredClone(scopeColumns);
+  const [qualifiedAlias, qualifiedColumn] = ref.includes(".") ? ref.split(".") : [];
+  const alias = qualifiedAlias ?? Object.keys(nextScopeColumns)[0];
+  const column = qualifiedColumn ?? ref;
+  const metadata = alias ? nextScopeColumns[alias]?.[column] : undefined;
+
+  if (!metadata?.clickhouseType.startsWith("Array(") || !metadata.clickhouseType.endsWith(")")) {
+    return nextScopeColumns;
+  }
+
+  nextScopeColumns[alias][column] = {
+    ...metadata,
+    clickhouseType: metadata.clickhouseType.slice("Array(".length, -1),
+  };
+
+  return nextScopeColumns;
 }
 
 async function executeWithRetries<T>(

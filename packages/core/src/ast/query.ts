@@ -17,6 +17,7 @@ export interface RawNode {
 export interface FunctionNode {
   kind: "function";
   name: string;
+  parameters?: ExprNode[];
   args: ExprNode[];
 }
 
@@ -78,6 +79,17 @@ export interface OrderByNode {
   direction: "ASC" | "DESC";
 }
 
+export interface ArrayJoinNode {
+  kind: "ARRAY" | "LEFT ARRAY";
+  expr: ExprNode;
+}
+
+export interface LimitByNode {
+  limit: number;
+  offset?: number;
+  expressions: ExprNode[];
+}
+
 export interface CteNode {
   name: string;
   query: SelectQueryNode;
@@ -107,12 +119,15 @@ export interface SelectQueryNode {
   distinctOn: ExprNode[];
   from?: SourceNode;
   selections: SelectionNode[];
+  arrayJoins: ArrayJoinNode[];
   joins: JoinNode[];
   prewhere?: ExprNode;
   where?: ExprNode;
   having?: ExprNode;
   groupBy: ExprNode[];
+  withTotals: boolean;
   orderBy: OrderByNode[];
+  limitBy?: LimitByNode;
   limit?: number;
   offset?: number;
   settings: Record<string, string | number | boolean>;
@@ -124,8 +139,10 @@ export function createEmptySelectQueryNode(): SelectQueryNode {
     distinct: false,
     distinctOn: [],
     selections: [],
+    arrayJoins: [],
     joins: [],
     groupBy: [],
+    withTotals: false,
     orderBy: [],
     settings: {},
   };

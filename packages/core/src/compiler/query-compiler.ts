@@ -82,7 +82,11 @@ function compileExpr(expr: ExprNode, context: CompileContext): string {
         return `count(DISTINCT ${expr.args.map((arg) => compileExpr(arg, context)).join(", ")})`;
       }
 
-      return `${expr.name}(${expr.args.map((arg) => compileExpr(arg, context)).join(", ")})`;
+      return `${expr.name}${
+        expr.parameters
+          ? `(${expr.parameters.map((parameter) => compileExpr(parameter, context)).join(", ")})`
+          : ""
+      }(${expr.args.map((arg) => compileExpr(arg, context)).join(", ")})`;
     case "subqueryExpr":
       return `(${compileQuerySql(expr.query, context)})`;
     case "binary":
@@ -139,6 +143,10 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
     `FROM ${compileSource(node.from, context)}`,
   ];
 
+  for (const arrayJoin of node.arrayJoins) {
+    parts.push(`${arrayJoin.kind} JOIN ${compileExpr(arrayJoin.expr, context)}`);
+  }
+
   for (const join of node.joins) {
     parts.push(
       `${join.joinType} JOIN ${compileSource(join.source, context)} ON ${compileExpr(join.on, context)}`,
@@ -154,7 +162,11 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
   }
 
   if (node.groupBy.length > 0) {
-    parts.push(`GROUP BY ${node.groupBy.map((expr) => compileExpr(expr, context)).join(", ")}`);
+    parts.push(
+      `GROUP BY ${node.groupBy.map((expr) => compileExpr(expr, context)).join(", ")}${node.withTotals ? " WITH TOTALS" : ""}`,
+    );
+  } else if (node.withTotals) {
+    throw new Error("WITH TOTALS requires a GROUP BY clause.");
   }
 
   if (node.having) {
@@ -164,6 +176,15 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
   if (node.orderBy.length > 0) {
     parts.push(
       `ORDER BY ${node.orderBy.map((item) => `${compileExpr(item.expr, context)} ${item.direction}`).join(", ")}`,
+    );
+  }
+
+  if (node.limitBy) {
+    const offset = node.limitBy.offset === undefined ? "" : `${node.limitBy.offset}, `;
+    parts.push(
+      `LIMIT ${offset}${node.limitBy.limit} BY ${node.limitBy.expressions
+        .map((expression) => compileExpr(expression, context))
+        .join(", ")}`,
     );
   }
 

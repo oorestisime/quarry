@@ -1,7 +1,7 @@
 import { createClient } from "@clickhouse/client";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
-const CLICKHOUSE_IMAGE = "clickhouse/clickhouse-server:24.8";
+const CLICKHOUSE_IMAGE = "clickhouse/clickhouse-server:24.8.14.39";
 const CLICKHOUSE_PORT = 8123;
 const CLICKHOUSE_USERNAME = "test";
 const CLICKHOUSE_PASSWORD = "test";
@@ -87,6 +87,7 @@ const typedSamplesFixture = [
     status: "active",
     nickname: null,
     tags: ["new", "trial"],
+    scores: [10, 20],
     amount: "123.45",
     created_at: "2025-01-01 10:11:12.123",
     location: [1.25, 9.5],
@@ -101,6 +102,7 @@ const typedSamplesFixture = [
     status: "pending",
     nickname: "bee",
     tags: [],
+    scores: [99],
     amount: "0.10",
     created_at: "2025-01-02 03:04:05.678",
     location: [0, 1.5],
@@ -234,6 +236,7 @@ async function resetFixtureSchema(client: ReturnType<typeof createClient>): Prom
 				status Enum8('pending' = 1, 'active' = 2, 'archived' = 3),
 				nickname Nullable(String),
 				tags Array(String),
+				scores Array(UInt32),
 				amount Decimal(18, 2),
 				created_at DateTime64(3),
 				location Tuple(Float64, Float64),

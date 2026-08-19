@@ -192,6 +192,15 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap, Dicts extends Datab
   anyLast<Value extends ValueInput<Scope>>(
     value: Value,
   ): Expression<ResolveValueInput<Scope, Value>>;
+  argMin<Value extends ValueInput<Scope>>(
+    value: Value,
+    by: ValueInput<Scope>,
+  ): Expression<ResolveValueInput<Scope, Value>>;
+  argMax<Value extends ValueInput<Scope>>(
+    value: Value,
+    by: ValueInput<Scope>,
+  ): Expression<ResolveValueInput<Scope, Value>>;
+  quantile(level: number, value: ValueInput<Scope>): Expression<number>;
   toInt32(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
   toInt64(value: ColumnRef<Scope> | Expression<unknown>): Expression<string>;
   toUInt32(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
@@ -472,6 +481,30 @@ export class ExpressionBuilder<Scope extends ScopeMap, Dicts extends DatabaseSch
         [this.toExpr(value)],
         this.resolveValueClickHouseType(value),
       ),
+    argMin: <Value extends ValueInput<Scope>>(value: Value, by: ValueInput<Scope>) =>
+      this.callFunction<ResolveValueInput<Scope, Value>, ResolveValueInput<Scope, Value>>(
+        "argMin",
+        [this.toExpr(value), this.toExpr(by)],
+        this.resolveValueClickHouseType(value),
+      ),
+    argMax: <Value extends ValueInput<Scope>>(value: Value, by: ValueInput<Scope>) =>
+      this.callFunction<ResolveValueInput<Scope, Value>, ResolveValueInput<Scope, Value>>(
+        "argMax",
+        [this.toExpr(value), this.toExpr(by)],
+        this.resolveValueClickHouseType(value),
+      ),
+    quantile: (level: number, value: ValueInput<Scope>) => {
+      if (!Number.isFinite(level) || level < 0 || level > 1) {
+        throw new Error("quantile level must be a finite number between 0 and 1.");
+      }
+
+      return this.callParametricFunction<number>(
+        "quantile",
+        [{ kind: "raw", sql: String(level) }],
+        [this.toExpr(value)],
+        "Float64",
+      );
+    },
     toInt32: (value: ColumnRef<Scope> | Expression<unknown>) =>
       this.callFunction<number>("toInt32", [this.toExpr(value)], "Int32"),
     toInt64: (value: ColumnRef<Scope> | Expression<unknown>) =>
@@ -835,6 +868,18 @@ export class ExpressionBuilder<Scope extends ScopeMap, Dicts extends DatabaseSch
     clickhouseType?: string,
   ): Expression<T, Where> {
     return new Expression({ kind: "function", name, args: [...args] }, clickhouseType);
+  }
+
+  private callParametricFunction<T, Where = T>(
+    name: string,
+    parameters: readonly ExprNode[],
+    args: readonly ExprNode[],
+    clickhouseType?: string,
+  ): Expression<T, Where> {
+    return new Expression(
+      { kind: "function", name, parameters: [...parameters], args: [...args] },
+      clickhouseType,
+    );
   }
 
   private toIntegerLiteral(value: number, name: string, max: number): ExprNode {

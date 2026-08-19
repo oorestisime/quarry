@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createClickHouseDB } from "../src";
 import {
+  advancedAggregateFunctionsCase,
   aggregateFunctionsCase,
+  arrayJoinCase,
   arrayFunctionsCase,
   chainedExpressionWhereCase,
   cteJoinCase,
@@ -24,7 +26,10 @@ import {
   joinSubqueryAliasCase,
   joinSubquerySettingsCase,
   jsonExtractCase,
+  leftArrayJoinCase,
+  limitByCase,
   multiConditionJoinCase,
+  multipleArrayJoinsCase,
   multipleCtesCase,
   nullFunctionsCase,
   selectAllCase,
@@ -35,6 +40,7 @@ import {
   stringFunctionsCase,
   typeCastFunctionsCase,
   whereRefCase,
+  withTotalsCase,
 } from "./cases";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -72,6 +78,12 @@ const cases = [
   dictGetCase,
   dictGetOrDefaultCase,
   dictHasCase,
+  arrayJoinCase,
+  leftArrayJoinCase,
+  limitByCase,
+  withTotalsCase,
+  advancedAggregateFunctionsCase,
+  multipleArrayJoinsCase,
 ];
 
 function normalizeSql(sql: string): string {

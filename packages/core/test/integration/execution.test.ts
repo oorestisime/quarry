@@ -2,7 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClickHouseDB, param } from "../../src";
 import { startClickHouse, stopClickHouse, type ClickHouseTestContext } from "./clickhouse";
 import {
+  advancedAggregateFunctionsCase,
   aggregateFunctionsCase,
+  arrayJoinCase,
   chainedExpressionWhereCase,
   cteLeftJoinBaseTableCase,
   cteJoinCase,
@@ -20,7 +22,10 @@ import {
   joinSubquerySettingsCase,
   joinSubqueryAliasCase,
   jsonExtractCase,
+  leftArrayJoinCase,
+  limitByCase,
   multiConditionJoinCase,
+  multipleArrayJoinsCase,
   multipleCtesCase,
   arrayFunctionsCase,
   dateTimeFunctionsCase,
@@ -31,6 +36,7 @@ import {
   stringFunctionsCase,
   typeCastFunctionsCase,
   whereRefCase,
+  withTotalsCase,
 } from "../cases";
 import type { TypedDictionary } from "../../src";
 
@@ -50,7 +56,10 @@ interface ExecutionTestDB {
   };
   typed_samples: {
     id: number;
+    label: string;
     tags: string[];
+    scores: number[];
+    amount: number;
   };
   partner_rates: TypedDictionary<{
     rate_cents: number;
@@ -266,6 +275,73 @@ describe("clickhouse integration", () => {
 
     expect(rows).toEqual([
       { user_id: 1, event_type: "browse" },
+      { user_id: 2, event_type: "purchase" },
+      { user_id: 3, event_type: "signup" },
+    ]);
+  });
+
+  it("executes ARRAY JOIN and updates array columns to element rows", async () => {
+    const rows = await arrayJoinCase.build().execute({ client: getContext().client });
+
+    expect(rows).toEqual(arrayJoinCase.expectedRows);
+  });
+
+  it("executes LEFT ARRAY JOIN and preserves rows with empty arrays", async () => {
+    const rows = await leftArrayJoinCase.build().execute({ client: getContext().client });
+
+    expect(rows).toEqual(leftArrayJoinCase.expectedRows);
+  });
+
+  it("executes multiple ARRAY JOIN clauses as a Cartesian product", async () => {
+    const rows = await multipleArrayJoinsCase.build().execute({ client: getContext().client });
+
+    expect(rows).toEqual(multipleArrayJoinsCase.expectedRows);
+  });
+
+  it("executes LIMIT BY before the overall LIMIT", async () => {
+    const rows = await limitByCase.build().execute({ client: getContext().client });
+
+    expect(rows).toEqual(limitByCase.expectedRows);
+  });
+
+  it("executes GROUP BY WITH TOTALS and returns the totals row separately", async () => {
+    const result = await withTotalsCase.build().executeWithTotals({ client: getContext().client });
+
+    expect(result).toEqual({
+      rows: [
+        { event_type: "browse", event_count: "1" },
+        { event_type: "purchase", event_count: "1" },
+        { event_type: "signup", event_count: "2" },
+      ],
+      totals: { event_type: "", event_count: "4" },
+    });
+  });
+
+  it("executes argMin, argMax, and quantile aggregates", async () => {
+    const row = await advancedAggregateFunctionsCase
+      .build()
+      .executeTakeFirstOrThrow({ client: getContext().client });
+
+    expect(row.first_label).toBe("alpha");
+    expect(row.last_label).toBe("beta");
+    expect(row.amount_p95).toBeTypeOf("number");
+  });
+
+  it("streams query results as typed rows", async () => {
+    const rows = [];
+
+    for await (const row of db
+      .selectFrom("event_logs as e")
+      .select("e.user_id", "e.event_type")
+      .orderBy("e.user_id", "asc")
+      .orderBy("e.event_type", "asc")
+      .stream({ client: getContext().client })) {
+      rows.push(row);
+    }
+
+    expect(rows).toEqual([
+      { user_id: 1, event_type: "browse" },
+      { user_id: 1, event_type: "signup" },
       { user_id: 2, event_type: "purchase" },
       { user_id: 3, event_type: "signup" },
     ]);

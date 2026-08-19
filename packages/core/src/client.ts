@@ -3,6 +3,11 @@ export type ClickHouseSettings = Record<string, ClickHouseSettingValue>;
 
 interface ClickHouseQueryResult {
   json<T>(): Promise<T[]>;
+  stream?<T>(): AsyncIterable<readonly ClickHouseResultRow<T>[]>;
+}
+
+interface ClickHouseResultRow<T> {
+  json(): T;
 }
 
 interface ClickHouseBaseParams {

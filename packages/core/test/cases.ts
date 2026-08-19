@@ -1,4 +1,10 @@
-import { createClickHouseDB, param, ExpressionBuilder, type ExecutableQuery } from "../src";
+import {
+  createClickHouseDB,
+  param,
+  ExpressionBuilder,
+  type CompiledQuery,
+  type ExecutableQuery,
+} from "../src";
 import type { TypedDictionary } from "../src";
 
 export interface SpikeDB {
@@ -27,6 +33,7 @@ export interface SpikeDB {
     status: "pending" | "active" | "archived";
     nickname: string | null;
     tags: string[];
+    scores: number[];
     amount: number;
     created_at: string;
   };
@@ -42,20 +49,26 @@ export function setQueryCaseDb(nextDb: typeof db): void {
   db = nextDb;
 }
 
-export interface QueryCase {
+export interface QueryCase<TQuery extends { toSQL(): CompiledQuery } = { toSQL(): CompiledQuery }> {
   name: string;
   file: string;
   expectedParams: Record<string, unknown>;
+  build: () => TQuery;
 }
 
-export interface TypedQueryCase<TQuery extends ExecutableQuery<unknown>> extends QueryCase {
+export interface TypedQueryCase<TQuery extends ExecutableQuery<unknown>> extends QueryCase<TQuery> {
   expectedRows: Awaited<ReturnType<TQuery["execute"]>>;
-  build: () => TQuery;
 }
 
 function defineQueryCase<TQuery extends ExecutableQuery<unknown>>(
   queryCase: TypedQueryCase<TQuery>,
 ): TypedQueryCase<TQuery> {
+  return queryCase;
+}
+
+function defineCompilationCase<TQuery extends { toSQL(): CompiledQuery }>(
+  queryCase: QueryCase<TQuery>,
+): QueryCase<TQuery> {
   return queryCase;
 }
 
@@ -905,4 +918,105 @@ export const dictHasCase = defineQueryCase({
       .selectExpr((eb) => ["u.id", eb.fn.dictHas("partner_rates", "u.id").as("has_rate")])
       .where("u.id", "in", [1, 2, 3])
       .orderBy("u.id", "asc"),
+});
+
+export const arrayJoinCase = defineQueryCase({
+  name: "32 array join",
+  file: "32_array_join.sql",
+  expectedParams: {},
+  expectedRows: [
+    { id: 1, tags: "new" },
+    { id: 1, tags: "trial" },
+  ],
+  build: () =>
+    db
+      .selectFrom("typed_samples as t")
+      .arrayJoin("t.tags")
+      .select("t.id", "t.tags")
+      .orderBy("t.id", "asc")
+      .orderBy("t.tags", "asc"),
+});
+
+export const leftArrayJoinCase = defineQueryCase({
+  name: "33 left array join",
+  file: "33_left_array_join.sql",
+  expectedParams: {},
+  expectedRows: [
+    { id: 1, tags: "new" },
+    { id: 1, tags: "trial" },
+    { id: 2, tags: "" },
+  ],
+  build: () =>
+    db
+      .selectFrom("typed_samples as t")
+      .leftArrayJoin("t.tags")
+      .select("t.id", "t.tags")
+      .orderBy("t.id", "asc")
+      .orderBy("t.tags", "asc"),
+});
+
+export const limitByCase = defineQueryCase({
+  name: "34 limit by",
+  file: "34_limit_by.sql",
+  expectedParams: {},
+  expectedRows: [
+    { user_id: 1, event_type: "signup" },
+    { user_id: 2, event_type: "purchase" },
+    { user_id: 3, event_type: "signup" },
+  ],
+  build: () =>
+    db
+      .selectFrom("event_logs as e")
+      .select("e.user_id", "e.event_type")
+      .orderBy("e.user_id", "asc")
+      .orderBy("e.created_at", "desc")
+      .limitBy(1, "e.user_id")
+      .limit(10),
+});
+
+export const withTotalsCase = defineCompilationCase({
+  name: "35 group by with totals",
+  file: "35_group_by_with_totals.sql",
+  expectedParams: {},
+  build: () =>
+    db
+      .selectFrom("event_logs as e")
+      .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
+      .groupBy("e.event_type")
+      .withTotals()
+      .orderBy("e.event_type", "asc"),
+});
+
+export const advancedAggregateFunctionsCase = defineCompilationCase({
+  name: "36 advanced aggregate functions",
+  file: "36_advanced_aggregate_functions.sql",
+  expectedParams: {},
+  build: () =>
+    db
+      .selectFrom("typed_samples as t")
+      .selectExpr((eb) => [
+        eb.fn.argMin("t.label", "t.id").as("first_label"),
+        eb.fn.argMax("t.label", "t.id").as("last_label"),
+        eb.fn.quantile(0.95, "t.amount").as("amount_p95"),
+      ]),
+});
+
+export const multipleArrayJoinsCase = defineQueryCase({
+  name: "37 multiple array joins",
+  file: "37_multiple_array_joins.sql",
+  expectedParams: {},
+  expectedRows: [
+    { id: 1, tags: "new", scores: 10 },
+    { id: 1, tags: "new", scores: 20 },
+    { id: 1, tags: "trial", scores: 10 },
+    { id: 1, tags: "trial", scores: 20 },
+  ],
+  build: () =>
+    db
+      .selectFrom("typed_samples as t")
+      .arrayJoin("t.tags")
+      .arrayJoin("t.scores")
+      .select("t.id", "t.tags", "t.scores")
+      .orderBy("t.tags", "asc")
+      .orderBy("t.scores", "asc"),
 });

@@ -27,6 +27,7 @@ interface TypedSamplesDB {
     status: "pending" | "active" | "archived";
     nickname: string | null;
     tags: string[];
+    scores: number[];
     amount: number;
     created_at: string;
     location: [number, number];
@@ -242,6 +243,7 @@ const expectedRows: TypedSampleRow[] = [
     status: "active",
     nickname: null,
     tags: ["new", "trial"],
+    scores: [10, 20],
     amount: 123.45,
     created_at: "2025-01-01 10:11:12.123",
     location: [1.25, 9.5],
@@ -256,6 +258,7 @@ const expectedRows: TypedSampleRow[] = [
     status: "pending",
     nickname: "bee",
     tags: [],
+    scores: [99],
     amount: 0.1,
     created_at: "2025-01-02 03:04:05.678",
     location: [0, 1.5],
@@ -522,6 +525,7 @@ describe("clickhouse runtime types", () => {
     expect(typeof rows[0].status).toBe("string");
     expect(rows[0].nickname).toBeNull();
     expect(Array.isArray(rows[0].tags)).toBe(true);
+    expect(Array.isArray(rows[0].scores)).toBe(true);
     expect(typeof rows[0].amount).toBe("number");
     expect(typeof rows[0].created_at).toBe("string");
     expect(Array.isArray(rows[0].location)).toBe(true);
