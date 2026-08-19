@@ -5,15 +5,15 @@ import type {
   DatabaseSchema,
   InferResult,
   InsertRow,
-  InsertableSourceName,
   Simplify,
-  TableName,
+  SourceName,
+  ValidInsertableSourceName,
 } from "../type-utils";
 import { parseSourceExpression, resolveSourceColumns } from "./helpers";
 import { InsertQueryBuilder } from "./insert-query-builder";
 import { SelectQueryBuilder } from "./select-query-builder";
 import { TableSourceBuilder } from "./source-builder";
-import type { ScopeFromSourceExpression, SourceExpression } from "./types";
+import type { ScopeFromSourceExpression, SourceExpression, ValidSourceExpression } from "./types";
 
 export interface CreateClickHouseDBOptions {
   client?: ClickHouseClient;
@@ -27,7 +27,9 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
     private readonly retries?: ClickHouseRetryOptions,
   ) {}
 
-  table<Table extends TableName<DB>>(table: Table): TableSourceBuilder<DB, Table> {
+  table<Table extends SourceName<DB>>(
+    table: Table & ValidInsertableSourceName<DB, Table>,
+  ): TableSourceBuilder<DB, Table> {
     return new TableSourceBuilder<DB, Table>(table, undefined, false);
   }
 
@@ -56,7 +58,7 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
   }
 
   selectFrom<Source extends SourceExpression<Sources>>(
-    source: Source,
+    source: Source & ValidSourceExpression<Sources, Source>,
   ): SelectQueryBuilder<Sources, ScopeFromSourceExpression<Sources, Source>, {}, {}> {
     const node = createEmptySelectQueryNode();
     node.with = structuredClone(this.withs);
@@ -69,8 +71,8 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
     return new SelectQueryBuilder(node, this.client, scopeColumns, {}, this.retries);
   }
 
-  insertInto<Table extends InsertableSourceName<DB>>(
-    table: Table,
+  insertInto<Table extends SourceName<DB>>(
+    table: Table & ValidInsertableSourceName<DB, Table>,
   ): InsertQueryBuilder<Table, InsertRow<DB, Table>> {
     return new InsertQueryBuilder(createEmptyInsertQueryNode(table), this.client);
   }

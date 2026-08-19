@@ -1,10 +1,10 @@
 import type { SelectQueryNode, TableNode } from "../ast/query";
 import type { QueryColumnMap } from "../column-metadata";
-import type { DatabaseSchema, TableName } from "../type-utils";
+import type { DatabaseSchema, SourceName } from "../type-utils";
 
 export class TableSourceBuilder<
   DB extends DatabaseSchema,
-  Table extends TableName<DB>,
+  Table extends SourceName<DB>,
   Alias extends string = Table,
 > {
   constructor(

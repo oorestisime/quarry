@@ -66,6 +66,22 @@ export type SelectableSourceName<DB extends DatabaseSchema> = NonDictionarySourc
 
 export type InsertableSourceName<DB extends DatabaseSchema> = TableName<DB>;
 
+/**
+ * Validates one source name without classifying every key in the database schema.
+ * Prefer these helpers on generic API call sites; the mapped classifier types
+ * above remain exported for backwards compatibility.
+ */
+export type ValidSelectableSourceName<DB extends DatabaseSchema, Name extends SourceName<DB>> =
+  DB[Name] extends TypedDictionary<any> ? never : Name;
+
+export type ValidInsertableSourceName<
+  DB extends DatabaseSchema,
+  Name extends SourceName<DB>,
+> = DB[Name] extends TypedView<any> | TypedDictionary<any> ? never : Name;
+
+export type ValidDictionaryName<DB extends DatabaseSchema, Name extends SourceName<DB>> =
+  DB[Name] extends TypedDictionary<any> ? Name : never;
+
 export type Selectable<Source> =
   SourceColumns<Source> extends infer Row extends object
     ? { [K in Extract<keyof Row, string>]: SelectValue<Row[K]> }
@@ -78,38 +94,40 @@ export type Insertable<Source> =
       ? { [K in Extract<keyof Row, string>]: InsertValue<Row[K]> }
       : never;
 
-export type TableRow<
-  DB extends DatabaseSchema,
-  Table extends SelectableSourceName<DB>,
-> = Selectable<DB[Table]>;
+export type TableRow<DB extends DatabaseSchema, Table extends SourceName<DB>> = Selectable<
+  DB[Table]
+>;
 
-export type ScopeRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
-  SourceColumns<DB[Table]> extends infer Row extends object
-    ? { [K in Extract<keyof Row, string>]: Row[K] }
-    : never;
+export type ScopeRow<DB extends DatabaseSchema, Table extends SourceName<DB>> =
+  DB[Table] extends TypedDictionary<any>
+    ? never
+    : SourceColumns<DB[Table]> extends infer Row extends object
+      ? { [K in Extract<keyof Row, string>]: Row[K] }
+      : never;
 
-export type InsertRow<
-  DB extends DatabaseSchema,
-  Table extends InsertableSourceName<DB>,
-> = Insertable<DB[Table]>;
+export type InsertRow<DB extends DatabaseSchema, Table extends SourceName<DB>> = Insertable<
+  DB[Table]
+>;
 
-export type PredicateRow<DB extends DatabaseSchema, Table extends SelectableSourceName<DB>> =
-  SourceColumns<DB[Table]> extends infer Row extends object
-    ? { [K in Extract<keyof Row, string>]: WhereValue<Row[K]> }
-    : never;
+export type PredicateRow<DB extends DatabaseSchema, Table extends SourceName<DB>> =
+  DB[Table] extends TypedDictionary<any>
+    ? never
+    : SourceColumns<DB[Table]> extends infer Row extends object
+      ? { [K in Extract<keyof Row, string>]: WhereValue<Row[K]> }
+      : never;
 
 export type QueryRow<T> = T extends object ? { [K in Extract<keyof T, string>]: T[K] } : never;
 
-export type DictionaryRow<DB extends DatabaseSchema, Name extends DictionaryName<DB>> =
+export type DictionaryRow<DB extends DatabaseSchema, Name extends SourceName<DB>> =
   DB[Name] extends TypedDictionary<infer Row> ? Row : never;
 
 export type DictionaryAttributeName<
   DB extends DatabaseSchema,
-  Name extends DictionaryName<DB>,
+  Name extends SourceName<DB>,
 > = Extract<keyof DictionaryRow<DB, Name>, string>;
 
 export type DictionaryAttributeType<
   DB extends DatabaseSchema,
-  Name extends DictionaryName<DB>,
+  Name extends SourceName<DB>,
   Attr extends DictionaryAttributeName<DB, Name>,
 > = SelectValue<DictionaryRow<DB, Name>[Attr]>;

@@ -50,6 +50,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "typecheck:performance": "tsc --noEmit -p tsconfig.performance.json --extendedDiagnostics",
     "prepublishOnly": "pnpm build"
   }
 }

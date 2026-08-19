@@ -5,8 +5,9 @@ import type {
   DatabaseSchema,
   DictionaryAttributeName,
   DictionaryAttributeType,
-  DictionaryName,
   ScopeMap,
+  SourceName,
+  ValidDictionaryName,
 } from "../type-utils";
 import { escapeSingleQuotedString } from "../utils/string";
 import { createValueNode, isQueryLike, toSubqueryExpr } from "./helpers";
@@ -167,7 +168,7 @@ type CoalesceResult<Types extends readonly unknown[]> =
   | Exclude<Types[number], null>
   | (AllNullable<Types> extends true ? null : never);
 
-interface ExpressionBuilderFunctions<Scope extends ScopeMap, Dicts extends DatabaseSchema> {
+interface ExpressionBuilderFunctions<Scope extends ScopeMap, Sources extends DatabaseSchema> {
   count(): Expression<string>;
   countIf(condition: Expression<unknown>): Expression<string>;
   now(): Expression<string>;
@@ -348,32 +349,32 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap, Dicts extends Datab
   toUInt8(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
   toYear(value: ExpressionInput<Scope>): Expression<number>;
   toMonth(value: ExpressionInput<Scope>): Expression<number>;
-  dictGet<Dict extends DictionaryName<Dicts>, Attr extends DictionaryAttributeName<Dicts, Dict>>(
-    dictName: Dict,
+  dictGet<Dict extends SourceName<Sources>, Attr extends DictionaryAttributeName<Sources, Dict>>(
+    dictName: Dict & ValidDictionaryName<Sources, Dict>,
     attrName: Attr,
     key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
     rangeDate?: ExpressionInput<Scope>,
-  ): Expression<DictionaryAttributeType<Dicts, Dict, Attr>>;
+  ): Expression<DictionaryAttributeType<Sources, Dict, Attr>>;
   dictGetOrDefault<
-    Dict extends DictionaryName<Dicts>,
-    Attr extends DictionaryAttributeName<Dicts, Dict>,
+    Dict extends SourceName<Sources>,
+    Attr extends DictionaryAttributeName<Sources, Dict>,
   >(
-    dictName: Dict,
+    dictName: Dict & ValidDictionaryName<Sources, Dict>,
     attrName: Attr,
     key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
     defaultValue:
-      | ParamLike<DictionaryAttributeType<Dicts, Dict, Attr>>
-      | Expression<DictionaryAttributeType<Dicts, Dict, Attr>>,
+      | ParamLike<DictionaryAttributeType<Sources, Dict, Attr>>
+      | Expression<DictionaryAttributeType<Sources, Dict, Attr>>,
     rangeDate?: ExpressionInput<Scope>,
-  ): Expression<DictionaryAttributeType<Dicts, Dict, Attr>>;
-  dictHas<Dict extends DictionaryName<Dicts>>(
-    dictName: Dict,
+  ): Expression<DictionaryAttributeType<Sources, Dict, Attr>>;
+  dictHas<Dict extends SourceName<Sources>>(
+    dictName: Dict & ValidDictionaryName<Sources, Dict>,
     key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
     rangeDate?: ExpressionInput<Scope>,
   ): Expression<number>;
 }
 
-export class ExpressionBuilder<Scope extends ScopeMap, Dicts extends DatabaseSchema = never> {
+export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseSchema = {}> {
   constructor(private readonly scopeColumns?: ScopeColumnMap) {}
 
   ref<Ref extends ColumnRef<Scope>>(
@@ -417,7 +418,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Dicts extends DatabaseSch
     });
   }
 
-  readonly fn: ExpressionBuilderFunctions<Scope, Dicts> = {
+  readonly fn: ExpressionBuilderFunctions<Scope, Sources> = {
     count: () => this.callFunction<string, string | number | bigint>("count", [], "UInt64"),
     countIf: (condition: Expression<unknown>) =>
       this.callFunction<string, string | number | bigint>("countIf", [condition.node], "UInt64"),
@@ -776,10 +777,10 @@ export class ExpressionBuilder<Scope extends ScopeMap, Dicts extends DatabaseSch
     toMonth: (value: ExpressionInput<Scope>) =>
       this.callFunction<number>("toMonth", [this.toExpr(value)], "UInt8"),
     dictGet: <
-      Dict extends DictionaryName<Dicts>,
-      Attr extends DictionaryAttributeName<Dicts, Dict>,
+      Dict extends SourceName<Sources>,
+      Attr extends DictionaryAttributeName<Sources, Dict>,
     >(
-      dictName: Dict,
+      dictName: Dict & ValidDictionaryName<Sources, Dict>,
       attrName: Attr,
       key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
       rangeDate?: ExpressionInput<Scope>,
@@ -792,18 +793,18 @@ export class ExpressionBuilder<Scope extends ScopeMap, Dicts extends DatabaseSch
       if (rangeDate !== undefined) {
         args.push(this.toExpr(rangeDate));
       }
-      return this.callFunction<DictionaryAttributeType<Dicts, Dict, Attr>>("dictGet", args);
+      return this.callFunction<DictionaryAttributeType<Sources, Dict, Attr>>("dictGet", args);
     },
     dictGetOrDefault: <
-      Dict extends DictionaryName<Dicts>,
-      Attr extends DictionaryAttributeName<Dicts, Dict>,
+      Dict extends SourceName<Sources>,
+      Attr extends DictionaryAttributeName<Sources, Dict>,
     >(
-      dictName: Dict,
+      dictName: Dict & ValidDictionaryName<Sources, Dict>,
       attrName: Attr,
       key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
       defaultValue:
-        | ParamLike<DictionaryAttributeType<Dicts, Dict, Attr>>
-        | Expression<DictionaryAttributeType<Dicts, Dict, Attr>>,
+        | ParamLike<DictionaryAttributeType<Sources, Dict, Attr>>
+        | Expression<DictionaryAttributeType<Sources, Dict, Attr>>,
       rangeDate?: ExpressionInput<Scope>,
     ) => {
       const args: ExprNode[] = [
@@ -815,13 +816,13 @@ export class ExpressionBuilder<Scope extends ScopeMap, Dicts extends DatabaseSch
       if (rangeDate !== undefined) {
         args.push(this.toExpr(rangeDate));
       }
-      return this.callFunction<DictionaryAttributeType<Dicts, Dict, Attr>>(
+      return this.callFunction<DictionaryAttributeType<Sources, Dict, Attr>>(
         "dictGetOrDefault",
         args,
       );
     },
-    dictHas: <Dict extends DictionaryName<Dicts>>(
-      dictName: Dict,
+    dictHas: <Dict extends SourceName<Sources>>(
+      dictName: Dict & ValidDictionaryName<Sources, Dict>,
       key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
       rangeDate?: ExpressionInput<Scope>,
     ) => {

@@ -1,6 +1,6 @@
 import type { SelectQueryNode } from "../ast/query";
 import type { QueryColumn, QueryColumnMap } from "../column-metadata";
-import type { ColumnType } from "../db-types";
+import type { ColumnType, TypedDictionary, TypedView } from "../db-types";
 import type { ClickHouseParam } from "../param";
 import type {
   DatabaseSchema,
@@ -10,29 +10,48 @@ import type {
   SelectValue,
   WhereValue,
   Simplify,
-  SelectableSourceName,
-  TableName,
+  SourceName,
   UnionToIntersection,
 } from "../type-utils";
 import type { AliasedExpression, Expression, ExpressionBuilder } from "./expression-builder";
 import type { AliasedQuery, TableSourceBuilder } from "./source-builder";
 
 export type TableExpression<DB extends DatabaseSchema> =
-  | SelectableSourceName<DB>
-  | `${SelectableSourceName<DB>} as ${string}`;
+  | SourceName<DB>
+  | `${SourceName<DB>} as ${string}`;
 
 export type SourceExpression<DB extends DatabaseSchema> =
   | TableExpression<DB>
-  | TableSourceBuilder<DB, TableName<DB>, string>
+  | TableSourceBuilder<DB, SourceName<DB>, string>
   | AliasedQuery<object, string, any>;
 
 type ParseTableExpression<T extends string> = T extends `${infer Table} as ${infer Alias}`
   ? { table: Table; alias: Alias }
   : { table: T; alias: T };
 
+export type ValidTableExpression<
+  DB extends DatabaseSchema,
+  TE extends TableExpression<DB>,
+> = ParseTableExpression<TE>["table"] extends infer Table extends SourceName<DB>
+  ? DB[Table] extends TypedDictionary<any>
+    ? never
+    : TE
+  : never;
+
+export type ValidSourceExpression<DB extends DatabaseSchema, Source extends SourceExpression<DB>> =
+  Source extends TableExpression<DB>
+    ? ValidTableExpression<DB, Source>
+    : Source extends TableSourceBuilder<DB, infer Table extends SourceName<DB>, string>
+      ? DB[Table] extends TypedView<any> | TypedDictionary<any>
+        ? never
+        : Source
+      : Source extends AliasedQuery<object, string, any>
+        ? Source
+        : never;
+
 export type ScopeFromTableExpression<DB extends DatabaseSchema, TE extends TableExpression<DB>> =
   ParseTableExpression<TE> extends {
-    table: infer Table extends SelectableSourceName<DB>;
+    table: infer Table extends SourceName<DB>;
     alias: infer Alias extends string;
   }
     ? { [K in Alias]: ScopeRow<DB, Table> }
@@ -46,7 +65,7 @@ type ScopeFromAliasedQuery<Source> =
 type ScopeFromTableSourceBuilder<DB extends DatabaseSchema, Source> =
   Source extends TableSourceBuilder<
     DB,
-    infer Table extends TableName<DB>,
+    infer Table extends SourceName<DB>,
     infer Alias extends string
   >
     ? { [K in Alias]: ScopeRow<DB, Table> }
@@ -55,7 +74,7 @@ type ScopeFromTableSourceBuilder<DB extends DatabaseSchema, Source> =
 export type ScopeFromSourceExpression<DB extends DatabaseSchema, Source> =
   Source extends TableExpression<DB>
     ? ScopeFromTableExpression<DB, Source>
-    : Source extends TableSourceBuilder<DB, TableName<DB>, string>
+    : Source extends TableSourceBuilder<DB, SourceName<DB>, string>
       ? ScopeFromTableSourceBuilder<DB, Source>
       : ScopeFromAliasedQuery<Source>;
 
