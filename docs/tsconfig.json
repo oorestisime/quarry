@@ -29,11 +29,11 @@
       "collections/*": [
         "./.source/*"
       ],
-      "@oorestisime/quarry": [
-        "../src/index.ts"
+      "quarry": [
+        "../packages/core/src/index.ts"
       ],
-      "@oorestisime/quarry/*": [
-        "../src/*"
+      "quarry/*": [
+        "../packages/core/src/*"
       ]
     }
   },

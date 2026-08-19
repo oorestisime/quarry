@@ -4,8 +4,7 @@ description: Bootstrap plain TypeScript DB types from an existing ClickHouse dat
 ---
 
 This flow is currently **experimental** and lives in the separate
-`@oorestisime/quarry-cli` package, not the published
-`@oorestisime/quarry` runtime package.
+`@oorestisime/quarry-cli` package, not the published `quarry` runtime package.
 
 Use it when you already have ClickHouse tables and want a first-pass `DB` type
 instead of writing everything by hand.
@@ -78,7 +77,7 @@ import type {
   TypedDictionary,
   TypedTable,
   TypedView,
-} from "@oorestisime/quarry";
+} from "quarry";
 
 export interface Tables {
   users: TypedTable<Users>;
@@ -218,7 +217,7 @@ Review the output for:
 Once you are happy with the generated file, use it like any handwritten DB type:
 
 ```ts
-import { createClickHouseDB } from "@oorestisime/quarry";
+import { createClickHouseDB } from "quarry";
 import type { DB } from "./db";
 
 const db = createClickHouseDB<DB>();

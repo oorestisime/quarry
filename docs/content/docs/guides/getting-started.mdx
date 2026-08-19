@@ -6,10 +6,14 @@ description: Install Quarry, define a typed database, and run your first query.
 ## Install
 
 ```bash
-pnpm add @oorestisime/quarry @clickhouse/client
+pnpm add quarry @clickhouse/client
 ```
 
 Quarry expects you to bring your own `@clickhouse/client` instance.
+
+> Upgrading from `@oorestisime/quarry`? The package moved to `quarry` in
+> `0.9.0`. A `0.8.1` compatibility wrapper keeps existing scoped imports
+> working while you migrate.
 
 ## Create a typed DB
 
@@ -18,7 +22,7 @@ parameter to `createClickHouseDB`.
 
 ```ts
 import { createClient } from "@clickhouse/client";
-import { createClickHouseDB } from "@oorestisime/quarry";
+import { createClickHouseDB } from "quarry";
 
 interface DB {
   event_logs: {
@@ -65,7 +69,7 @@ options, filters, and column type overrides in `quarry.introspect.json`.
 
 ```ts twoslash
 import { createClient } from "@clickhouse/client";
-import { createClickHouseDB } from "@oorestisime/quarry";
+import { createClickHouseDB } from "quarry";
 
 interface DB {
   event_logs: {

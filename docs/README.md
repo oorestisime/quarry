@@ -1,6 +1,6 @@
 # Quarry Documentation Site
 
-The public documentation site for [`@oorestisime/quarry`](../README.md), built
+The public documentation site for [`quarry`](../README.md), built
 with [Fumadocs](https://fumadocs.dev) on Next.js 16.
 
 ## Local development
@@ -51,7 +51,7 @@ docs/
 - Source files live in `content/docs/**/*.mdx`.
 - Sidebar order is controlled by `meta.json` files in each section.
 - Code blocks marked ` ```ts twoslash ` are type-checked at build time using
-  the real `@oorestisime/quarry` types via the tsconfig path mapping in
+  the real `quarry` types via the tsconfig path mapping in
   `tsconfig.json`. This means examples cannot lie about types.
 - The `<auto-type-table />` MDX component renders a live type table from the
   TypeScript source. Example:

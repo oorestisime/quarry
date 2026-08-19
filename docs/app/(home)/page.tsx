@@ -35,7 +35,7 @@ export default function HomePage() {
             Install and query
           </div>
           <pre className="p-4 overflow-x-auto text-sm leading-relaxed">
-            <code>{`pnpm add @oorestisime/quarry @clickhouse/client
+            <code>{`pnpm add quarry @clickhouse/client
 
 const rows = await db
   .selectFrom("events as e")

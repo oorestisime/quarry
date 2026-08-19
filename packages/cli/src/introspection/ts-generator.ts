@@ -369,7 +369,7 @@ export function generateTypeScriptSchemaModule(
   const importList = [...imports].sort((left, right) => left.localeCompare(right));
   const configuredImportBlock = renderConfiguredImportBlocks(options.imports);
   const importBlock = [
-    `import type { ${importList.join(", ")} } from "@oorestisime/quarry";`,
+    `import type { ${importList.join(", ")} } from "quarry";`,
     configuredImportBlock,
   ]
     .filter((block) => block.length > 0)

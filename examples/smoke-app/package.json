@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
-    "@oorestisime/quarry": "0.1.0",
+    "quarry": "0.9.0",
     "testcontainers": "^11.13.0"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 import { createClient } from "@clickhouse/client";
-import { createClickHouseDB, param } from "@oorestisime/quarry";
+import { createClickHouseDB, param } from "quarry";
 import { GenericContainer, Wait } from "testcontainers";
 
 interface DB {

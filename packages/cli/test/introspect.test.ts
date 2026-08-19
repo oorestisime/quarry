@@ -247,7 +247,7 @@ describe("CLI introspection helpers", () => {
     expect(result.source).not.toContain("// Generated with:");
     expect(result.source).not.toContain("// - database:");
     expect(result.source).toContain("import type {");
-    expect(result.source).toContain('} from "@oorestisime/quarry";');
+    expect(result.source).toContain('} from "quarry";');
     expect(result.source).toContain("ClickHouseDateTime64");
     expect(result.source).toContain("ClickHouseUInt64");
     expect(result.source).toContain("TypedTable");

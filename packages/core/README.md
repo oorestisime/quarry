@@ -5,7 +5,7 @@
 <h1 align="center">Quarry</h1>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@oorestisime/quarry"><img src="https://img.shields.io/npm/v/%40oorestisime%2Fquarry" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/quarry"><img src="https://img.shields.io/npm/v/quarry" alt="npm version" /></a>
   <a href="https://github.com/oorestisime/quarry/actions/workflows/ci.yml"><img src="https://github.com/oorestisime/quarry/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
   <a href="https://ch-quarry.vercel.app"><img src="https://img.shields.io/badge/docs-online-0f172a" alt="docs" /></a>
 </p>
@@ -44,7 +44,7 @@ Quarry is a query builder first. It is not trying to be an ORM or hide ClickHous
 ## Install
 
 ```bash
-pnpm add @oorestisime/quarry @clickhouse/client
+pnpm add quarry @clickhouse/client
 ```
 
 Quarry expects you to bring your own `@clickhouse/client` instance.
@@ -53,7 +53,7 @@ Quarry expects you to bring your own `@clickhouse/client` instance.
 
 ```ts
 import { createClient } from "@clickhouse/client";
-import { createClickHouseDB } from "@oorestisime/quarry";
+import { createClickHouseDB } from "quarry";
 
 interface DB {
   event_logs: {
@@ -123,4 +123,6 @@ See the [docs site](https://ch-quarry.vercel.app) for the full supported API, ru
 
 ## Naming
 
-The project name is Quarry. The npm package name is `@oorestisime/quarry`.
+The npm package name is `quarry`. It moved from `@oorestisime/quarry` in
+version `0.9.0`; existing scoped-package users can update to the `0.8.1`
+compatibility wrapper before changing their dependency and imports.

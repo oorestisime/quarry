@@ -2,7 +2,7 @@
   "name": "@oorestisime/quarry-docs",
   "version": "0.0.0",
   "private": true,
-  "description": "Documentation site for @oorestisime/quarry, built with Fumadocs.",
+  "description": "Documentation site for quarry, built with Fumadocs.",
   "type": "module",
   "scripts": {
     "predev": "pnpm --dir .. build",
@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@clickhouse/client": "^1.18.2",
-    "@oorestisime/quarry": "workspace:*",
+    "quarry": "workspace:*",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/mdx": "^2.0.13",
     "@types/node": "^25.5.2",

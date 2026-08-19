@@ -24,7 +24,7 @@ can express.
 `TypedView<Row>` marks a source as selectable but not insertable.
 
 ```ts
-import type { TypedView } from "@oorestisime/quarry";
+import type { TypedView } from "quarry";
 
 interface DB {
   daily_users: TypedView<{
@@ -45,7 +45,7 @@ This means:
 `TypedTable<Row>` is the table counterpart.
 
 ```ts
-import type { TypedTable } from "@oorestisime/quarry";
+import type { TypedTable } from "quarry";
 
 interface DB {
   users: TypedTable<{
@@ -64,7 +64,7 @@ generated introspection output.
 `TypedDictionary<Row>` marks a source as a ClickHouse dictionary.
 
 ```ts
-import type { TypedDictionary } from "@oorestisime/quarry";
+import type { TypedDictionary } from "quarry";
 
 interface DB {
   partner_rates: TypedDictionary<{
@@ -131,7 +131,7 @@ interface DB {
 accepting a broader or different type for inserts and predicates.
 
 ```ts
-import type { ColumnType } from "@oorestisime/quarry";
+import type { ColumnType } from "quarry";
 
 type MetricText = ColumnType<string, number, number>;
 
@@ -183,7 +183,7 @@ import type {
   ClickHouseUInt64,
   TypedTable,
   TypedView,
-} from "@oorestisime/quarry";
+} from "quarry";
 
 export interface Users {
   id: number;

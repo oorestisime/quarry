@@ -1,0 +1,46 @@
+{
+  "name": "@oorestisime/quarry",
+  "version": "0.8.1",
+  "private": false,
+  "description": "Compatibility wrapper for the renamed quarry package.",
+  "keywords": [
+    "analytics",
+    "clickhouse",
+    "query-builder",
+    "typescript"
+  ],
+  "homepage": "https://github.com/oorestisime/quarry",
+  "bugs": {
+    "url": "https://github.com/oorestisime/quarry/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/oorestisime/quarry.git"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test test/identity.test.mjs",
+    "prepublishOnly": "pnpm test"
+  },
+  "dependencies": {
+    "quarry": "0.9.0"
+  }
+}

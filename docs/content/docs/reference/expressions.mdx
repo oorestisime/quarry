@@ -41,7 +41,7 @@ SQL gets a `{pN:Type}` placeholder; the value is sent through the driver's
 parameter map, **not** string-interpolated.
 
 ```ts
-import { param } from "@oorestisime/quarry";
+import { param } from "quarry";
 
 db
   .selectFrom("users as u")
@@ -240,7 +240,7 @@ inputs. `quantile` returns `number`.
 #### Example: combining aggregates
 
 ```ts
-import { param } from "@oorestisime/quarry";
+import { param } from "quarry";
 
 const stats = await db
   .selectFrom("event_logs as e")
@@ -351,7 +351,7 @@ expression, wrap it with `eb.val(param(...))` so Quarry does not treat the
 string as a column reference.
 
 ```ts
-import { param } from "@oorestisime/quarry";
+import { param } from "quarry";
 
 db
   .selectFrom("event_logs as e")

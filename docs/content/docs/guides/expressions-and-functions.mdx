@@ -25,7 +25,7 @@ When you need to control it &mdash; for example to force `DateTime` instead of
 plain `String` &mdash; use `param(value, "Type")`.
 
 ```ts
-import { param } from "@oorestisime/quarry";
+import { param } from "quarry";
 
 const rows = await db
   .selectFrom("event_logs as e")
@@ -59,7 +59,7 @@ defaults to a `DateTime` placeholder. Use `param(date, "Date")`,
 exact control over the bound ClickHouse type.
 
 ```ts
-import { param } from "@oorestisime/quarry";
+import { param } from "quarry";
 
 await db.insertInto("events").values([
   {
@@ -130,7 +130,7 @@ return as `string` because that is what `@clickhouse/client` actually returns.
 Common ClickHouse date/time helpers are also exposed under `eb.fn`:
 
 ```ts
-import { param } from "@oorestisime/quarry";
+import { param } from "quarry";
 
 const rows = await db
   .selectFrom("event_logs as e")
@@ -432,7 +432,7 @@ return an `Expression` object and pass it directly to `where`, `prewhere`, or
 `having` instead of using a callback:
 
 ```ts
-import { ExpressionBuilder } from "@oorestisime/quarry";
+import { ExpressionBuilder } from "quarry";
 
 function buildVipPredicate(eb: ExpressionBuilder<any>) {
   return eb.and([

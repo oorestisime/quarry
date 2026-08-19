@@ -1,6 +1,6 @@
 {
-  "name": "@oorestisime/quarry",
-  "version": "0.8.0",
+  "name": "quarry",
+  "version": "0.9.0",
   "private": false,
   "description": "Experimental ClickHouse-native query builder for TypeScript.",
   "keywords": [
@@ -26,7 +26,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,

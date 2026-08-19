@@ -1,6 +1,6 @@
 # Smoke App
 
-This is a minimal consumer app that installs the published `@oorestisime/quarry` package from npm and runs it against a temporary ClickHouse instance started with Testcontainers.
+This is a minimal consumer app that installs the published `quarry` package from npm and runs it against a temporary ClickHouse instance started with Testcontainers.
 
 ## Run
 

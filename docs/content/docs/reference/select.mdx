@@ -9,7 +9,7 @@ any point.
 
 ```ts twoslash
 import { createClient } from "@clickhouse/client";
-import { createClickHouseDB } from "@oorestisime/quarry";
+import { createClickHouseDB } from "quarry";
 
 interface DB {
   users: { id: number; email: string };
@@ -43,7 +43,7 @@ type narrows to exactly the columns you asked for.
 
 ```ts twoslash
 import { createClient } from "@clickhouse/client";
-import { createClickHouseDB } from "@oorestisime/quarry";
+import { createClickHouseDB } from "quarry";
 
 interface DB {
   users: { id: number; email: string; status: string };
@@ -211,7 +211,7 @@ package or helper function composes a predicate tree and you want to inject it
 into the query.
 
 ```ts
-import { ExpressionBuilder } from "@oorestisime/quarry";
+import { ExpressionBuilder } from "quarry";
 
 const eb = new ExpressionBuilder<any>();
 const isPremium = eb.fn.has("u.tags", "premium");
@@ -279,7 +279,7 @@ db
 This matches ClickHouse SQL semantics.
 
 ```ts
-import { param } from "@oorestisime/quarry";
+import { param } from "quarry";
 
 db
   .selectFrom("event_logs as e")

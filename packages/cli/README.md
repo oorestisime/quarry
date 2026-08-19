@@ -16,4 +16,4 @@ The generated file exports plain TypeScript `Tables`, `Views`, and `DB` types.
 ## Docs
 
 - Guide: https://ch-quarry.vercel.app/docs/guides/introspection
-- Main package: https://www.npmjs.com/package/@oorestisime/quarry
+- Main package: https://www.npmjs.com/package/quarry

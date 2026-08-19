@@ -1,6 +1,6 @@
 {
   "name": "@oorestisime/quarry-cli",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": false,
   "description": "Command-line tools for Quarry DB type introspection.",
   "keywords": [
@@ -21,11 +21,12 @@
     "url": "git+ssh://git@github.com/oorestisime/quarry.git"
   },
   "bin": {
-    "quarry": "./dist/index.mjs"
+    "quarry": "dist/index.mjs"
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "publishConfig": {
