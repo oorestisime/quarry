@@ -236,3 +236,16 @@ that keeps the generated output close to what Quarry actually needs:
 
 It avoids asking users to maintain a second schema DSL when the main job is
 still query building.
+
+## Generated columns and schema drift
+
+Introspection reads `system.columns.default_kind`. DEFAULT columns use `Generated<T>`:
+they are required when selected and optional on insert. MATERIALIZED and ALIAS
+columns use `GeneratedAlways<T>` and cannot be passed to `values()` or `columns()`.
+These wrappers preserve separate read, insert, and predicate types for dates and
+wide integers, including configured type overrides.
+
+Check generated types into your application and regenerate them after schema
+changes. The [analytics API example](https://github.com/oorestisime/quarry/tree/main/examples/analytics-api)
+includes a `db:generate` command; CI regenerates its schema and checks for a diff.
+TypeScript can only report schema drift after the TypeScript schema is updated.

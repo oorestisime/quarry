@@ -387,7 +387,7 @@ Same shapes as `innerJoin`.
 ClickHouse `LEFT JOIN` does **not** produce `null` for unmatched rows by
 default &mdash; columns come back as type defaults instead (`0`, `''`,
 `false`). Quarry's typing reflects this. To opt into ANSI null semantics,
-pass `settings({ join_use_nulls: 1 })` on the query. See
+use `leftJoinNullable()` instead of `leftJoin()`. See
 [runtime semantics](/docs/concepts/runtime-semantics#left-join-does-not-produce-null-by-default).
 </Callout>
 
@@ -470,8 +470,7 @@ Merges query-level ClickHouse settings.
 ```ts
 db
   .selectFrom("users as u")
-  .leftJoin("event_logs as e", "u.id", "e.user_id")
-  .settings({ join_use_nulls: 1 });
+  .leftJoinNullable("event_logs as e", "u.id", "e.user_id");
 ```
 
 Multiple `.settings(...)` calls are merged. Values are coerced to ClickHouse's

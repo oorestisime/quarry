@@ -2,7 +2,7 @@
   "name": "quarry-workspace",
   "version": "0.2.0",
   "private": true,
-  "description": "Experimental ClickHouse-native query builder for TypeScript.",
+  "description": "Type-safe, ClickHouse-native query builder for TypeScript.",
   "keywords": [
     "analytics",
     "clickhouse",
@@ -15,7 +15,7 @@
     "type-safety",
     "typescript"
   ],
-  "homepage": "https://github.com/oorestisime/quarry",
+  "homepage": "https://ch-quarry.vercel.app",
   "bugs": {
     "url": "https://github.com/oorestisime/quarry/issues"
   },
@@ -33,14 +33,17 @@
     "lint": "pnpm --filter quarry lint && pnpm --filter @oorestisime/quarry-cli lint",
     "lint:fix": "pnpm --filter quarry lint:fix && pnpm --filter @oorestisime/quarry-cli lint:fix",
     "publish:core": "pnpm --filter quarry publish",
-    "release:check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm typecheck:docs && pnpm test && pnpm test:integration && pnpm build:cli && pnpm test:compat",
+    "release:check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm typecheck:native && pnpm test && pnpm test:integration && pnpm build:cli && pnpm test:compat && pnpm test:package && pnpm test:performance && pnpm typecheck:docs && pnpm --dir docs build",
     "test": "pnpm --filter quarry test && pnpm --filter @oorestisime/quarry-cli test",
     "test:compat": "pnpm build && pnpm --filter @oorestisime/quarry test",
     "test:coverage": "pnpm --filter quarry test:coverage",
     "test:integration": "pnpm --filter quarry test:integration",
     "test:watch": "pnpm --filter quarry test:watch",
     "typecheck": "pnpm --filter quarry typecheck && pnpm --filter @oorestisime/quarry-cli typecheck",
-    "typecheck:docs": "pnpm --filter @oorestisime/quarry-docs typecheck"
+    "typecheck:docs": "pnpm --filter @oorestisime/quarry-docs typecheck",
+    "typecheck:native": "node node_modules/typescript-native/bin/tsc --noEmit -p packages/core/tsconfig.json && node node_modules/typescript-native/bin/tsc --noEmit -p packages/cli/tsconfig.json",
+    "test:package": "pnpm build && node scripts/check-package.mjs",
+    "test:performance": "pnpm build && node scripts/check-type-performance.mjs"
   },
   "devDependencies": {
     "@clickhouse/client": "^1.18.2",
@@ -51,7 +54,9 @@
     "testcontainers": "^11.13.0",
     "tsdown": "^0.21.7",
     "tsx": "^4.20.6",
-    "typescript": "^6.0.2",
+    "typescript": "6.0.2",
+    "typescript-native": "npm:typescript@7.0.2",
     "vitest": "^3.2.4"
-  }
+  },
+  "packageManager": "pnpm@10.32.1"
 }

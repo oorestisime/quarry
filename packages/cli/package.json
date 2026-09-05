@@ -11,14 +11,15 @@
     "schema",
     "typescript"
   ],
-  "homepage": "https://github.com/oorestisime/quarry",
+  "homepage": "https://ch-quarry.vercel.app",
   "bugs": {
     "url": "https://github.com/oorestisime/quarry/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/oorestisime/quarry.git"
+    "url": "git+ssh://git@github.com/oorestisime/quarry.git",
+    "directory": "packages/cli"
   },
   "bin": {
     "quarry": "dist/index.mjs"
@@ -37,11 +38,14 @@
     "lint": "oxlint --vitest-plugin -A valid-title src test vitest.config.ts tsdown.config.ts",
     "lint:fix": "oxlint --vitest-plugin -A valid-title --fix src test vitest.config.ts tsdown.config.ts",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
     "citty": "^0.1.6"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

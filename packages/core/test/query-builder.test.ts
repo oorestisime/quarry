@@ -118,6 +118,13 @@ describe("query builder validation", () => {
       totals: { event_type: "", event_count: "4" },
     });
     expect(queryClient.query).toHaveBeenCalledWith({
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+      },
       query:
         "SELECT e.event_type, count() AS event_count FROM event_logs AS e GROUP BY e.event_type WITH TOTALS",
       query_params: {},
@@ -159,7 +166,14 @@ describe("query builder validation", () => {
       query_params: {},
       format: "JSON",
       query_id: "totals-query-id",
-      clickhouse_settings: { max_threads: 1 },
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+        max_threads: 1,
+      },
     });
   });
 
@@ -730,6 +744,13 @@ describe("query builder validation", () => {
 
     expect(queryClient.query).toHaveBeenCalledTimes(2);
     expect(queryClient.query).toHaveBeenNthCalledWith(1, {
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+      },
       query: "SELECT user_id, event_type FROM event_logs WHERE user_id = {p0:Int64}",
       query_params: { p0: 1 },
       format: "JSONEachRow",
@@ -760,6 +781,11 @@ describe("query builder validation", () => {
       format: "JSONEachRow",
       query_id: "select-query-id",
       clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
         max_threads: 1,
         wait_end_of_query: true,
       },
@@ -793,6 +819,13 @@ describe("query builder validation", () => {
       { user_id: 3, event_type: "browse" },
     ]);
     expect(queryClient.query).toHaveBeenCalledWith({
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+      },
       query: "SELECT user_id, event_type FROM event_logs",
       query_params: {},
       format: "JSONEachRow",
@@ -832,7 +865,14 @@ describe("query builder validation", () => {
       query_params: {},
       format: "JSONEachRow",
       query_id: "stream-query-id",
-      clickhouse_settings: { max_threads: 1 },
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+        max_threads: 1,
+      },
     });
   });
 
@@ -1081,6 +1121,11 @@ describe("query builder validation", () => {
       format: "JSONEachRow",
       query_id: "override-query-id",
       clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
         max_threads: 2,
       },
     });

@@ -22,6 +22,7 @@ export function baseOptions(): BaseLayoutProps {
     },
     githubUrl: "https://github.com/oorestisime/quarry",
     links: [
+      { text: "Playground", url: "/playground", active: "url" },
       {
         text: "Docs",
         url: "/docs",

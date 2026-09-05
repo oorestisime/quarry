@@ -3,6 +3,7 @@
   "description": "Task-oriented guides for using Quarry",
   "pages": [
     "index",
+    "composition",
     "getting-started",
     "introspection",
     "expressions-and-functions",

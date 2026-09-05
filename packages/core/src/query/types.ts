@@ -16,9 +16,7 @@ import type {
 import type { AliasedExpression, Expression, ExpressionBuilder } from "./expression-builder";
 import type { AliasedQuery, TableSourceBuilder } from "./source-builder";
 
-export type TableExpression<DB extends DatabaseSchema> =
-  | SourceName<DB>
-  | `${SourceName<DB>} as ${string}`;
+export type TableExpression<DB extends DatabaseSchema> = SourceName<DB> | `${string} as ${string}`;
 
 export type SourceExpression<DB extends DatabaseSchema> =
   | TableExpression<DB>
@@ -108,7 +106,10 @@ type SelectionString<Scope extends ScopeMap> =
   | ColumnRef<Scope>
   | `${ColumnRef<Scope>} as ${string}`;
 
-type ColumnNameFromRef<T extends string> = T extends `${string}.${infer Column}` ? Column : T;
+type ColumnNameFromRef<
+  Scope extends ScopeMap,
+  T extends string,
+> = T extends `${infer Alias}.${infer Column}` ? (Alias extends ScopeAlias<Scope> ? Column : T) : T;
 
 type WrapOutputColumn<T> =
   T extends QueryColumn<any, any> ? T : QueryColumn<SelectValue<T>, WhereValue<T>>;
@@ -117,42 +118,13 @@ type ScopeRawValue<Row extends object, Key extends string> = Key extends keyof R
   ? Row[Key]
   : never;
 
-type ScopeSelectedValue<Row extends object, Key extends string> = Key extends keyof Row
-  ? SelectValue<Row[Key]>
-  : never;
+type ScopeSelectedValue<Row extends object, Key extends string> = SelectValue<
+  ScopeRawValue<Row, Key>
+>;
 
-type ScopePredicateValue<Row extends object, Key extends string> = Key extends keyof Row
-  ? WhereValue<Row[Key]>
-  : never;
-
-export type ResolveColumnType<
-  Scope extends ScopeMap,
-  Ref extends string,
-> = Ref extends `${infer Alias}.${infer Column}`
-  ? Alias extends ScopeAlias<Scope>
-    ? Column extends keyof Scope[Alias]
-      ? ScopeSelectedValue<Scope[Alias], Extract<Column, string>>
-      : never
-    : never
-  : OnlyScopeAlias<Scope> extends infer Alias extends ScopeAlias<Scope>
-    ? Ref extends keyof Scope[Alias]
-      ? ScopeSelectedValue<Scope[Alias], Extract<Ref, string>>
-      : never
-    : never;
-
-export type ResolvePredicateColumnType<
-  Scope extends ScopeMap,
-  Ref extends string,
-> = Ref extends `${infer Alias}.${infer Column}`
-  ? Alias extends ScopeAlias<Scope>
-    ? Column extends keyof Scope[Alias]
-      ? ScopePredicateValue<Scope[Alias], Extract<Column, string>>
-      : never
-    : never
-  : OnlyScopeAlias<Scope> extends infer Alias extends ScopeAlias<Scope>
-    ? Ref extends keyof Scope[Alias]
-      ? ScopePredicateValue<Scope[Alias], Extract<Ref, string>>
-      : never
+type UnqualifiedColumn<Scope extends ScopeMap, Ref extends string> =
+  OnlyScopeAlias<Scope> extends infer Alias extends ScopeAlias<Scope>
+    ? ScopeRawValue<Scope[Alias], Ref>
     : never;
 
 export type ResolveScopeColumnType<
@@ -160,15 +132,17 @@ export type ResolveScopeColumnType<
   Ref extends string,
 > = Ref extends `${infer Alias}.${infer Column}`
   ? Alias extends ScopeAlias<Scope>
-    ? Column extends keyof Scope[Alias]
-      ? ScopeRawValue<Scope[Alias], Extract<Column, string>>
-      : never
-    : never
-  : OnlyScopeAlias<Scope> extends infer Alias extends ScopeAlias<Scope>
-    ? Ref extends keyof Scope[Alias]
-      ? ScopeRawValue<Scope[Alias], Extract<Ref, string>>
-      : never
-    : never;
+    ? ScopeRawValue<Scope[Alias], Column>
+    : UnqualifiedColumn<Scope, Ref>
+  : UnqualifiedColumn<Scope, Ref>;
+
+export type ResolveColumnType<Scope extends ScopeMap, Ref extends string> = SelectValue<
+  ResolveScopeColumnType<Scope, Ref>
+>;
+
+export type ResolvePredicateColumnType<Scope extends ScopeMap, Ref extends string> = WhereValue<
+  ResolveScopeColumnType<Scope, Ref>
+>;
 
 type NonTupleArray<T> = T extends readonly unknown[]
   ? number extends T["length"]
@@ -232,8 +206,10 @@ export type ArrayJoinedScope<Scope extends ScopeMap, Ref extends string> = Simpl
 
 type SelectionAlias<T extends string> = ParseSelectionExpression<T>["alias"];
 
-type SelectionOutputKey<T extends string> = [SelectionAlias<T>] extends [never]
-  ? ColumnNameFromRef<ParseSelectionExpression<T>["expr"] & string>
+type SelectionOutputKey<Scope extends ScopeMap, T extends string> = [SelectionAlias<T>] extends [
+  never,
+]
+  ? ColumnNameFromRef<Scope, ParseSelectionExpression<T>["expr"] & string>
   : SelectionAlias<T>;
 
 type SelectionOutputValue<Scope extends ScopeMap, T extends string> = ResolveColumnType<
@@ -266,19 +242,37 @@ export type SelectionExpression<Scope extends ScopeMap> =
   | SelectionString<Scope>
   | AliasedExpression<unknown, string, unknown>;
 
+/** Preserve SQL selection order for positional operations such as INSERT SELECT. */
+export type SelectionTypes<Scope extends ScopeMap, Selections extends readonly unknown[]> = {
+  [Index in keyof Selections]: Selections[Index] extends string
+    ? SelectionOutputValue<Scope, Selections[Index]>
+    : Selections[Index] extends AliasedExpression<infer Value, string, any>
+      ? Value
+      : never;
+};
+
+export type NullableScope<Scope extends ScopeMap> = {
+  [Alias in keyof Scope]: {
+    [Column in keyof Scope[Alias]]: QueryColumn<
+      SelectValue<Scope[Alias][Column]> | null,
+      WhereValue<Scope[Alias][Column]> | null
+    >;
+  };
+};
+
 export type GroupByExpression<Scope extends ScopeMap, Dicts extends DatabaseSchema = never> =
   | ColumnRef<Scope>
   | ((expressionBuilder: ExpressionBuilder<Scope, Dicts>) => Expression<unknown>);
 
 type SelectionResult<Scope extends ScopeMap, Selection> = Selection extends string
-  ? { [K in SelectionOutputKey<Selection>]: SelectionOutputValue<Scope, Selection> }
+  ? { [K in SelectionOutputKey<Scope, Selection>]: SelectionOutputValue<Scope, Selection> }
   : Selection extends AliasedExpression<infer Value, infer Alias, any>
     ? { [K in Alias]: Value }
     : never;
 
 type SelectionColumnResult<Scope extends ScopeMap, Selection> = Selection extends string
   ? {
-      [K in SelectionOutputKey<Selection>]: WrapOutputColumn<
+      [K in SelectionOutputKey<Scope, Selection>]: WrapOutputColumn<
         ResolveScopeColumnType<Scope, Extract<ParseSelectionExpression<Selection>["expr"], string>>
       >;
     }

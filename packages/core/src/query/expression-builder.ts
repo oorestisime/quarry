@@ -28,6 +28,15 @@ import type {
 
 type ScopeColumnMap = Record<string, QueryColumnMap>;
 
+export interface WindowOptions {
+  partitionBy?: readonly Expression<unknown>[];
+  orderBy?: readonly { by: Expression<unknown>; direction?: "asc" | "desc" }[];
+  rows?: {
+    start: number | "unbounded preceding" | "current row";
+    end: number | "unbounded following" | "current row";
+  };
+}
+
 export class Expression<T, Where = T> {
   constructor(
     readonly node: ExprNode,
@@ -36,6 +45,37 @@ export class Expression<T, Where = T> {
 
   as<Alias extends string>(alias: Alias): AliasedExpression<T, Alias, Where> {
     return new AliasedExpression(this.node, alias, this.clickhouseType);
+  }
+
+  over(options: WindowOptions = {}): Expression<T, Where> {
+    if (options.rows) {
+      const { start, end } = options.rows;
+      for (const bound of [start, end]) {
+        if (typeof bound === "number" && !Number.isSafeInteger(bound))
+          throw new Error("Window row offsets must be safe integers.");
+      }
+      if (typeof start !== "number" && start !== "unbounded preceding" && start !== "current row")
+        throw new Error("Invalid window frame start.");
+      if (typeof end !== "number" && end !== "unbounded following" && end !== "current row")
+        throw new Error("Invalid window frame end.");
+      const first =
+        start === "unbounded preceding" ? -Infinity : start === "current row" ? 0 : start;
+      const last = end === "unbounded following" ? Infinity : end === "current row" ? 0 : end;
+      if (first > last) throw new Error("Window frame start must not follow its end.");
+    }
+    return new Expression(
+      {
+        kind: "window",
+        expression: this.node,
+        partitionBy: (options.partitionBy ?? []).map((expr) => expr.node),
+        orderBy: (options.orderBy ?? []).map((order) => ({
+          expr: order.by.node,
+          direction: order.direction === "desc" ? "DESC" : "ASC",
+        })),
+        ...(options.rows ? { rows: { ...options.rows } } : {}),
+      },
+      this.clickhouseType,
+    );
   }
 }
 
@@ -169,6 +209,9 @@ type CoalesceResult<Types extends readonly unknown[]> =
   | (AllNullable<Types> extends true ? null : never);
 
 interface ExpressionBuilderFunctions<Scope extends ScopeMap, Sources extends DatabaseSchema> {
+  rowNumber(): Expression<string>;
+  rank(): Expression<string>;
+  denseRank(): Expression<string>;
   count(): Expression<string>;
   countIf(condition: Expression<unknown>): Expression<string>;
   now(): Expression<string>;
@@ -419,6 +462,9 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
   }
 
   readonly fn: ExpressionBuilderFunctions<Scope, Sources> = {
+    rowNumber: () => this.callFunction<string>("row_number", [], "UInt64"),
+    rank: () => this.callFunction<string>("rank", [], "UInt64"),
+    denseRank: () => this.callFunction<string>("dense_rank", [], "UInt64"),
     count: () => this.callFunction<string, string | number | bigint>("count", [], "UInt64"),
     countIf: (condition: Expression<unknown>) =>
       this.callFunction<string, string | number | bigint>("countIf", [condition.node], "UInt64"),

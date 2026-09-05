@@ -122,9 +122,8 @@ Pass query-level ClickHouse settings via `.settings({...})`:
 ```ts
 const rows = await db
   .selectFrom("users as u")
-  .leftJoin("event_logs as e", "u.id", "e.user_id")
+  .leftJoinNullable("event_logs as e", "u.id", "e.user_id")
   .select("u.id", "u.email", "e.event_type")
-  .settings({ join_use_nulls: 1 })
   .execute();
 ```
 

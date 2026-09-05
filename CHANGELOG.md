@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Parameterized `sql` fragments and quoted `identifier` segments for expressions outside the typed helper API.
+- `leftJoinNullable` with nullable right-side result types, positional `unionAll`, and window expressions with ranking functions and `ROWS` frames.
+- `abortSignal` execution options, including cancellation during retry backoff.
+- `Generated` and `GeneratedAlways` insert types; introspection recognizes `DEFAULT`, `MATERIALIZED`, and `ALIAS` columns.
+- A SQL playground, runnable analytics API with ClickHouse seed data and schema generation, comparison and composition guides, and contribution templates.
+- Packed-consumer checks for TypeScript 5.9, 6, and 7, ClickHouse 24.8/25.8 CI, declaration maps with packaged sources, and consumer type-performance budgets.
+
+### Changed
+
+- Reduce downstream compiler work for large schemas by validating aliases without expanding every source into a template-literal union.
+- **Breaking:** `fromSelect` requires explicit target columns and ordered selections with compatible positional types. Add `.columns(...)` and replace table stars with explicit selections.
+- **Breaking:** typed SELECT execution pins JSON result settings and outer-join null behavior. Conflicting overrides fail before execution; use `leftJoinNullable` for null-extended joins. A query and its nested queries must use one outer-join null mode.
+- Quote syntax-bearing identifiers in compiled queries and values inserts.
+- Align the GitHub/npm README, compatibility policy, and pre-1.0 positioning. Keep the declaration build on TypeScript 6 while checking native TypeScript 7 compatibility.
+
 ## [0.9.1] - 2026-08-19
 
 ### Changed

@@ -7,6 +7,8 @@ import type {
 } from "../ast/query";
 import { normalizeClickHouseInputValue } from "../input-normalization";
 import { escapeSingleQuotedString } from "../utils/string";
+import { quoteIdentifier, quoteTable } from "./identifiers";
+import { resultSettings } from "../query/result-settings";
 
 export interface CompiledQuery {
   query: string;
@@ -60,6 +62,7 @@ function compileSettingValue(value: string | number | boolean): string {
 class CompileContext {
   private paramIndex = 0;
   readonly params: Record<string, unknown> = {};
+  aliases = new Set<string>();
 
   bind(value: unknown, clickhouseType?: string): string {
     const name = `p${this.paramIndex++}`;
@@ -72,7 +75,31 @@ class CompileContext {
 function compileExpr(expr: ExprNode, context: CompileContext): string {
   switch (expr.kind) {
     case "ref":
-      return expr.name;
+      return compileRef(expr.name, context);
+    case "identifier":
+      return expr.parts.map(quoteIdentifier).join(".");
+    case "window": {
+      const parts = [];
+      if (expr.partitionBy.length)
+        parts.push(
+          `PARTITION BY ${expr.partitionBy.map((part) => compileExpr(part, context)).join(", ")}`,
+        );
+      if (expr.orderBy.length)
+        parts.push(
+          `ORDER BY ${expr.orderBy.map((order) => `${compileExpr(order.expr, context)} ${order.direction}`).join(", ")}`,
+        );
+      if (expr.rows)
+        parts.push(
+          `ROWS BETWEEN ${compileWindowBound(expr.rows.start)} AND ${compileWindowBound(expr.rows.end)}`,
+        );
+      return `${compileExpr(expr.expression, context)} OVER (${parts.join(" ")})`;
+    }
+    case "fragment":
+      return expr.strings.reduce(
+        (sql, part, index) =>
+          sql + part + (index < expr.values.length ? compileExpr(expr.values[index], context) : ""),
+        "",
+      );
     case "value":
       return context.bind(expr.value, expr.clickhouseType);
     case "raw":
@@ -95,28 +122,64 @@ function compileExpr(expr: ExprNode, context: CompileContext): string {
       return expr.conditions
         .map((condition) => {
           const compiled = compileExpr(condition, context);
-          return condition.kind === "logical" ? `(${compiled})` : compiled;
+          return condition.kind === "logical" || condition.kind === "fragment"
+            ? `(${compiled})`
+            : compiled;
         })
         .join(` ${expr.op} `);
   }
 }
 
+function compileWindowBound(bound: number | string): string {
+  if (typeof bound === "string") return bound.toUpperCase();
+  return bound === 0
+    ? "CURRENT ROW"
+    : `${Math.abs(bound)} ${bound < 0 ? "PRECEDING" : "FOLLOWING"}`;
+}
+
 function compileSource(source: SourceNode, context: CompileContext): string {
   if (source.kind === "table") {
-    const alias = source.alias ? ` AS ${source.alias}` : "";
+    const alias = source.alias ? ` AS ${quoteIdentifier(source.alias)}` : "";
     const final = source.final ? " FINAL" : "";
-    return `${source.name}${alias}${final}`;
+    return `${quoteTable(source.name)}${alias}${final}`;
   }
 
-  return `(${compileQuerySql(source.query, context)}) AS ${source.alias}`;
+  return `(${compileQuerySql(source.query, context)}) AS ${quoteIdentifier(source.alias)}`;
 }
 
 function compileSelection(selection: SelectionNode, context: CompileContext): string {
   const compiled = compileExpr(selection.expr, context);
-  return selection.alias ? `${compiled} AS ${selection.alias}` : compiled;
+  return selection.alias ? `${compiled} AS ${quoteIdentifier(selection.alias)}` : compiled;
 }
 
 function compileQuerySql(node: SelectQueryNode, context: CompileContext): string {
+  const previous = context.aliases;
+  context.aliases = new Set(
+    [...(node.from ? [node.from] : []), ...node.joins.map((join) => join.source)].map(
+      (source) => source.alias ?? (source.kind === "table" ? source.name : ""),
+    ),
+  );
+  try {
+    return compileQueryBody(node, context);
+  } finally {
+    context.aliases = previous;
+  }
+}
+
+function compileRef(name: string, context: CompileContext): string {
+  const dot = name.indexOf(".");
+  if (dot !== -1 && context.aliases.has(name.slice(0, dot))) {
+    return `${quoteIdentifier(name.slice(0, dot))}.${quoteIdentifier(name.slice(dot + 1))}`;
+  }
+  return quoteIdentifier(name);
+}
+
+function compileQueryBody(node: SelectQueryNode, context: CompileContext): string {
+  if (node.unionAll) {
+    return node.unionAll
+      .map((branch) => `(${compileQuerySql(branch, context)})`)
+      .join(" UNION ALL ");
+  }
   if (!node.from) {
     throw new Error("Cannot compile a query without a FROM clause");
   }
@@ -129,7 +192,9 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
     ...(node.with.length > 0
       ? [
           `WITH ${node.with
-            .map((cte) => `${cte.name} AS (${compileQuerySql(cte.query, context)})`)
+            .map(
+              (cte) => `${quoteIdentifier(cte.name)} AS (${compileQuerySql(cte.query, context)})`,
+            )
             .join(", ")}`,
         ]
       : []),
@@ -199,7 +264,7 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
   const settingsEntries = Object.entries(node.settings);
   if (settingsEntries.length > 0) {
     parts.push(
-      `SETTINGS ${settingsEntries.map(([key, value]) => `${key} = ${compileSettingValue(value)}`).join(", ")}`,
+      `SETTINGS ${settingsEntries.map(([key, value]) => `${quoteIdentifier(key)} = ${compileSettingValue(value)}`).join(", ")}`,
     );
   }
 
@@ -207,6 +272,7 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
 }
 
 export function compileSelectQuery(query: SelectQueryNode): CompiledQuery {
+  resultSettings(query);
   const context = new CompileContext();
 
   return {
@@ -222,11 +288,13 @@ export function compileInsertQuery<Row extends object>(
     throw new Error("Cannot compile an insert without a source");
   }
 
-  const columns = query.columns?.length ? ` (${query.columns.join(", ")})` : "";
+  const columns = query.columns?.length
+    ? ` (${query.columns.map(quoteIdentifier).join(", ")})`
+    : "";
 
   if (query.source.kind === "values") {
     return {
-      query: `INSERT INTO ${query.table}${columns} FORMAT JSONEachRow`,
+      query: `INSERT INTO ${quoteTable(query.table)}${columns} FORMAT JSONEachRow`,
       params: {},
       values: structuredClone(query.source.rows as Row[]),
     };
@@ -235,7 +303,7 @@ export function compileInsertQuery<Row extends object>(
   const compiledSelect = compileSelectQuery(query.source.query);
 
   return {
-    query: `INSERT INTO ${query.table}${columns} ${compiledSelect.query}`,
+    query: `INSERT INTO ${quoteTable(query.table)}${columns} ${compiledSelect.query}`,
     params: compiledSelect.params,
   };
 }

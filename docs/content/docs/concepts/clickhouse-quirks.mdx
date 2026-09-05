@@ -46,11 +46,12 @@ For the runtime type story (UInt64 → string, etc.), see
 | `SETTINGS k = v`            | ✅ | Query-level, merges across calls |
 | `GROUP BY ... WITH TOTALS`  | ✅ | `.withTotals().executeWithTotals()` returns rows and totals separately |
 | `SAMPLE`                    | ❌ | Not yet |
-| `UNION ALL` / `UNION DISTINCT` | ❌ | Not yet |
+| `UNION ALL` / `UNION DISTINCT` | Partial | `unionAll()` with ordered compatible selections; DISTINCT is not supported |
 | `INTERSECT` / `EXCEPT`      | ❌ | Not yet |
-| `WINDOW` / window functions | ❌ | Not yet |
+| Window functions | ✅ | `Expression.over()`, ranking helpers, partition/order expressions, ROWS frames |
+| Named WINDOW / RANGE frames | ❌ | Use a static SQL fragment when needed |
 | `INSERT INTO`               | ✅ | `db.insertInto(table).values([...])` |
-| `INSERT INTO ... SELECT`    | ✅ | `db.insertInto(table).fromSelect(query)` |
+| `INSERT INTO ... SELECT`    | ✅ | `db.insertInto(table).columns(...columns).fromSelect(query)` |
 | Migrations / schema diff    | ❌ | Not in scope for Quarry |
 
 The current direction is corpus-driven &mdash; implement what real queries
@@ -71,12 +72,13 @@ unmatched right-side columns come back as their **type defaults**:
 | string   | `''`    |
 | boolean  | `false` |
 
-Quarry's typing follows that default behavior &mdash; left-joined columns
-are typed as the actual column type, not `T | null`. If you want SQL-standard
-null semantics, opt in with:
+Quarry explicitly requests that default behavior during execution and its typing follows it &mdash; left-joined columns
+are typed as the actual column type, not `T | null`. For nullable right-side results, use the typed operation:
 
 ```ts
-.settings({ join_use_nulls: 1 })
+db.selectFrom("users as u")
+  .leftJoinNullable("event_logs as e", "u.id", "e.user_id")
+  .select("u.id", "e.event_type");
 ```
 
 See [Runtime semantics](/docs/concepts/runtime-semantics#left-join-does-not-produce-null-by-default)
@@ -132,7 +134,7 @@ session-level settings for that one query. Quarry exposes this as
 `.settings({...})`:
 
 ```ts
-.settings({ join_use_nulls: 1, max_threads: 4 })
+.settings({ max_threads: 4 })
 ```
 
 Multiple `.settings(...)` calls are merged. Values are coerced to the right

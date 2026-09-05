@@ -26,7 +26,7 @@
   ·
   <a href="https://ch-quarry.vercel.app/docs/reference"><strong>API reference</strong></a>
   ·
-  <a href="https://github.com/oorestisime/quarry/issues/new"><strong>Bring a real query</strong></a>
+  <a href="https://github.com/oorestisime/quarry/issues/new?template=query.yml"><strong>Bring a real query</strong></a>
 </p>
 
 Quarry is for TypeScript backends, jobs, and internal tools that query
@@ -38,6 +38,15 @@ ClickHouse-specific syntax.
 It stays deliberately close to SQL: queries are immutable, parameters remain
 visible, generated SQL is inspectable, and execution still goes through the
 official ClickHouse client.
+
+## Try it in five minutes
+
+- [Open the playground](https://ch-quarry.vercel.app/playground) to change filters
+  and inspect SQL and parameters without a database.
+- [Run the analytics API](https://github.com/oorestisime/quarry/tree/main/examples/analytics-api) for seeded ClickHouse data,
+  schema generation, optional filters, cancellation, and inferred result rows.
+- [Compare approaches](https://ch-quarry.vercel.app/docs/concepts/choosing-quarry)
+  using a real analytics endpoint and explicit tradeoffs.
 
 ## When Quarry helps
 
@@ -121,16 +130,31 @@ giving it a more convenient but incorrect TypeScript type.
 - **Inspectable output.** Every select and insert can be compiled before it is
   executed, including typed ClickHouse placeholders and parameter values.
 
+## Compatibility
+
+Quarry is pre-1.0. Minor releases may change the API with a changelog entry;
+patch releases preserve it. The package is ESM and supports Node 22/24 and
+TypeScript 5.9, 6, and 7 under NodeNext or Bundler resolution. CI checks consumers
+of the packed package and runs integration tests against ClickHouse 24.8 and 25.8
+using `@clickhouse/client` 1.18.2.
+
+Queries explicitly preserve JSON serialization settings so UInt64 and other
+result types agree with the values received. Use `leftJoinNullable()` for nullable
+right-side join results; ordinary `leftJoin()` uses ClickHouse's type defaults.
+See [runtime semantics](https://ch-quarry.vercel.app/docs/concepts/runtime-semantics)
+for the supported settings and limitations.
+
 ## Current scope
 
 - Typed selects and inserts, including `INSERT INTO ... SELECT`
-- Joins, subqueries, CTEs, and multi-condition predicates
+- Joins, nullable left joins, subqueries, CTEs, `UNION ALL`, and multi-condition predicates
+- Parameter-aware `sql` fragments, quoted identifiers, and window expressions
 - `FINAL`, `PREWHERE`, `ARRAY JOIN`, `GROUP BY WITH TOTALS`, and `LIMIT BY`
 - Typed dictionary, array, string, date/time, null, cast, conditional, and
   aggregate helpers
 - Buffered execution, first-row helpers, totals-aware execution, retries, and
   streaming
-- Schema introspection for tables, views, and dictionaries
+- Schema introspection for tables, views, and dictionaries, including generated insert columns
 
 The complete support matrix, limitations, and ClickHouse-specific behavior are
 documented in
@@ -142,7 +166,7 @@ Quarry's roadmap is meant to grow from production queries rather than a generic
 SQL feature checklist. If you use ClickHouse from TypeScript, bring a query that
 is difficult to compose, type, or reuse.
 
-[Open an issue](https://github.com/oorestisime/quarry/issues/new) with the SQL
+[Open an issue](https://github.com/oorestisime/quarry/issues/new?template=query.yml) with the SQL
 or a reduced example and describe what changes at runtime. Complex joins,
 conditional filters, unusual ClickHouse functions, and queries that expose a
 bad type are especially useful. I will help translate it into Quarry and use
@@ -179,3 +203,8 @@ pnpm --dir docs dev
 The npm package name is `quarry`. It moved from `@oorestisime/quarry` in
 version `0.9.0`; existing scoped-package users can update to the `0.8.1`
 compatibility wrapper before changing their dependency and imports.
+
+## Contributing
+
+See [CONTRIBUTING.md](https://github.com/oorestisime/quarry/blob/main/CONTRIBUTING.md)
+for local checks, query regression tests, compiler performance budgets, and release preparation.

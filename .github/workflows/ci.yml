@@ -17,8 +17,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -38,6 +36,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Native TypeScript 7 checks
+        run: pnpm typecheck:native
+
       - name: Unit tests
         run: pnpm test
 
@@ -46,3 +47,62 @@ jobs:
 
       - name: Build packages
         run: pnpm build:cli
+
+      - name: Compatibility wrapper
+        run: pnpm test:compat
+
+      - name: Consumer type performance
+        run: pnpm test:performance
+
+  package-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        typescript: ["5.9", "6", "7"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: node scripts/check-package.mjs ${{ matrix.typescript }}
+
+  docs-and-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:cli
+      - run: pnpm --dir docs build
+      - run: pnpm typecheck:docs
+      - run: pnpm --filter @quarry/example-analytics typecheck
+      - run: pnpm --filter @quarry/example-comparison typecheck
+      - run: docker compose -f examples/analytics-api/compose.yaml up -d --wait
+      - run: pnpm --filter @quarry/example-analytics db:generate
+      - run: git diff --exit-code -- examples/analytics-api/src/generated-schema.ts
+      - run: pnpm --filter @quarry/example-analytics test
+      - run: pnpm --filter @quarry/example-comparison test
+      - if: always()
+        run: docker compose -f examples/analytics-api/compose.yaml down -v
+
+  clickhouse-25:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:integration
+        env:
+          CLICKHOUSE_IMAGE: clickhouse/clickhouse-server:25.8

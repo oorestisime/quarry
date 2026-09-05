@@ -1,0 +1,31 @@
+name: Bring a real query
+description: Get help translating a ClickHouse query or describe an adoption blocker.
+title: "Query: "
+body:
+  - type: textarea
+    id: query
+    attributes:
+      label: SQL and what changes at runtime
+      description: Share a reduced query with synthetic values and describe optional filters or reusable parts.
+      render: sql
+    validations:
+      required: true
+  - type: textarea
+    id: schema
+    attributes:
+      label: Relevant schema and expected result
+      description: Include column types and a sample result using synthetic data.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Quarry, TypeScript, Node, ClickHouse, and @clickhouse/client versions.
+    validations:
+      required: true
+  - type: textarea
+    id: blocker
+    attributes:
+      label: What prevents you from using Quarry?
+      description: Include the attempted builder code or compiler diagnostic, if applicable.

@@ -13,6 +13,7 @@ interface ClickHouseResultRow<T> {
 interface ClickHouseBaseParams {
   clickhouse_settings?: ClickHouseSettings;
   query_id?: string;
+  abort_signal?: AbortSignal;
 }
 
 interface ClickHouseQueryClient {
@@ -62,6 +63,7 @@ export interface ClickHouseExecutionOptions {
   client?: ClickHouseClient;
   queryId?: string;
   clickhouse_settings?: ClickHouseSettings;
+  abortSignal?: AbortSignal;
 }
 
 export interface ClickHouseRetryOptions {
@@ -73,6 +75,7 @@ export function toClickHouseExecutionParams(
   options: ClickHouseExecutionOptions,
 ): ClickHouseBaseParams {
   return {
+    ...(options.abortSignal === undefined ? {} : { abort_signal: options.abortSignal }),
     ...(options.queryId === undefined ? {} : { query_id: options.queryId }),
     ...(options.clickhouse_settings === undefined
       ? {}

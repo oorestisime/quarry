@@ -6,6 +6,7 @@ const siteUrl = "https://ch-quarry.vercel.app";
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: siteUrl },
+    { url: `${siteUrl}/playground` },
     ...source.getPages().map((page) => ({
       url: `${siteUrl}${page.url}`,
     })),

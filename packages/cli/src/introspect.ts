@@ -93,6 +93,7 @@ interface SystemColumnRow {
   readonly name: string;
   readonly type: string;
   readonly position: number;
+  readonly default_kind?: string;
 }
 
 interface SystemDictionaryRow {
@@ -631,7 +632,8 @@ export async function fetchDatabaseColumns(
           table,
           name,
           type,
-          position
+          position,
+          default_kind
         FROM system.columns
         WHERE database = {database:String}
         ORDER BY table ASC, position ASC
@@ -648,6 +650,7 @@ export async function fetchDatabaseColumns(
       name: row.name,
       clickhouseType: row.type,
       position: row.position,
+      ...(row.default_kind ? { defaultKind: row.default_kind } : {}),
     }));
   } finally {
     await client.close();

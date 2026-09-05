@@ -1,7 +1,7 @@
 import { createClient } from "@clickhouse/client";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
-const CLICKHOUSE_IMAGE = "clickhouse/clickhouse-server:24.8.14.39";
+const CLICKHOUSE_IMAGE = process.env.CLICKHOUSE_IMAGE ?? "clickhouse/clickhouse-server:24.8.14.39";
 const CLICKHOUSE_PORT = 8123;
 const CLICKHOUSE_USERNAME = "test";
 const CLICKHOUSE_PASSWORD = "test";

@@ -6,28 +6,27 @@ export default function HomePage() {
       {/* Hero */}
       <section className="flex flex-col items-center text-center px-6 pt-24 pb-20">
         <span className="inline-block mb-6 px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-full bg-fd-muted text-fd-muted-foreground border border-fd-border">
-          Alpha
+          Pre-1.0 · ESM · TypeScript 5.9–7
         </span>
         <h1 className="text-5xl md:text-6xl font-bold mb-6 tracking-tight">
-          Quarry
+          Type-safe ClickHouse queries.
         </h1>
         <p className="text-fd-muted-foreground max-w-2xl mb-10 text-lg leading-relaxed">
-          A ClickHouse-native query builder for TypeScript. Type-safe, explicit
-          about ClickHouse semantics, and honest about what your driver
-          actually returns at runtime.
+          Keep your existing client. Compose filters, joins, and aggregations in TypeScript. Infer
+          the rows you receive and inspect the SQL you send.
         </p>
         <div className="flex gap-3">
           <Link
-            href="/docs/guides/getting-started"
+            href="/playground"
             className="bg-fd-primary text-fd-primary-foreground rounded-full font-medium px-6 py-2.5 hover:opacity-90 transition"
           >
-            Getting started
+            Try the playground
           </Link>
           <Link
-            href="/docs/reference"
+            href="https://github.com/oorestisime/quarry/tree/main/examples/analytics-api"
             className="bg-fd-secondary text-fd-secondary-foreground rounded-full font-medium px-6 py-2.5 hover:opacity-90 transition border border-fd-border"
           >
-            API reference
+            Run the example
           </Link>
         </div>
         <div className="mt-10 w-full max-w-2xl text-left rounded-xl border border-fd-border bg-fd-card overflow-hidden">
@@ -49,8 +48,8 @@ const rows = await db
       <section className="px-6 pb-20">
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
           <ValueCard
-            title="Native parameters"
-            description="Values compile to ClickHouse query_params instead of being interpolated into SQL."
+            title="Compose changing filters"
+            description="Reuse a query across routes and jobs, adding optional filters while keeping typed inputs and results."
           />
           <ValueCard
             title="Runtime-honest types"
@@ -70,8 +69,8 @@ const rows = await db
             Choose your path
           </h2>
           <p className="text-fd-muted-foreground text-center max-w-2xl mx-auto mb-12">
-            The docs are split by the job you are trying to do, not just by
-            the code structure underneath.
+            The docs are split by the job you are trying to do, not just by the code structure
+            underneath.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <PathCard
@@ -101,18 +100,17 @@ const rows = await db
       {/* Bottom CTA */}
       <section className="px-6 pb-24">
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-2xl font-bold mb-3">Need the deeper model?</h2>
+          <h2 className="text-2xl font-bold mb-3">Bring a query you already use.</h2>
           <p className="text-fd-muted-foreground mb-6">
-            Quarry is explicit about ClickHouse behavior. If you want to see
-            where the design is headed or why the semantics look the way they
-            do, the deep-dive docs are the next stop.
+            Share the SQL, a reduced schema, and what changes at runtime. Real application queries
+            guide Quarry’s next improvements.
           </p>
           <div className="flex gap-3 justify-center">
             <Link
-              href="/docs/concepts"
+              href="https://github.com/oorestisime/quarry/issues/new?template=query.yml"
               className="bg-fd-primary text-fd-primary-foreground rounded-full font-medium px-6 py-2.5 hover:opacity-90 transition"
             >
-              Deep dive
+              Bring a query
             </Link>
             <Link
               href="/docs/guides/introspection"
@@ -151,9 +149,7 @@ function PathCard({
       className="block bg-fd-card border border-fd-border rounded-xl p-6 hover:border-fd-primary/40 transition"
     >
       <h3 className="font-semibold text-lg mb-2">{title}</h3>
-      <p className="text-fd-muted-foreground leading-relaxed text-sm">
-        {description}
-      </p>
+      <p className="text-fd-muted-foreground leading-relaxed text-sm">{description}</p>
     </Link>
   );
 }

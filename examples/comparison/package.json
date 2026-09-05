@@ -1,0 +1,20 @@
+{
+  "name": "@quarry/example-comparison",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx compare.ts",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit"
+  },
+  "dependencies": {
+    "@clickhouse/client": "1.18.2",
+    "@founderpath/kysely-clickhouse": "1.7.0",
+    "@hypequery/clickhouse": "2.9.1",
+    "kysely": "0.28.5",
+    "quarry": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.6"
+  }
+}

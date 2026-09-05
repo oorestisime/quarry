@@ -47,3 +47,33 @@ const compiled = db
 
 If performance matters, inspect the SQL Quarry produced and then apply normal
 ClickHouse performance analysis to that query.
+
+## TypeScript and large schemas
+
+Compiler performance is separate from ClickHouse execution performance. Quarry
+validates a selected source directly and avoids enumerating every possible table
+alias for large schemas. The improvement is part of the exported declarations,
+so downstream applications benefit on supported TypeScript versions without
+upgrading their compiler.
+
+Repository maintainers can reproduce the consumer checks with:
+
+```sh
+pnpm test:performance
+node scripts/check-type-performance.mjs --native
+```
+
+The fixtures import built declarations and cover 710 database objects, 1,000
+distinct wide tables, joined selections, CTE chains, and array operations. CI
+records timings and checks an instantiation budget under pinned TypeScript 6.0.2.
+Wall time is not a CI gate because shared runners vary. Counter values are only
+comparable under the same compiler version.
+
+The standalone core/CLI checker also runs under TypeScript 7. Declaration builds
+retain TypeScript 6 and docs retain TypeScript 5.9 for their compiler-API tooling.
+Consumers can use TS 5.9, 6, or 7 independently of the compiler used to build Quarry.
+
+For application code, select only needed columns, keep exported row/query types
+understandable, and profile a representative consumer with `--extendedDiagnostics`
+before changing types. Deep generic wrappers and unusually wide schemas can have
+different costs from these fixtures. Do not disable strictness to hide a slowdown.

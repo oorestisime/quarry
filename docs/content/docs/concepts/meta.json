@@ -3,6 +3,7 @@
   "description": "How Quarry maps ClickHouse behavior into TypeScript types and query builder semantics",
   "pages": [
     "index",
+    "choosing-quarry",
     "approach",
     "architecture",
     "scopes-and-aliases",

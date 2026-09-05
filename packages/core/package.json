@@ -2,7 +2,7 @@
   "name": "quarry",
   "version": "0.9.1",
   "private": false,
-  "description": "Experimental ClickHouse-native query builder for TypeScript.",
+  "description": "Type-safe, ClickHouse-native query builder for TypeScript.",
   "keywords": [
     "analytics",
     "clickhouse",
@@ -15,19 +15,21 @@
     "type-safety",
     "typescript"
   ],
-  "homepage": "https://github.com/oorestisime/quarry",
+  "homepage": "https://ch-quarry.vercel.app",
   "bugs": {
     "url": "https://github.com/oorestisime/quarry/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/oorestisime/quarry.git"
+    "url": "git+ssh://git@github.com/oorestisime/quarry.git",
+    "directory": "packages/core"
   },
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "src"
   ],
   "type": "module",
   "sideEffects": false,
@@ -49,8 +51,11 @@
     "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "typecheck:performance": "tsc --noEmit -p tsconfig.performance.json --extendedDiagnostics",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "typecheck:performance": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.performance.json --extendedDiagnostics",
     "prepublishOnly": "pnpm build"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

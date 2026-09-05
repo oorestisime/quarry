@@ -1,0 +1,120 @@
+---
+title: Compose application queries
+description: Reuse optional filters, safely extend SQL, combine datasets, and calculate window results.
+---
+
+The [analytics API example](https://github.com/oorestisime/quarry/tree/main/examples/analytics-api)
+includes a database, seed data, generated types, a runnable HTTP endpoint, and tests.
+For a database-free introduction, use the [playground](/playground).
+
+## Optional filters and reuse
+
+Queries are immutable. Assign the returned builder when adding an optional filter:
+
+```ts
+function eventCounts(tenantId: number, filters: { from: string; eventType?: string }) {
+  let query = db.selectFrom("events")
+    .prewhere("tenant_id", "=", tenantId)
+    .where("created_at", ">=", filters.from);
+
+  if (filters.eventType) {
+    query = query.where("event_type", "=", filters.eventType);
+  }
+
+  return query
+    .selectExpr(eb => ["event_type", eb.fn.count().as("events")])
+    .groupBy("event_type");
+}
+
+const query = eventCounts(authenticatedTenantId, requestFilters);
+const rows = await query.execute({ abortSignal: requestSignal });
+// { event_type: string; events: string }[]
+```
+
+Resolve the tenant from your application's authenticated caller. Query types check
+the schema and values; they do not authorize access. Pass an abort signal when a
+request or job can be cancelled. Quarry passes it to the client and interrupts
+retry backoff when it is aborted.
+
+## Parameter-aware SQL fragments
+
+Use `sql` for an expression that does not have a dedicated helper. Interpolated
+values use the same parameter allocator as ordinary builder predicates, including
+fragments nested inside other fragments and UNION branches.
+
+```ts
+import { sql, identifier, param } from "quarry";
+
+const label = sql<string>`concat(${identifier("e", "event_type")}, ${"!"})`;
+const query = db.selectFrom("events as e")
+  .select(label.as("label"))
+  .where(sql`${identifier("e", "created_at")} >= ${param(from, "DateTime")}`);
+```
+
+Prefer `eb.ref("e.event_type")` inside expression-builder callbacks when you want
+schema validation for a reference. `identifier("e", "event_type")` quotes each
+literal segment but does not check the database schema. A segment can contain
+spaces, backticks, or a literal dot: `identifier("e", "metrics.name")` refers to
+the column literally named `metrics.name` on alias `e`.
+
+`sql<T>` declares the SQL expression's result type; Quarry cannot verify arbitrary
+SQL text or the accuracy of `T`. `eb.raw<T>(string)` remains available for entirely
+static SQL. Do not interpolate request values into raw strings. Use
+`param(null, "Nullable(String)")` when binding null; untyped null and undefined
+interpolations are rejected.
+
+## UNION ALL
+
+Select columns in the same order and with compatible types in both branches:
+
+```ts
+const signups = db.selectFrom("signups")
+  .select("user_id", "created_at")
+  .where("tenant_id", "=", tenantId);
+
+const purchases = db.selectFrom("purchases")
+  .select("buyer_id", "purchased_at")
+  .where("tenant_id", "=", tenantId);
+
+const rows = await signups.unionAll(purchases)
+  .orderBy("created_at", "desc")
+  .limit(50)
+  .execute();
+```
+
+The first branch supplies result names. The second branch may use different names,
+but its positional types must fit the first branch. Subsequent ordering, filtering,
+and limits apply to the combined result through an outer query. Each branch keeps
+its own existing clauses, and bound parameter names remain unique across branches.
+
+Use explicit selections rather than table stars. UNION DISTINCT and WITH TOTALS
+branches are not supported. Use the same outer-join null policy throughout the
+query, including subqueries and CTEs.
+
+## Window expressions
+
+Call `over()` on an expression. Partition and order keys are expressions, so
+`eb.ref()` provides column validation:
+
+```ts
+const rows = await db.selectFrom("events")
+  .selectExpr(eb => [
+    "user_id",
+    eb.fn.rowNumber().over({
+      partitionBy: [eb.ref("tenant_id")],
+      orderBy: [{ by: eb.ref("created_at"), direction: "desc" }],
+    }).as("position"),
+    eb.fn.sum("amount").over({
+      orderBy: [{ by: eb.ref("created_at") }],
+      rows: { start: "unbounded preceding", end: "current row" },
+    }).as("running_amount"),
+  ])
+  .execute();
+```
+
+`rowNumber()`, `rank()`, and `denseRank()` return UInt64 results typed as strings.
+For ROWS frames, negative offsets mean preceding rows, positive offsets mean
+following rows, and zero means the current row. Offsets must be safe integers,
+and the start cannot follow the end. ClickHouse validates whether the underlying
+expression supports window execution. Named WINDOW clauses and RANGE frames do
+not yet have dedicated helpers.

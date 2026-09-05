@@ -33,15 +33,15 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
     return new TableSourceBuilder<DB, Table>(table, undefined, false);
   }
 
-  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any>>(
+  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any, any>>(
     name: Name,
     query: Query,
   ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>>;
-  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any>>(
+  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any, any>>(
     name: Name,
     callback: (db: ClickHouseDB<DB, Sources>) => Query,
   ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>>;
-  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any>>(
+  with<Name extends string, Query extends SelectQueryBuilder<any, any, any, any, any>>(
     name: Name,
     callbackOrQuery: ((db: ClickHouseDB<DB, Sources>) => Query) | Query,
   ): ClickHouseDB<DB, Simplify<Sources & { [K in Name]: InferResult<Query> }>> {
@@ -59,7 +59,7 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
 
   selectFrom<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
-  ): SelectQueryBuilder<Sources, ScopeFromSourceExpression<Sources, Source>, {}, {}> {
+  ): SelectQueryBuilder<Sources, ScopeFromSourceExpression<Sources, Source>, {}, {}, []> {
     const node = createEmptySelectQueryNode();
     node.with = structuredClone(this.withs);
     node.from = parseSourceExpression(source);

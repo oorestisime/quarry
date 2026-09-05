@@ -10,32 +10,48 @@ import {
 } from "../client";
 import { normalizeInsertValue } from "../input-normalization";
 import type { Simplify } from "../type-utils";
-import type { SelectQueryBuilder } from "./select-query-builder";
+import { quoteIdentifier, quoteTable } from "../compiler/identifiers";
+import { selectionCount } from "./selection-count";
 
 export type { CompiledInsertQuery } from "../compiler/query-compiler";
 
-export class InsertQueryBuilder<Table extends string, Row extends object> {
+export class InsertQueryBuilder<
+  Table extends string,
+  Row extends object,
+  Target extends readonly unknown[] = readonly unknown[],
+> {
   constructor(
     private readonly node: InsertQueryNode,
     private readonly client?: ClickHouseClient,
   ) {}
 
-  private next<NextRow extends object = Row>(
+  private next<NextRow extends object = Row, NextTarget extends readonly unknown[] = Target>(
     nextNode: InsertQueryNode,
-  ): InsertQueryBuilder<Table, NextRow> {
+  ): InsertQueryBuilder<Table, NextRow, NextTarget> {
     return new InsertQueryBuilder(nextNode, this.client);
   }
 
   columns<
     const Columns extends readonly [Extract<keyof Row, string>, ...Extract<keyof Row, string>[]],
-  >(...columns: Columns): InsertQueryBuilder<Table, Simplify<Pick<Row, Columns[number]>>> {
-    return this.next<Simplify<Pick<Row, Columns[number]>>>({
+  >(
+    ...columns: Columns
+  ): InsertQueryBuilder<
+    Table,
+    Simplify<Pick<Row, Columns[number]>>,
+    { [Index in keyof Columns]: Row[Columns[Index]] }
+  > {
+    if (this.node.source) throw new Error("Set insert columns before the insert source.");
+    if (new Set(columns).size !== columns.length) throw new Error("Insert columns must be unique.");
+    return this.next<
+      Simplify<Pick<Row, Columns[number]>>,
+      { [Index in keyof Columns]: Row[Columns[Index]] }
+    >({
       ...this.node,
       columns: [...columns],
     });
   }
 
-  values(rows: readonly Row[]): InsertQueryBuilder<Table, Row> {
+  values(rows: readonly Row[]): InsertQueryBuilder<Table, Row, Target> {
     if (this.node.source) {
       throw new Error("Insert source has already been set for this query.");
     }
@@ -49,16 +65,32 @@ export class InsertQueryBuilder<Table extends string, Row extends object> {
     });
   }
 
-  fromSelect(query: SelectQueryBuilder<any, any, any>): InsertQueryBuilder<Table, Row> {
+  fromSelect<
+    Query extends {
+      toAST(): import("../ast/query").SelectQueryNode;
+      readonly __selectionTypes: readonly unknown[];
+    },
+  >(
+    query: Query &
+      (number extends Target["length"]
+        ? never
+        : Query["__selectionTypes"] extends Target
+          ? unknown
+          : never),
+  ): InsertQueryBuilder<Table, Row, Target> {
     if (this.node.source) {
       throw new Error("Insert source has already been set for this query.");
     }
 
+    const select = query.toAST();
+    if (!this.node.columns || selectionCount(select) !== this.node.columns.length) {
+      throw new Error("INSERT SELECT column count must match the explicit target columns.");
+    }
     return this.next({
       ...this.node,
       source: {
         kind: "select",
-        query: query.toAST(),
+        query: select,
       },
     });
   }
@@ -101,10 +133,10 @@ export class InsertQueryBuilder<Table extends string, Row extends object> {
       const values = this.node.source.rows.map((row) => normalizeInsertValue(row)) as Row[];
 
       return resolvedClient.insert({
-        table: this.node.table,
+        table: quoteTable(this.node.table),
         values,
         format: "JSONEachRow",
-        columns: this.node.columns as [string, ...string[]] | undefined,
+        columns: this.node.columns?.map(quoteIdentifier) as [string, ...string[]] | undefined,
         ...toClickHouseExecutionParams(options ?? {}),
       });
     }
