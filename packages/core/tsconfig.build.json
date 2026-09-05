@@ -4,7 +4,8 @@
     "types": [],
     "lib": ["ES2022", "DOM"],
     "declaration": true,
-    "declarationMap": true
+    "declarationMap": true,
+    "isolatedDeclarations": true
   },
   "include": ["src"]
 }

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,8 +46,14 @@ try {
     ["install", "--ignore-scripts", "--no-audit", "--no-fund", join(temporary, packed.filename)],
     { cwd: temporary, stdio: "inherit" },
   );
-  const source = await readFile(join(root, "packages/core/test/adoption.typecheck.ts"), "utf8");
-  await writeFile(join(temporary, "consumer.ts"), source.replace('from "../src"', 'from "quarry"'));
+  const testDirectory = join(root, "packages/core/test");
+  const consumerFiles = (await readdir(testDirectory))
+    .filter((name) => name.endsWith(".typecheck.ts"))
+    .sort();
+  for (const name of consumerFiles) {
+    const source = await readFile(join(testDirectory, name), "utf8");
+    await writeFile(join(temporary, name), source.replace('from "../src"', 'from "quarry"'));
+  }
   for (const [module, moduleResolution] of [
     ["NodeNext", "NodeNext"],
     ["ESNext", "Bundler"],
@@ -64,7 +70,7 @@ try {
           moduleResolution,
           types: [],
         },
-        files: ["consumer.ts"],
+        files: consumerFiles,
       }),
     );
     execFileSync(
@@ -84,6 +90,18 @@ if(query.params.p0!==42) throw new Error("Packed runtime parameter binding faile
   const map = JSON.parse(await readFile(mapPath, "utf8"));
   for (const sourcePath of map.sources) {
     await readFile(resolve(mapPath, "..", map.sourceRoot ?? "", sourcePath));
+  }
+  if (version !== "7") {
+    execFileSync(
+      process.execPath,
+      [
+        join(root, "scripts/check-editor.mjs"),
+        join(temporary, "node_modules/quarry/dist/index.mjs"),
+        resolve(root, compilers[version], "../../lib/typescript.js"),
+      ],
+      { stdio: ["ignore", "pipe", "inherit"] },
+    );
+    console.log(`TypeScript ${version}: editor completions and nullable result hover passed.`);
   }
   console.log(
     `Packed package: TypeScript ${version}, NodeNext, Bundler, runtime imports, and declaration maps passed.`,

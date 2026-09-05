@@ -28,6 +28,10 @@ try {
   wide += "}\nconst db=createClickHouseDB<DB>();\n";
   for (let query = 0; query < 10; query++)
     wide += `const q${query}=db.selectFrom("table_${query} as a").innerJoin("table_${query + 1} as b","a.id","b.id").select("a.id","b.name").where("a.id","=",1);\nconst r${query}:InferResult<typeof q${query}>={id:1,name:"a"};\n`;
+  const scoped = wide.replace(
+    "createClickHouseDB<DB>()",
+    `createClickHouseDB<Pick<DB, ${Array.from({ length: 11 }, (_, index) => JSON.stringify(`table_${index}`)).join(" | ")}>>()`,
+  );
   let chains =
     'import {createClickHouseDB,type InferResult} from "quarry";\nconst db=createClickHouseDB<{events:{id:number;tags:string[];name:string}}>();\n';
   chains += 'const joined=db.selectFrom("events as e0")';
@@ -47,9 +51,10 @@ try {
   const results = [];
   // Counts are pinned to TS 6.0.2. Wall time is reported, not gated on noisy CI hosts.
   for (const [name, source, budget] of [
-    ["schema710", large, 60000],
-    ["heterogeneous1000", wide, 250000],
-    ["chains", chains, 240000],
+    ["schema710", large, 52000],
+    ["heterogeneous1000", wide, 150000],
+    ["serviceSchema", scoped, 75000],
+    ["chains", chains, 165000],
   ]) {
     await writeFile(join(temporary, "consumer.ts"), source);
     await writeFile(

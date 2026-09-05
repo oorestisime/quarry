@@ -22,9 +22,9 @@ export interface CreateClickHouseDBOptions {
 
 export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSchema = DB> {
   constructor(
-    private readonly client?: ClickHouseClient,
+    private readonly client?: ClickHouseClient | undefined,
     private readonly withs: CteNode[] = [],
-    private readonly retries?: ClickHouseRetryOptions,
+    private readonly retries?: ClickHouseRetryOptions | undefined,
   ) {}
 
   table<Table extends SourceName<DB>>(

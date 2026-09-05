@@ -22,7 +22,7 @@ export class InsertQueryBuilder<
 > {
   constructor(
     private readonly node: InsertQueryNode,
-    private readonly client?: ClickHouseClient,
+    private readonly client?: ClickHouseClient | undefined,
   ) {}
 
   private next<NextRow extends object = Row, NextTarget extends readonly unknown[] = Target>(

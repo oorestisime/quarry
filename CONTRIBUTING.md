@@ -21,7 +21,9 @@ Docker is required for `pnpm test:integration`. Tests create and remove their ow
 
 For a query feature, include the expected SQL/parameters, a negative type case, and a real ClickHouse test for behavior that depends on the server. Keep ordered selections and result serialization in mind: INSERT SELECT and UNION ALL are positional, and JSON format settings can change runtime types.
 
-Run `pnpm test:performance` when changing exported types. It compiles consumers of the built declarations with large schemas, joins, array operations, and CTEs. Review compiler traces before raising an instantiation budget. `node scripts/check-type-performance.mjs --native` reports the same workloads under TS 7.
+Run `pnpm test:performance` when changing exported types. It compiles consumers of the built declarations with full and service-specific schemas, joins, array operations, and CTEs. Review compiler traces before raising an instantiation budget. `node scripts/check-type-performance.mjs --native` reports the same workloads under TS 7.
+
+Core declarations use `isolatedDeclarations` for Oxc emission. Keep exported types and constructor parameter properties explicit where required; `pnpm typecheck` validates the source-only declaration configuration as well as the normal project. Packed-package checks exercise table/column completions and nullable result hovers on the classic TypeScript 5.9/6 language services.
 
 Before opening a PR, run:
 

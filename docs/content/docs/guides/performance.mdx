@@ -64,16 +64,49 @@ node scripts/check-type-performance.mjs --native
 ```
 
 The fixtures import built declarations and cover 710 database objects, 1,000
-distinct wide tables, joined selections, CTE chains, and array operations. CI
+distinct wide tables, service-specific schemas, joined selections, CTE chains,
+and array operations. CI
 records timings and checks an instantiation budget under pinned TypeScript 6.0.2.
 Wall time is not a CI gate because shared runners vary. Counter values are only
 comparable under the same compiler version.
 
-The standalone core/CLI checker also runs under TypeScript 7. Declaration builds
-retain TypeScript 6 and docs retain TypeScript 5.9 for their compiler-API tooling.
+The standalone core/CLI checker also runs under TypeScript 7. Core declarations
+use tsdown’s Oxc emit with `isolatedDeclarations`; the classic TypeScript 6
+dependency remains for validation and tooling. Docs retain TypeScript 5.9.
 Consumers can use TS 5.9, 6, or 7 independently of the compiler used to build Quarry.
 
 For application code, select only needed columns, keep exported row/query types
 understandable, and profile a representative consumer with `--extendedDiagnostics`
 before changing types. Deep generic wrappers and unusually wide schemas can have
 different costs from these fixtures. Do not disable strictness to hide a slowdown.
+
+
+### Give each service the schema it needs
+
+Keep one generated schema and derive a smaller type for query modules that use
+only a few tables:
+
+```ts
+import { createClickHouseDB } from "quarry";
+import type { DB } from "./generated-schema";
+
+type AnalyticsDB = Pick<DB, "events" | "users">;
+const analytics = createClickHouseDB<AnalyticsDB>({ client });
+
+const query = analytics.selectFrom("events as e")
+  .innerJoin("users as u", "e.user_id", "u.id")
+  .select("u.id", "e.event_type");
+```
+
+This reuses your client and preserves the generated column types. TypeScript
+validates the selected table names, so schema regeneration still catches a removed
+or renamed table. Other services can keep the full `DB` or choose a different
+subset. The full schema remains available for introspection and other modules.
+
+The performance fixture includes both full and scoped builders over the same
+1,000-table schema. Narrowing to the eleven tables used by its queries reduced
+check time in local experiments; actual gains depend on your schema and queries.
+There is no benefit from narrowing if the module needs every table.
+
+A `Pick` type limits the builder's compile-time API. It does not restrict the
+ClickHouse connection's permissions or authorize tenant access.

@@ -137,10 +137,10 @@ export class SelectQueryBuilder<
 
   constructor(
     private readonly node: SelectQueryNode,
-    private readonly client?: ClickHouseClient,
+    private readonly client?: ClickHouseClient | undefined,
     private readonly scopeColumns: ScopeColumnMap = {},
-    private readonly outputColumns?: QueryColumnMap,
-    private readonly retries?: ClickHouseRetryOptions,
+    private readonly outputColumns?: QueryColumnMap | undefined,
+    private readonly retries?: ClickHouseRetryOptions | undefined,
   ) {}
 
   private next<
@@ -713,11 +713,11 @@ export class SelectQueryBuilder<
 
   innerJoin<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
-    left: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
-    right: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    left: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    right: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
@@ -726,13 +726,13 @@ export class SelectQueryBuilder<
     source: Source & ValidSourceExpression<Sources, Source>,
     callback: (
       expressionBuilder: ExpressionBuilder<
-        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+        Scope & ScopeFromSourceExpression<Sources, Source>,
         Sources
       >,
     ) => Expression<unknown>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
@@ -740,22 +740,22 @@ export class SelectQueryBuilder<
   innerJoin<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
     leftOrCallback:
-      | ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>
+      | ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            Scope & ScopeFromSourceExpression<Sources, Source>,
             Sources
           >,
         ) => Expression<unknown>),
-    right?: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    right?: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
   > {
-    return this.addJoin("INNER", source, leftOrCallback, right);
+    return this.addJoin<Source>("INNER", source, leftOrCallback, right);
   }
 
   /**
@@ -767,11 +767,11 @@ export class SelectQueryBuilder<
    */
   leftJoin<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
-    left: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
-    right: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    left: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    right: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
@@ -780,13 +780,13 @@ export class SelectQueryBuilder<
     source: Source & ValidSourceExpression<Sources, Source>,
     callback: (
       expressionBuilder: ExpressionBuilder<
-        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+        Scope & ScopeFromSourceExpression<Sources, Source>,
         Sources
       >,
     ) => Expression<unknown>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
@@ -794,29 +794,29 @@ export class SelectQueryBuilder<
   leftJoin<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
     leftOrCallback:
-      | ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>
+      | ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            Scope & ScopeFromSourceExpression<Sources, Source>,
             Sources
           >,
         ) => Expression<unknown>),
-    right?: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    right?: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
   > {
-    return this.addJoin("LEFT", source, leftOrCallback, right);
+    return this.addJoin<Source>("LEFT", source, leftOrCallback, right);
   }
 
   /** LEFT JOIN with nullable right-side results and join_use_nulls = 1. */
   leftJoinNullable<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
-    left: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
-    right: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    left: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    right: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
   ): SelectQueryBuilder<
     Sources,
     Simplify<Scope & NullableScope<ScopeFromSourceExpression<Sources, Source>>>,
@@ -828,7 +828,7 @@ export class SelectQueryBuilder<
     source: Source & ValidSourceExpression<Sources, Source>,
     callback: (
       expressionBuilder: ExpressionBuilder<
-        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+        Scope & ScopeFromSourceExpression<Sources, Source>,
         Sources
       >,
     ) => Expression<unknown>,
@@ -842,14 +842,14 @@ export class SelectQueryBuilder<
   leftJoinNullable<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
     leftOrCallback:
-      | ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>
+      | ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            Scope & ScopeFromSourceExpression<Sources, Source>,
             Sources
           >,
         ) => Expression<unknown>),
-    right?: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    right?: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
   ): SelectQueryBuilder<
     Sources,
     Simplify<Scope & NullableScope<ScopeFromSourceExpression<Sources, Source>>>,
@@ -857,7 +857,7 @@ export class SelectQueryBuilder<
     OutputColumns,
     Order
   > {
-    const joined = this.addJoin("LEFT", source, leftOrCallback, right);
+    const joined = this.addJoin<Source>("LEFT", source, leftOrCallback, right);
     const node = joined.toAST();
     node.joins[node.joins.length - 1].nullable = true;
     node.settings = { ...node.settings, join_use_nulls: 1 };
@@ -890,11 +890,11 @@ export class SelectQueryBuilder<
    */
   leftAntiJoin<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
-    left: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
-    right: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    left: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    right: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
@@ -903,13 +903,13 @@ export class SelectQueryBuilder<
     source: Source & ValidSourceExpression<Sources, Source>,
     callback: (
       expressionBuilder: ExpressionBuilder<
-        Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+        Scope & ScopeFromSourceExpression<Sources, Source>,
         Sources
       >,
     ) => Expression<unknown>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
@@ -917,22 +917,22 @@ export class SelectQueryBuilder<
   leftAntiJoin<Source extends SourceExpression<Sources>>(
     source: Source & ValidSourceExpression<Sources, Source>,
     leftOrCallback:
-      | ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>
+      | ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            Scope & ScopeFromSourceExpression<Sources, Source>,
             Sources
           >,
         ) => Expression<unknown>),
-    right?: ColumnRef<Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>>,
+    right?: ColumnRef<Scope & ScopeFromSourceExpression<Sources, Source>>,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
   > {
-    return this.addJoin("LEFT ANTI", source, leftOrCallback, right);
+    return this.addJoin<Source>("LEFT ANTI", source, leftOrCallback, right);
   }
 
   private addJoin<Source extends SourceExpression<Sources>>(
@@ -942,14 +942,14 @@ export class SelectQueryBuilder<
       | string
       | ((
           expressionBuilder: ExpressionBuilder<
-            Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+            Scope & ScopeFromSourceExpression<Sources, Source>,
             Sources
           >,
         ) => Expression<unknown>),
     right?: string,
   ): SelectQueryBuilder<
     Sources,
-    Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+    Scope & ScopeFromSourceExpression<Sources, Source>,
     Output,
     OutputColumns,
     Order
@@ -959,7 +959,7 @@ export class SelectQueryBuilder<
       ? { ...this.scopeColumns, [resolvedSource.alias]: resolvedSource.columns }
       : this.scopeColumns;
     const joinedScopeBuilder = new ExpressionBuilder<
-      Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
+      Scope & ScopeFromSourceExpression<Sources, Source>,
       Sources
     >(nextScopeColumns);
     const on: ExprNode =
@@ -972,11 +972,7 @@ export class SelectQueryBuilder<
             right: { kind: "ref", name: right! },
           };
 
-    return this.next<
-      Simplify<Scope & ScopeFromSourceExpression<Sources, Source>>,
-      Output,
-      OutputColumns
-    >(
+    return this.next<Scope & ScopeFromSourceExpression<Sources, Source>, Output, OutputColumns>(
       {
         ...this.node,
         joins: [

@@ -51,7 +51,7 @@
     "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
-    "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json && node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.build.json",
     "typecheck:performance": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.performance.json --extendedDiagnostics",
     "prepublishOnly": "pnpm build"
   },

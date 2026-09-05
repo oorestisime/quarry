@@ -113,11 +113,7 @@ export type TableRow<DB extends DatabaseSchema, Table extends SourceName<DB>> = 
 >;
 
 export type ScopeRow<DB extends DatabaseSchema, Table extends SourceName<DB>> =
-  DB[Table] extends TypedDictionary<any>
-    ? never
-    : SourceColumns<DB[Table]> extends infer Row extends object
-      ? { [K in Extract<keyof Row, string>]: Row[K] }
-      : never;
+  DB[Table] extends TypedDictionary<any> ? never : SourceColumns<DB[Table]>;
 
 export type InsertRow<DB extends DatabaseSchema, Table extends SourceName<DB>> = Insertable<
   DB[Table]

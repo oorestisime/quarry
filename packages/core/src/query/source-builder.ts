@@ -9,7 +9,7 @@ export class TableSourceBuilder<
 > {
   constructor(
     readonly table: Table,
-    readonly alias?: Alias,
+    readonly alias?: Alias | undefined,
     readonly isFinal = false,
   ) {}
 
@@ -35,7 +35,7 @@ export class AliasedQuery<_Output extends object, Alias extends string, _OutputC
   constructor(
     private readonly query: SelectQueryNode,
     readonly alias: Alias,
-    private readonly outputColumns?: QueryColumnMap,
+    private readonly outputColumns?: QueryColumnMap | undefined,
   ) {}
 
   toAST(): SelectQueryNode {

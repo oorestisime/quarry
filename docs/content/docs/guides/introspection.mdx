@@ -249,3 +249,9 @@ Check generated types into your application and regenerate them after schema
 changes. The [analytics API example](https://github.com/oorestisime/quarry/tree/main/examples/analytics-api)
 includes a `db:generate` command; CI regenerates its schema and checks for a diff.
 TypeScript can only report schema drift after the TypeScript schema is updated.
+
+
+For large databases, generate the complete schema once and derive service-specific
+aliases with `Pick<DB, "events" | "users">`. This preserves the introspected column
+types while reducing the schema each query module needs to check. See
+[TypeScript performance](./performance#give-each-service-the-schema-it-needs).

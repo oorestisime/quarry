@@ -418,7 +418,7 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap, Sources extends Dat
 }
 
 export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseSchema = {}> {
-  constructor(private readonly scopeColumns?: ScopeColumnMap) {}
+  constructor(private readonly scopeColumns?: ScopeColumnMap | undefined) {}
 
   ref<Ref extends ColumnRef<Scope>>(
     ref: Ref,

@@ -5,6 +5,10 @@ import {
   type GeneratedAlways,
   type InferResult,
   type TypedDictionary,
+  type TypedTable,
+  type TypedView,
+  type ColumnType,
+  type ClickHouseUInt64,
 } from "../src";
 
 interface DB {
@@ -86,3 +90,34 @@ const dotted = dottedDB()
 ({ "metrics.name": "a" }) satisfies InferResult<typeof dotted>;
 // @ts-expect-error literal dotted columns retain their value types
 dotted.where("metrics.name", "=", 1);
+
+const scoped = createClickHouseDB<Pick<DB, "users" | "events">>();
+scoped.selectFrom("users as u").innerJoin("events as e", "u.id", "e.user_id").select("u.email");
+// @ts-expect-error service schemas expose only their chosen tables
+createClickHouseDB<Pick<DB, "users">>().selectFrom("events");
+// @ts-expect-error aliases cannot bypass the selected service schema
+createClickHouseDB<Pick<DB, "users">>().selectFrom("events as e");
+
+const typed = createClickHouseDB<{
+  users: TypedTable<{ id: number; metric: ColumnType<string, number, number> }>;
+  totals: TypedView<{ id: number; total: ClickHouseUInt64 }>;
+}>();
+const joined = typed
+  .selectFrom("users as u")
+  .select("u.metric")
+  .innerJoin("totals as t", (eb) => eb.cmpRef("u.id", "=", "t.id"))
+  .leftAntiJoin(typed.table("users").as("duplicate"), "u.id", "duplicate.id")
+  .select("t.total");
+({ metric: "5", total: "12" }) satisfies InferResult<typeof joined>;
+// @ts-expect-error joined columns retain their select representation
+({ metric: 5, total: 12 }) satisfies InferResult<typeof joined>;
+const subquery = typed.selectFrom(joined.as("joined"));
+subquery.where("metric", "=", 5).where("total", "=", 12n);
+// @ts-expect-error a selection made before joining keeps its predicate type through a subquery
+subquery.where("metric", "=", "5");
+const cte = typed.with("joined", joined).selectFrom("joined").select("metric", "total");
+({ metric: "5", total: "12" }) satisfies InferResult<typeof cte>;
+typed.selectFrom("users as u").innerJoin("totals as t", (eb) =>
+  // @ts-expect-error the join callback must not lose schema validation
+  eb.cmpRef("u.missing", "=", "t.id"),
+);
