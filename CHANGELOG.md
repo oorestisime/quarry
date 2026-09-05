@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Execute `executeTakeFirst()` and `executeTakeFirstOrThrow()` with an overall `LIMIT 1` instead of downloading all matching rows. Preserve explicit `LIMIT 0`, offsets, and the original builder.
 - Reduce downstream compiler work for large schemas by validating aliases without expanding every source into a template-literal union.
 - **Breaking:** `fromSelect` requires explicit target columns and ordered selections with compatible positional types. Add `.columns(...)` and replace table stars with explicit selections.
 - **Breaking:** typed SELECT execution pins JSON result settings and outer-join null behavior. Conflicting overrides fail before execution; use `leftJoinNullable` for null-extended joins. A query and its nested queries must use one outer-join null mode.

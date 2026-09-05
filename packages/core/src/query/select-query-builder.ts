@@ -1278,7 +1278,7 @@ export class SelectQueryBuilder<
   }
 
   async executeTakeFirst(options?: ClickHouseExecutionOptions): Promise<Output | undefined> {
-    const rows = await this.execute(options);
+    const rows = await this.limit(this.node.limit === 0 ? 0 : 1).execute(options);
     return rows[0];
   }
 

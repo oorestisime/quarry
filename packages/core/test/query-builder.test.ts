@@ -751,11 +751,49 @@ describe("query builder validation", () => {
         output_format_json_named_tuples_as_objects: 1,
         join_use_nulls: 0,
       },
-      query: "SELECT user_id, event_type FROM event_logs WHERE user_id = {p0:Int64}",
+      query: "SELECT user_id, event_type FROM event_logs WHERE user_id = {p0:Int64} LIMIT 1",
       query_params: { p0: 1 },
       format: "JSONEachRow",
     });
   });
+
+  it.each([undefined, 0, 1, 20])(
+    "caps first-row execution with original limit %s while preserving the builder and offset",
+    async (limit) => {
+      const client = {
+        query: vi
+          .fn()
+          .mockResolvedValue({ json: async () => (limit === 0 ? [] : [{ user_id: 2 }]) }),
+      };
+      let query = db
+        .selectFrom("event_logs")
+        .select("user_id")
+        .where("user_id", ">", 1)
+        .orderBy("user_id")
+        .offset(2);
+      if (limit !== undefined) query = query.limit(limit);
+      const original = query.toAST();
+      const options = { client };
+      await expect(query.executeTakeFirst(options)).resolves.toEqual(
+        limit === 0 ? undefined : { user_id: 2 },
+      );
+      if (limit === 0) {
+        await expect(query.executeTakeFirstOrThrow(options)).rejects.toThrow(
+          "Query returned no rows.",
+        );
+      } else {
+        await expect(query.executeTakeFirstOrThrow(options)).resolves.toEqual({ user_id: 2 });
+      }
+      expect(client.query).toHaveBeenCalledTimes(2);
+      for (const [request] of client.query.mock.calls) {
+        expect(request).toMatchObject({
+          query: `SELECT user_id FROM event_logs WHERE user_id > {p0:Int64} ORDER BY user_id ASC LIMIT ${limit === 0 ? 0 : 1} OFFSET 2`,
+          query_params: { p0: 1 },
+        });
+      }
+      expect(query.toAST()).toEqual(original);
+    },
+  );
 
   it("forwards query_id and clickhouse_settings through execute", async () => {
     const json = vi.fn().mockResolvedValue([]);
@@ -1116,7 +1154,7 @@ describe("query builder validation", () => {
     expect(defaultClient.query).not.toHaveBeenCalled();
     expect(overrideClient.query).toHaveBeenCalledTimes(2);
     expect(overrideClient.query).toHaveBeenNthCalledWith(1, {
-      query: "SELECT * FROM event_logs",
+      query: "SELECT * FROM event_logs LIMIT 1",
       query_params: {},
       format: "JSONEachRow",
       query_id: "override-query-id",

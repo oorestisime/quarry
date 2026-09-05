@@ -610,7 +610,11 @@ rows. Streaming totals queries is not supported; use `executeWithTotals()`.
 
 ### `executeTakeFirst(options?)`
 
-Runs the query and returns the first row, or `undefined` if there were none.
+Executes with an overall `LIMIT 1` and returns the first row, or `undefined` if
+there were none. An explicit `LIMIT 0` remains zero, and any offset is preserved.
+The original builder is unchanged. Filters run in ClickHouse; only the limited
+result is downloaded and decoded. Use `orderBy()` when the choice of first row
+must be deterministic.
 
 ```ts
 const user = await db
