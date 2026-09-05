@@ -13,11 +13,6 @@ pnpm release:check
 )
 
 (
-  cd packages/compat
-  npm pack --dry-run
-)
-
-(
   cd packages/cli
   npm pack --dry-run
 )

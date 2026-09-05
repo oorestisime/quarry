@@ -33,7 +33,7 @@
     "lint": "pnpm --filter quarry lint && pnpm --filter @oorestisime/quarry-cli lint",
     "lint:fix": "pnpm --filter quarry lint:fix && pnpm --filter @oorestisime/quarry-cli lint:fix",
     "publish:core": "pnpm --filter quarry publish",
-    "release:check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm typecheck:native && pnpm test && pnpm test:integration && pnpm build:cli && pnpm test:compat && pnpm test:package && pnpm test:performance && pnpm typecheck:docs && pnpm --dir docs build",
+    "release:check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm typecheck:native && pnpm test && pnpm test:integration && pnpm build:cli && pnpm test:compat && pnpm test:package && pnpm test:release-packages && pnpm test:performance && pnpm typecheck:docs && pnpm --dir docs build",
     "test": "pnpm --filter quarry test && pnpm --filter @oorestisime/quarry-cli test",
     "test:compat": "pnpm build && pnpm --filter @oorestisime/quarry test",
     "test:coverage": "pnpm --filter quarry test:coverage",
@@ -43,7 +43,8 @@
     "typecheck:docs": "pnpm --filter @oorestisime/quarry-docs typecheck",
     "typecheck:native": "node node_modules/typescript-native/bin/tsc --noEmit -p packages/core/tsconfig.json && node node_modules/typescript-native/bin/tsc --noEmit -p packages/cli/tsconfig.json",
     "test:package": "pnpm build && node scripts/check-package.mjs",
-    "test:performance": "pnpm build && node scripts/check-type-performance.mjs"
+    "test:performance": "pnpm build && node scripts/check-type-performance.mjs",
+    "test:release-packages": "pnpm build:cli && node scripts/check-release-packages.mjs"
   },
   "devDependencies": {
     "@clickhouse/client": "^1.18.2",

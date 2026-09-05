@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-05
+
+### Documentation
+
 - Redesign the documentation pages with dedicated light/dark surfaces, a clearer sidebar and article hierarchy, compact release guidance, labeled code panels, and task cards.
-- Reorganize docs around a seeded quickstart, existing-project setup, and five executable recipes; identify published versus development APIs throughout the site.
+- Reorganize docs around a seeded quickstart, existing-project setup, and five executable recipes; provide versioned 0.10.0 installation and migration guidance throughout the site.
+- Share syntax-highlighting themes across homepage, playground, and handbook examples; retain the shared site header on the playground.
 
 ### Added
 
@@ -18,9 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Generated` and `GeneratedAlways` insert types; introspection recognizes `DEFAULT`, `MATERIALIZED`, and `ALIAS` columns.
 - A SQL playground, runnable analytics API with ClickHouse seed data and schema generation, comparison and composition guides, and contribution templates.
 - Packed-consumer checks for TypeScript 5.9, 6, and 7, ClickHouse 24.8/25.8 CI, declaration maps with packaged sources, and consumer type-performance budgets.
+- Fresh-install core/CLI tarball checks that generate schema types, validate them on TS 5.9/6/7, and execute a typed ClickHouse insert/select.
 
 ### Changed
 
+- **Breaking:** core and CLI require Node 22 or newer.
+- Publish `quarry` and `@oorestisime/quarry-cli` together at 0.10.0. Newly generated `Generated` / `GeneratedAlways` types require core 0.10.0 or newer. The legacy `@oorestisime/quarry@0.8.1` wrapper remains pinned to core 0.9.0.
 - Execute `executeTakeFirst()` and `executeTakeFirstOrThrow()` with an overall `LIMIT 1` instead of downloading all matching rows. Preserve explicit `LIMIT 0`, offsets, and the original builder.
 - Reduce downstream compiler work for large schemas by validating aliases without expanding every source into a template-literal union, removing redundant source mappings, and avoiding repeated join-scope flattening.
 - Generate core declarations with Oxc using `isolatedDeclarations`, retaining classic TypeScript validation and packaged declaration maps.
@@ -91,7 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FINAL`, `PREWHERE`, `GROUP BY`, and `HAVING`.
 - `toSQL()` and `execute()`.
 
-[Unreleased]: https://github.com/oorestisime/quarry/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/oorestisime/quarry/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/oorestisime/quarry/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/oorestisime/quarry/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/oorestisime/quarry/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/oorestisime/quarry/compare/v0.7.0...v0.8.0

@@ -81,6 +81,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:cli
+      - run: node scripts/check-release-packages.mjs
       - run: pnpm --dir docs build
       - run: pnpm typecheck:docs
       - run: pnpm --filter @quarry/example-analytics typecheck
