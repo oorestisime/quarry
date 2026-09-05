@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createClickHouseDB } from "quarry";
+import { HighlightedCode } from "@/components/highlighted-code";
 
 interface DB {
   events: { tenant_id: number; user_id: string; event_type: string; created_at: string };
@@ -126,19 +127,25 @@ result.toSQL();`;
           </Link>
         </aside>
         <div className="min-w-0 space-y-5">
-          <CodePanel label="TypeScript" code={code} />
+          <CodePanel label="TypeScript" language="typescript" code={code} />
           <div aria-live="polite" className="space-y-5">
             <CodePanel
               label="Generated SQL"
+              language="sql"
               code={compiled.query.replace(
                 / (FROM|PREWHERE|WHERE|GROUP BY|ORDER BY|LIMIT) /g,
                 "\n$1 ",
               )}
             />
             <div className="grid gap-5 md:grid-cols-2">
-              <CodePanel label="Bound parameters" code={JSON.stringify(compiled.params, null, 2)} />
+              <CodePanel
+                label="Bound parameters"
+                language="json"
+                code={JSON.stringify(compiled.params, null, 2)}
+              />
               <CodePanel
                 label="Result shape"
+                language="typescript"
                 code={
                   mode === "counts"
                     ? "{\n  event_type: string;\n  events: string; // UInt64\n}[]"
@@ -164,15 +171,21 @@ result.toSQL();`;
   );
 }
 
-function CodePanel({ label, code }: { label: string; code: string }) {
+function CodePanel({
+  label,
+  code,
+  language,
+}: {
+  label: string;
+  code: string;
+  language: "typescript" | "sql" | "json";
+}) {
   return (
     <section className="min-w-0 overflow-hidden rounded-xl border border-fd-border bg-fd-card">
       <h2 className="border-b border-fd-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">
         {label}
       </h2>
-      <pre className="overflow-x-auto p-4 text-sm leading-relaxed">
-        <code>{code}</code>
-      </pre>
+      <HighlightedCode code={code} language={language} />
     </section>
   );
 }

@@ -5,6 +5,14 @@
 
 @source '../node_modules/fumadocs-ui/dist/**/*.js';
 
+.playground-code span[style] {
+  color: var(--shiki-light);
+}
+
+.dark .playground-code span[style] {
+  color: var(--shiki-dark);
+}
+
 :root {
   --color-fd-background: hsl(60, 5%, 96%);
   --color-fd-foreground: hsl(24, 10%, 10%);
