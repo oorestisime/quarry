@@ -757,13 +757,11 @@ describe("query builder validation", () => {
     });
   });
 
-  it.each([undefined, 0, 1, 20])(
+  it.each([undefined, 1, 20])(
     "caps first-row execution with original limit %s while preserving the builder and offset",
     async (limit) => {
       const client = {
-        query: vi
-          .fn()
-          .mockResolvedValue({ json: async () => (limit === 0 ? [] : [{ user_id: 2 }]) }),
+        query: vi.fn().mockResolvedValue({ json: async () => [{ user_id: 2 }] }),
       };
       let query = db
         .selectFrom("event_logs")
@@ -774,26 +772,32 @@ describe("query builder validation", () => {
       if (limit !== undefined) query = query.limit(limit);
       const original = query.toAST();
       const options = { client };
-      await expect(query.executeTakeFirst(options)).resolves.toEqual(
-        limit === 0 ? undefined : { user_id: 2 },
-      );
-      if (limit === 0) {
-        await expect(query.executeTakeFirstOrThrow(options)).rejects.toThrow(
-          "Query returned no rows.",
-        );
-      } else {
-        await expect(query.executeTakeFirstOrThrow(options)).resolves.toEqual({ user_id: 2 });
-      }
+      await expect(query.executeTakeFirst(options)).resolves.toEqual({ user_id: 2 });
+      await expect(query.executeTakeFirstOrThrow(options)).resolves.toEqual({ user_id: 2 });
       expect(client.query).toHaveBeenCalledTimes(2);
       for (const [request] of client.query.mock.calls) {
         expect(request).toMatchObject({
-          query: `SELECT user_id FROM event_logs WHERE user_id > {p0:Int64} ORDER BY user_id ASC LIMIT ${limit === 0 ? 0 : 1} OFFSET 2`,
+          query:
+            "SELECT user_id FROM event_logs WHERE user_id > {p0:Int64} ORDER BY user_id ASC LIMIT 1 OFFSET 2",
           query_params: { p0: 1 },
         });
       }
       expect(query.toAST()).toEqual(original);
     },
   );
+
+  it("preserves explicit LIMIT 0 for both first-row helpers", async () => {
+    const client = { query: vi.fn().mockResolvedValue({ json: async () => [] }) };
+    const query = db.selectFrom("event_logs").select("user_id").limit(0).offset(2);
+    await expect(query.executeTakeFirst({ client })).resolves.toBeUndefined();
+    await expect(query.executeTakeFirstOrThrow({ client })).rejects.toThrow(
+      "Query returned no rows.",
+    );
+    expect(client.query).toHaveBeenCalledTimes(2);
+    for (const [request] of client.query.mock.calls) {
+      expect(request.query).toBe("SELECT user_id FROM event_logs LIMIT 0 OFFSET 2");
+    }
+  });
 
   it("forwards query_id and clickhouse_settings through execute", async () => {
     const json = vi.fn().mockResolvedValue([]);
