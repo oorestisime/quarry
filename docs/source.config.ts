@@ -8,6 +8,7 @@ import {
 } from "fumadocs-typescript";
 
 import { remarkExamples } from "./lib/remark-examples.mjs";
+import { codeThemes } from "./lib/code-theme";
 
 export const docs = defineDocs({
   dir: "content/docs",
@@ -21,10 +22,7 @@ export default defineConfig({
   mdxOptions: {
     remarkPlugins: [remarkExamples, [remarkAutoTypeTable, { generator }]],
     rehypeCodeOptions: {
-      themes: {
-        light: "github-light",
-        dark: "github-dark",
-      },
+      themes: codeThemes,
       transformers: [...(rehypeCodeDefaultOptions.transformers ?? []), transformerTwoslash()],
       // Shiki cannot lazy-load languages inside Twoslash popups, so eagerly
       // load the ones we use across the docs.

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { createClickHouseDB } from "quarry";
 import { HighlightedCode } from "@/components/highlighted-code";
 
@@ -53,10 +53,7 @@ ${
 result.toSQL();`;
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-12">
-      <Link href="/" className="text-sm text-fd-muted-foreground hover:text-fd-foreground">
-        ← Quarry
-      </Link>
-      <div className="mt-8 mb-10 max-w-3xl">
+      <div className="mb-10 max-w-3xl">
         <p className="text-xs uppercase tracking-widest text-fd-muted-foreground mb-3">
           Interactive example
         </p>
@@ -171,7 +168,7 @@ result.toSQL();`;
   );
 }
 
-function CodePanel({
+const CodePanel = memo(function CodePanel({
   label,
   code,
   language,
@@ -188,4 +185,4 @@ function CodePanel({
       <HighlightedCode code={code} language={language} />
     </section>
   );
-}
+});

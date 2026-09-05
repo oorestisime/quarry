@@ -7,6 +7,9 @@ export function remarkExamples() {
   const source = readFileSync(recipeSource, "utf8");
   return function transform(tree) {
     function visit(node) {
+      if (node.type === "code" && !node.lang) {
+        throw new Error("Code blocks need a language; use text for diagrams and plain output.");
+      }
       if (node.type === "code" && node.lang === "ts") {
         const region = /\brecipe="(\w+)"/.exec(node.meta ?? "")?.[1];
         if (region) {

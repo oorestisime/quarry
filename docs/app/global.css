@@ -5,11 +5,11 @@
 
 @source '../node_modules/fumadocs-ui/dist/**/*.js';
 
-.playground-code span[style] {
+.syntax-highlight span[style] {
   color: var(--shiki-light);
 }
 
-.dark .playground-code span[style] {
+.dark .syntax-highlight span[style] {
   color: var(--shiki-dark);
 }
 

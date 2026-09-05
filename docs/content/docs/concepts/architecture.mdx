@@ -5,7 +5,7 @@ description: How Quarry turns a chained builder call into ClickHouse SQL.
 
 Quarry is structured as a four-stage pipeline:
 
-```
+```text title="Query pipeline"
 your code  →  builder  →  AST  →  compiler  →  SQL + params
 ```
 
@@ -105,7 +105,7 @@ map.
 **`compileQuerySql`** &mdash; the top-level walker. It assembles the final
 query in a fixed order:
 
-```
+```sql
 WITH ... ?
 SELECT ...
 FROM ...

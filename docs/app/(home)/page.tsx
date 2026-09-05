@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ReleaseNotice } from "@/components/release-notice";
+import { HighlightedCode } from "@/components/highlighted-code";
 
 const recipes = [
   ["daily-activity", "Daily activity", "Group events into chart-ready daily counts.", "GROUP BY"],
@@ -59,8 +60,10 @@ export default function HomePage() {
             <div className="border-b border-fd-border px-5 py-3 text-xs font-medium text-fd-muted-foreground">
               Write a query
             </div>
-            <pre className="overflow-x-auto px-5 py-5 text-[13px] leading-7">
-              <code>{`const query = db.selectFrom("events")
+            <HighlightedCode
+              language="typescript"
+              className="px-5 py-5 text-[13px] leading-7"
+              code={`const query = db.selectFrom("events")
   .selectExpr(eb => [
     "event_type",
     eb.fn.count().as("events"),
@@ -68,15 +71,17 @@ export default function HomePage() {
   .where("tenant_id", "=", tenantId)
   .groupBy("event_type");
 
-const rows = await query.execute();`}</code>
-            </pre>
+const rows = await query.execute();`}
+            />
             <div className="border-y border-fd-border bg-fd-muted/30 px-5 py-3 text-xs font-medium text-fd-muted-foreground">
               Know what comes back
             </div>
-            <pre className="overflow-x-auto px-5 py-4 text-[13px] leading-7">
-              <code>{`// Inferred result
-{ event_type: string; events: string }[]`}</code>
-            </pre>
+            <HighlightedCode
+              language="typescript"
+              className="px-5 py-4 text-[13px] leading-7"
+              code={`// Inferred result
+{ event_type: string; events: string }[]`}
+            />
             <p className="px-5 pb-5 text-xs leading-relaxed text-fd-muted-foreground">
               Counts are strings because ClickHouse returns UInt64 that way in JSON.
             </p>

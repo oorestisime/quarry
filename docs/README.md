@@ -30,6 +30,15 @@ for comparisons and structured data. Code blocks receive language labels during
 build, while explicit `title="..."` metadata takes precedence. Search, mobile
 navigation, copying, and type hovers remain Fumadocs components.
 
+Every fenced block needs a language (`ts`, `sql`, `json`, `bash`, or `text` for
+plain output and diagrams); the build rejects unlabelled blocks. Homepage and
+playground examples use `components/highlighted-code.tsx`, which renders on the
+server for static pages and updates in the browser for interactive examples.
+Both renderers share the light/dark themes in `lib/code-theme.ts`.
+
+Keep public pages such as `/playground` under `app/(home)/` so they inherit the
+same header, navigation, search, and theme switch as the homepage.
+
 ## Examples that stay in sync
 
 Recipe query functions live in `examples/analytics-api/src/recipes.ts`. Mark a named region there with `// #region name` and `// #endregion name`, then reference it from an MDX code block:

@@ -1,4 +1,5 @@
-import { useMemo, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
+import { codeThemes } from "@/lib/code-theme";
 import { createHighlighterCoreSync } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import typescript from "shiki/langs/typescript.mjs";
@@ -16,22 +17,20 @@ const highlighter = createHighlighterCoreSync({
 export function HighlightedCode({
   code,
   language,
+  className = "p-4 text-sm leading-relaxed",
 }: {
   code: string;
   language: "typescript" | "sql" | "json";
+  className?: string;
 }) {
-  const { tokens } = useMemo(
-    () =>
-      highlighter.codeToTokens(code, {
-        lang: language,
-        themes: { light: "github-light", dark: "github-dark" },
-        defaultColor: false,
-      }),
-    [code, language],
-  );
+  const { tokens } = highlighter.codeToTokens(code, {
+    lang: language,
+    themes: codeThemes,
+    defaultColor: false,
+  });
 
   return (
-    <pre className="playground-code overflow-x-auto p-4 text-sm leading-relaxed">
+    <pre className={`syntax-highlight overflow-x-auto ${className}`}>
       <code className={`language-${language}`}>
         {tokens.map((line, index) => (
           <span key={index}>

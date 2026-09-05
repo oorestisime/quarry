@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function PlaygroundPage() {
   return (
     <>
-      <div className="mx-auto w-full max-w-6xl px-6 pt-6">
+      <div className="mx-auto w-full max-w-7xl px-6 pt-6">
         <ReleaseNotice />
       </div>
       <Playground />
