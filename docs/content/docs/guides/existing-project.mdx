@@ -1,0 +1,98 @@
+---
+title: Add to an existing project
+description: Reuse your ClickHouse client and introduce Quarry one query at a time.
+---
+
+Use **Quarry 0.10.0** with your existing ClickHouse connection. If you are
+upgrading from 0.9.x, review the [migration notes](/docs/releases#upgrade-from-09x)
+for INSERT SELECT, join settings, and the Node 22 minimum.
+
+<ReleaseStatus />
+
+## Install
+
+```bash
+npm install quarry@0.10.0 @clickhouse/client
+```
+
+Use an ESM TypeScript project. Reuse the `@clickhouse/client` connection your
+application already owns, or create one with your existing connection options.
+
+For Node projects, install `@types/node` if it is not already present. Your
+TypeScript configuration should include Node types and the disposable-symbol
+library used by the client. Merge these settings into your existing config:
+
+```json
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022", "ESNext.Disposable"],
+    "types": ["node"],
+    "strict": true
+  }
+}
+```
+
+A bundler-based application can retain its existing Bundler module resolution.
+
+## Describe one table and query it
+
+The table below is an example shape. Replace its names and types with your
+actual schema. Plain interfaces are useful for a first query; use
+[introspection](/docs/guides/introspection) for a larger schema.
+
+```ts twoslash
+import { createClient } from "@clickhouse/client";
+import { createClickHouseDB, type ClickHouseUInt64 } from "quarry";
+
+interface DB {
+  events: {
+    user_id: ClickHouseUInt64;
+    event_type: string;
+  };
+}
+
+const client = createClient({
+  url: process.env.CLICKHOUSE_URL,
+  username: process.env.CLICKHOUSE_USER,
+  password: process.env.CLICKHOUSE_PASSWORD,
+  database: process.env.CLICKHOUSE_DATABASE,
+});
+const db = createClickHouseDB<DB>({ client });
+
+const query = db.selectFrom("events")
+  .select("user_id", "event_type")
+  .where("event_type", "=", "signup")
+  .limit(20);
+
+const rows = await query.execute();
+//    ^?
+```
+
+`rows` is `{ user_id: string; event_type: string }[]`. Selecting another column
+changes that result type. A misspelled column produces a type error.
+
+Keep your existing client lifecycle: close a shared client at application
+shutdown, or call `await client.close()` at the end of a standalone script.
+
+## Inspect before replacing an existing query
+
+```ts
+const { query: sql, params } = query.toSQL();
+```
+
+Compare that SQL and the returned rows with your current implementation.
+Introduce Quarry at one query boundary, keeping the rest of your code as it is.
+The [comparison example](/docs/concepts/choosing-quarry) shows this process
+for a complete analytics endpoint.
+
+## Grow the schema when you need it
+
+Generate your DB types from ClickHouse and import them into your application.
+For services using only part of a large schema, derive
+[`Pick<DB, ...>`](/docs/guides/performance#give-each-service-the-schema-it-needs)
+from the shared generated type.
+
+For a complete local database and runnable recipes using the same version, continue with [the quickstart](/docs/guides/getting-started).

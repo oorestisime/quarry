@@ -1,96 +1,88 @@
-# Quarry Documentation Site
+# Quarry documentation
 
-The public documentation site for [`quarry`](../README.md), built
-with [Fumadocs](https://fumadocs.dev) on Next.js 16.
-
-## Local development
-
-The docs site links the parent library via a `file:..` dependency, so the
-parent's `dist/` must exist before the docs build. You only need to do the
-install dance once:
+The Fumadocs site uses Next.js and the workspace `quarry` package. From the repository root:
 
 ```bash
-# from the repo root
-pnpm install            # installs library deps
-cd docs
-pnpm install            # installs docs deps and links the parent package
-pnpm dev                # predev rebuilds the parent, then starts Next.js
+pnpm install
+pnpm --dir docs dev
 ```
 
-The dev server runs on http://localhost:3000.
+Open http://localhost:3000. `predev` and `prebuild` rebuild the core package automatically.
 
-The `predev` and `prebuild` scripts call `pnpm --dir .. build` automatically,
-so as long as the parent's dependencies are installed, you never have to
-remember to rebuild it manually.
+## Reader journey
 
-## Project layout
+- `content/docs/index.mdx`: start page and task navigation.
+- `content/docs/guides/getting-started.mdx`: seeded database through a running API.
+- `content/docs/guides/existing-project.mdx`: incremental adoption with the published API.
+- `content/docs/recipes/`: working queries, SQL, and expected results.
+- `content/docs/reference/`: API lookup and generated type tables.
+- `content/docs/concepts/`: design and runtime semantics.
+- `content/docs/releases.mdx`: release status, version differences, and upgrading.
 
+Keep existing page URLs when reorganizing content. Sidebar order lives in each section's `meta.json`.
+
+## Visual system
+
+`app/docs/docs.css` styles the handbook separately from the marketing pages.
+`app/docs/[[...slug]]/page.tsx` owns article headers and section navigation.
+`DocCard` and `DocCards` are available in MDX for task navigation; reserve tables
+for comparisons and structured data. Code blocks receive language labels during
+build, while explicit `title="..."` metadata takes precedence. Search, mobile
+navigation, copying, and type hovers remain Fumadocs components.
+
+Every fenced block needs a language (`ts`, `sql`, `json`, `bash`, or `text` for
+plain output and diagrams); the build rejects unlabelled blocks. Homepage and
+playground examples use `components/highlighted-code.tsx`, which renders on the
+server for static pages and updates in the browser for interactive examples.
+Both renderers share the light/dark themes in `lib/code-theme.ts`.
+
+Keep public pages such as `/playground` under `app/(home)/` so they inherit the
+same header, navigation, search, and theme switch as the homepage.
+
+## Examples that stay in sync
+
+Recipe query functions live in `examples/analytics-api/src/recipes.ts`. Mark a named region there with `// #region name` and `// #endregion name`, then reference it from an MDX code block:
+
+````md
+```ts recipe="dailyActivity"
 ```
-docs/
-├── app/                      Next.js App Router
-│   ├── (home)/               Marketing/landing layout
-│   ├── api/search/route.ts   Search endpoint (Orama)
-│   ├── docs/                 Docs route group
-│   ├── global.css            Tailwind v4 + Fumadocs CSS
-│   └── layout.tsx            Root layout + RootProvider
-├── components/
-│   └── mdx.tsx               MDX component registry (Twoslash, TypeTable, ...)
-├── content/docs/             MDX source content
-├── lib/
-│   ├── layout.shared.tsx     Shared header/nav config
-│   └── source.ts             Fumadocs source loader
-├── source.config.ts          Fumadocs MDX config (Twoslash + AutoTypeTable)
-├── next.config.mjs
-├── postcss.config.mjs
-├── tsconfig.json
-└── package.json
+````
+
+`lib/remark-examples.mjs` fills that block during the docs build. The example's typecheck validates the functions, and `examples/analytics-api/test/docs.test.ts` checks the SQL and JSON blocks in the recipe pages against ClickHouse. Update the source function and its expected documentation output together. Do not duplicate the query body in MDX.
+
+Self-contained `ts twoslash` blocks are checked during the site build and show editor hovers. Ordinary code blocks are explanatory snippets, not automatically typechecked; keep their setup explicit. Runtime claims need integration checks as well as type checks.
+
+## Verify a change
+
+```bash
+pnpm --dir docs build
+pnpm typecheck:docs
+pnpm --filter @quarry/example-analytics typecheck
+docker compose -f examples/analytics-api/compose.yaml up -d --wait
+pnpm --filter @quarry/example-analytics test
+docker compose -f examples/analytics-api/compose.yaml down
 ```
 
-## Authoring conventions
+Check desktop and mobile navigation, search, code copying, and light/dark readability. CI runs the production build, type checks, schema regeneration, and example tests.
 
-- Source files live in `content/docs/**/*.mdx`.
-- Sidebar order is controlled by `meta.json` files in each section.
-- Code blocks marked ` ```ts twoslash ` are type-checked at build time using
-  the real `quarry` types via the tsconfig path mapping in
-  `tsconfig.json`. This means examples cannot lie about types.
-- The `<auto-type-table />` MDX component renders a live type table from the
-  TypeScript source. Example:
+## Release maintenance
 
-  ```mdx
-  <auto-type-table path="../../src/query/db.ts" name="CreateClickHouseDBOptions" />
-  ```
+The 0.10.0 docs already use versioned install commands, the `v0.10.0` example
+checkout, and release-specific migration notes. `lib/release.ts` is the single
+source for the displayed version and publication status.
 
-  Paths are resolved relative to the MDX file.
+Keep `docsRelease.published` false while preparing the release. This displays
+preview notices on the site and beside the install/checkout instructions. It
+does not imply that the npm packages or tag already exist.
 
-## Deploying to Vercel
+After **both npm packages** and the **matching Git tag** are published, verify
+the versioned install and quickstart commands, set `docsRelease.published` to
+true, and deploy the docs. That one flag removes the preview notices throughout
+the site; no prose rewrite is needed at publication.
 
-1. Import the repository in Vercel.
-2. Set **Root Directory** to `docs`.
-3. Framework preset: Next.js (autodetected).
-4. Override the **Install Command** to:
-   ```bash
-   pnpm install --dir .. --frozen-lockfile && pnpm install --frozen-lockfile
-   ```
-   This installs the parent library's dependencies first, so the `prebuild`
-   step that runs `pnpm --dir .. build` has everything it needs.
-5. Build command: `pnpm build` (default &mdash; triggers `prebuild` → builds
-   the parent → `next build`).
-6. Output directory: `.next` (default).
+For a later release, update the version, commands, source links, and migration
+notes together and reset the flag while preparing it.
 
-The Vercel build runs from `/docs` but the deployment checks out the whole
-repository, so the `file:..` link to the parent package and the
-`auto-type-table` lookups that point at `../src/...` all resolve correctly.
+## Vercel
 
-## TypeScript reference content
-
-We use [`fumadocs-typescript`](https://fumadocs.dev/docs/integrations/typescript)
-to render type information directly from the library source. This is preferred
-over running TypeDoc and committing generated markdown, because:
-
-- the rendered tables only include what we explicitly opt into,
-- everything stays in sync with the source automatically,
-- there is no separate generation step to forget.
-
-If you ever want bulk auto-generated reference (e.g. one page per exported
-symbol), `typedoc` + `typedoc-plugin-markdown` can be wired up as a pre-build
-step that writes into `content/docs/reference/api/`.
+Use the existing project with Root Directory `docs`. Install the workspace with `pnpm install --dir .. --frozen-lockfile`; build with `pnpm build`. The full repository must be available because docs import core types and recipe source. The workspace lockfile controls all packages. No docs-framework migration is needed.

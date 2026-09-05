@@ -21,17 +21,18 @@
     "next": "^16.2.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "shiki": "4.0.2",
     "twoslash": "^0.3.6"
   },
   "devDependencies": {
     "@clickhouse/client": "^1.18.2",
-    "quarry": "workspace:*",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/mdx": "^2.0.13",
     "@types/node": "^25.5.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "postcss": "^8.5.3",
+    "quarry": "workspace:*",
     "tailwindcss": "^4.2.2",
     "typescript": "~5.9.3"
   }

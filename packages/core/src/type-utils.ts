@@ -91,7 +91,21 @@ export type Insertable<Source> =
   Source extends TypedView<any>
     ? never
     : SourceColumns<Source> extends infer Row extends object
-      ? { [K in Extract<keyof Row, string>]: InsertValue<Row[K]> }
+      ? Simplify<
+          {
+            [K in Extract<keyof Row, string> as InsertValue<Row[K]> extends never
+              ? never
+              : undefined extends InsertValue<Row[K]>
+                ? never
+                : K]: InsertValue<Row[K]>;
+          } & {
+            [K in Extract<keyof Row, string> as InsertValue<Row[K]> extends never
+              ? never
+              : undefined extends InsertValue<Row[K]>
+                ? K
+                : never]?: InsertValue<Row[K]>;
+          }
+        >
       : never;
 
 export type TableRow<DB extends DatabaseSchema, Table extends SourceName<DB>> = Selectable<
@@ -99,11 +113,7 @@ export type TableRow<DB extends DatabaseSchema, Table extends SourceName<DB>> = 
 >;
 
 export type ScopeRow<DB extends DatabaseSchema, Table extends SourceName<DB>> =
-  DB[Table] extends TypedDictionary<any>
-    ? never
-    : SourceColumns<DB[Table]> extends infer Row extends object
-      ? { [K in Extract<keyof Row, string>]: Row[K] }
-      : never;
+  DB[Table] extends TypedDictionary<any> ? never : SourceColumns<DB[Table]>;
 
 export type InsertRow<DB extends DatabaseSchema, Table extends SourceName<DB>> = Insertable<
   DB[Table]

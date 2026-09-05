@@ -1,0 +1,50 @@
+---
+title: Latest event per user
+description: Select one event per user with ClickHouse LIMIT BY.
+---
+
+Find the most recent event for every user in a tenant. This uses the
+[recipe setup](/docs/recipes#shared-setup).
+
+## Query
+
+```ts recipe="latestEvents"
+```
+
+Order each user's events from newest to oldest, then keep one row per `user_id`.
+`limitBy(1, "user_id")` applies per group; ordinary `limit(1)` would limit the
+whole result to one row.
+
+```ts
+const query = latestEvents(db, 1);
+const rows = await query.execute();
+// { user_id: string; event_type: string; created_at: string }[]
+```
+
+## SQL
+
+```sql
+SELECT user_id, event_type, created_at
+FROM events
+PREWHERE tenant_id = {p0:Int64}
+ORDER BY user_id ASC, created_at DESC, event_type ASC
+LIMIT 1 BY user_id
+```
+
+Parameters: `p0 = 1`.
+
+## Result
+
+```json
+[
+  { "user_id": "1001", "event_type": "purchase", "created_at": "2026-08-04 10:00:00" },
+  { "user_id": "1002", "event_type": "signup", "created_at": "2026-08-02 10:00:00" }
+]
+```
+
+The event type breaks timestamp ties in this example. If you need a specific
+physical event when timestamps tie, add a unique event ID to your schema and
+ordering. Rows that tie on all ordering keys have no guaranteed relative order.
+
+For ranking or running totals, see [window expressions](/docs/guides/composition#window-expressions).
+This recipe uses the existing `LIMIT BY` API and does not need `QUALIFY`.

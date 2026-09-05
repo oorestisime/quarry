@@ -1,4 +1,4 @@
 {
   "title": "Documentation",
-  "pages": ["index", "guides", "reference", "concepts", "roadmap"]
+  "pages": ["index", "guides", "recipes", "reference", "concepts", "releases", "roadmap"]
 }

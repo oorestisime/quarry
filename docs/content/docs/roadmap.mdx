@@ -4,9 +4,9 @@ description: The current direction for Quarry and the boundaries that keep it fo
 ---
 
 Quarry grows from real ClickHouse queries rather than aiming to cover every
-SQL production up front. The current release adds `ARRAY JOIN`, `LIMIT BY`,
-`WITH TOTALS`, streaming results, and typed `argMin`, `argMax`, and `quantile`
-helpers.
+SQL production up front. The 0.10.0 release includes parameter-aware SQL fragments, nullable
+left joins, typed `UNION ALL`, window expressions, cancellation, generated-column
+insert types, and consumer compiler-performance checks.
 
 ## Likely next areas
 
@@ -18,8 +18,8 @@ helpers.
 
 ## Intentionally deferred
 
-- `UNION ALL` and `UNION DISTINCT`: useful, but typed output reconciliation and
-  parameter merging deserve a design based on real use cases.
+- `UNION DISTINCT`, named windows, and RANGE frames: evaluate these against
+  concrete blocked queries after the current UNION ALL and window-expression support.
 - A semantic layer, ORM entities, migrations, or a hosted query service.
 - Exhaustive compatibility with generic SQL dialects.
 

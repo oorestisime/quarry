@@ -77,7 +77,8 @@ query as `NOT IN (...)`.
 <Callout type="warn">
 Like `LEFT JOIN`, ClickHouse still allows selecting right-side columns from a
 `LEFT ANTI JOIN`, and unmatched rows come back as type defaults rather than
-`null` unless `join_use_nulls = 1` is enabled.
+`null`. Quarry pins this default behavior for `leftAntiJoin()`; nullable
+anti-join results are not currently supported.
 </Callout>
 
 ## `FINAL` on a joined table source

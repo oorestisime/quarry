@@ -1,0 +1,82 @@
+---
+title: Recipes
+description: Working analytics queries with generated SQL, inferred types, and expected results.
+---
+
+These recipes run on the [quickstart](/docs/guides/getting-started) database.
+Start that database and generate its types first. Each example uses demo tenant
+1, whose four events span August 1–4, 2026.
+
+<DocCards>
+  <DocCard href="/docs/recipes/daily-activity" title="Daily activity" eyebrow="01 · GROUP BY">
+    Group by a date expression and return chart data.
+  </DocCard>
+  <DocCard href="/docs/recipes/latest-event" title="Latest event per user" eyebrow="02 · LIMIT BY">
+    Use an ordered query to select one row per group.
+  </DocCard>
+  <DocCard href="/docs/recipes/optional-filters" title="Optional filters" eyebrow="03 · WHERE">
+    Extend immutable queries without losing result types.
+  </DocCard>
+  <DocCard href="/docs/recipes/pagination" title="Pagination" eyebrow="04 · LIMIT / OFFSET">
+    Apply a stable order and page through grouped results.
+  </DocCard>
+  <DocCard href="/docs/recipes/streaming-export" title="Streaming export" eyebrow="05 · stream()">
+    Consume rows incrementally with cancellation.
+  </DocCard>
+  <DocCard href="/docs/recipes#shared-setup" title="Run any recipe" eyebrow="Shared setup" featured>
+    Connect to the seed database and execute a query from a script.
+  </DocCard>
+</DocCards>
+
+## Shared setup
+
+The functions live in `examples/analytics-api/src/recipes.ts`, next to the
+generated schema. This is their shared setup:
+
+```ts recipe="setup"
+```
+
+In a script under `examples/analytics-api/src/`, create a client and pass the typed
+DB to a recipe. For example, save this as `run-recipe.ts`:
+
+```ts
+import { createClient } from "@clickhouse/client";
+import { createAnalyticsDB, dailyActivity } from "./recipes";
+
+const client = createClient({
+  url: "http://localhost:8123",
+  username: "quarry",
+  password: "quarry",
+  database: "analytics",
+});
+
+try {
+  const db = createAnalyticsDB(client);
+  const query = dailyActivity(db, 1);
+  console.log(query.toSQL());
+  console.log(await query.execute());
+} finally {
+  await client.close();
+}
+```
+
+Run it from the repository root:
+
+```bash
+pnpm --filter @quarry/example-analytics exec tsx src/run-recipe.ts
+```
+
+Replace `dailyActivity` with another recipe to explore it. The `AnalyticsDB`
+type used by each function comes from the shared setup above. When copying a
+function into your own project, import that type or substitute your own typed DB.
+
+## What is checked
+
+The docs render the query functions directly from the example source.
+The example's TypeScript check validates those functions, and its tests compare
+each recipe's displayed SQL and JSON with ClickHouse execution. The daily
+activity recipe also checks tenant isolation, and the filter recipe checks
+both branches.
+
+These recipes target Quarry 0.10.0. [Release guidance](/docs/releases)
+explains the differences from 0.9.1.

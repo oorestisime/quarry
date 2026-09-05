@@ -1,0 +1,59 @@
+---
+title: Stream an export
+description: Process result rows incrementally instead of collecting the whole result in memory.
+---
+
+Build an ordered event query using the [shared setup](/docs/recipes#shared-setup),
+then consume its async iterator.
+
+## Query
+
+```ts recipe="exportEvents"
+```
+
+```ts
+const query = exportEvents(db, 1);
+for await (const row of query.stream({ abortSignal: requestSignal })) {
+  await writeRow(row);
+}
+```
+
+`requestSignal` comes from your request or job, and `writeRow` is your destination's
+async write function. Await each write so a slow destination controls consumption.
+With Node writable streams, handle the writable's backpressure when implementing
+that function. Avoid collecting rows into an array in the actual export.
+
+The iterator yields `{ user_id: string; event_type: string; created_at: string }`.
+The client receives chunks, so this does not promise one network read per row or
+zero buffering. Keep the shared client open until consumption ends.
+
+## SQL
+
+```sql
+SELECT user_id, event_type, created_at
+FROM events
+PREWHERE tenant_id = {p0:Int64}
+ORDER BY created_at ASC, user_id ASC, event_type ASC
+```
+
+Parameters: `p0 = 1`.
+
+## Rows yielded
+
+Shown together for readability; the export consumes them individually:
+
+```json
+[
+  { "user_id": "1001", "event_type": "signup", "created_at": "2026-08-01 10:00:00" },
+  { "user_id": "1002", "event_type": "signup", "created_at": "2026-08-02 10:00:00" },
+  { "user_id": "1001", "event_type": "purchase", "created_at": "2026-08-03 10:00:00" },
+  { "user_id": "1001", "event_type": "purchase", "created_at": "2026-08-04 10:00:00" }
+]
+```
+
+Errors may arrive after some rows have been written. Choose how your export
+reports partial output. Streaming does not support `WITH TOTALS`; use
+`executeWithTotals()` for that result shape.
+
+Streaming is available in 0.9.1; the `abortSignal` option requires 0.10.0 or newer. See [release guidance](/docs/releases) and the
+[execution reference](/docs/reference/select#streamoptions).

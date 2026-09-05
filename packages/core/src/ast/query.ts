@@ -14,6 +14,28 @@ export interface RawNode {
   sql: string;
 }
 
+export interface FragmentNode {
+  kind: "fragment";
+  strings: string[];
+  values: ExprNode[];
+}
+
+export interface IdentifierNode {
+  kind: "identifier";
+  parts: string[];
+}
+
+export interface WindowNode {
+  kind: "window";
+  expression: ExprNode;
+  partitionBy: ExprNode[];
+  orderBy: OrderByNode[];
+  rows?: {
+    start: number | "unbounded preceding" | "current row";
+    end: number | "unbounded following" | "current row";
+  };
+}
+
 export interface FunctionNode {
   kind: "function";
   name: string;
@@ -43,6 +65,9 @@ export type ExprNode =
   | RefNode
   | ValueNode
   | RawNode
+  | FragmentNode
+  | IdentifierNode
+  | WindowNode
   | FunctionNode
   | SubqueryExprNode
   | BinaryNode
@@ -72,6 +97,7 @@ export interface JoinNode {
   joinType: "INNER" | "LEFT" | "LEFT ANTI";
   source: SourceNode;
   on: ExprNode;
+  nullable?: boolean;
 }
 
 export interface OrderByNode {
@@ -114,6 +140,7 @@ export interface InsertQueryNode {
 }
 
 export interface SelectQueryNode {
+  unionAll?: SelectQueryNode[];
   with: CteNode[];
   distinct: boolean;
   distinctOn: ExprNode[];

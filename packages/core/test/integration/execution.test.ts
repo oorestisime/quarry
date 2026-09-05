@@ -317,6 +317,36 @@ describe("clickhouse integration", () => {
     });
   });
 
+  it("limits first-row execution while preserving ordered offsets and empty limits", async () => {
+    const options = { client: getContext().client };
+    const query = db
+      .selectFrom("users")
+      .select("id")
+      .where("id", "<=", 3)
+      .orderBy("id")
+      .offset(1)
+      .limit(10);
+    await expect(query.executeTakeFirst(options)).resolves.toEqual({ id: 2 });
+    await expect(query.executeTakeFirstOrThrow(options)).resolves.toEqual({ id: 2 });
+    await expect(query.execute(options)).resolves.toEqual([{ id: 2 }, { id: 3 }]);
+    await expect(query.limit(0).executeTakeFirst(options)).resolves.toBeUndefined();
+    await expect(query.limit(0).executeTakeFirstOrThrow(options)).rejects.toThrow(
+      "Query returned no rows.",
+    );
+  });
+
+  it("applies first-row limits after UNION ALL and LIMIT BY", async () => {
+    const options = { client: getContext().client };
+    const first = db.selectFrom("users").select("id").where("id", "=", 1);
+    const second = db.selectFrom("users").select("id").where("id", "=", 2);
+    await expect(
+      first.unionAll(second).orderBy("id", "desc").executeTakeFirst(options),
+    ).resolves.toEqual({ id: 2 });
+    await expect(limitByCase.build().executeTakeFirst(options)).resolves.toEqual(
+      limitByCase.expectedRows[0],
+    );
+  });
+
   it("executes argMin, argMax, and quantile aggregates", async () => {
     const row = await advancedAggregateFunctionsCase
       .build()

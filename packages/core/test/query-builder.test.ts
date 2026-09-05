@@ -118,6 +118,13 @@ describe("query builder validation", () => {
       totals: { event_type: "", event_count: "4" },
     });
     expect(queryClient.query).toHaveBeenCalledWith({
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+      },
       query:
         "SELECT e.event_type, count() AS event_count FROM event_logs AS e GROUP BY e.event_type WITH TOTALS",
       query_params: {},
@@ -159,7 +166,14 @@ describe("query builder validation", () => {
       query_params: {},
       format: "JSON",
       query_id: "totals-query-id",
-      clickhouse_settings: { max_threads: 1 },
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+        max_threads: 1,
+      },
     });
   });
 
@@ -730,10 +744,59 @@ describe("query builder validation", () => {
 
     expect(queryClient.query).toHaveBeenCalledTimes(2);
     expect(queryClient.query).toHaveBeenNthCalledWith(1, {
-      query: "SELECT user_id, event_type FROM event_logs WHERE user_id = {p0:Int64}",
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+      },
+      query: "SELECT user_id, event_type FROM event_logs WHERE user_id = {p0:Int64} LIMIT 1",
       query_params: { p0: 1 },
       format: "JSONEachRow",
     });
+  });
+
+  it.each([undefined, 1, 20])(
+    "caps first-row execution with original limit %s while preserving the builder and offset",
+    async (limit) => {
+      const client = {
+        query: vi.fn().mockResolvedValue({ json: async () => [{ user_id: 2 }] }),
+      };
+      let query = db
+        .selectFrom("event_logs")
+        .select("user_id")
+        .where("user_id", ">", 1)
+        .orderBy("user_id")
+        .offset(2);
+      if (limit !== undefined) query = query.limit(limit);
+      const original = query.toAST();
+      const options = { client };
+      await expect(query.executeTakeFirst(options)).resolves.toEqual({ user_id: 2 });
+      await expect(query.executeTakeFirstOrThrow(options)).resolves.toEqual({ user_id: 2 });
+      expect(client.query).toHaveBeenCalledTimes(2);
+      for (const [request] of client.query.mock.calls) {
+        expect(request).toMatchObject({
+          query:
+            "SELECT user_id FROM event_logs WHERE user_id > {p0:Int64} ORDER BY user_id ASC LIMIT 1 OFFSET 2",
+          query_params: { p0: 1 },
+        });
+      }
+      expect(query.toAST()).toEqual(original);
+    },
+  );
+
+  it("preserves explicit LIMIT 0 for both first-row helpers", async () => {
+    const client = { query: vi.fn().mockResolvedValue({ json: async () => [] }) };
+    const query = db.selectFrom("event_logs").select("user_id").limit(0).offset(2);
+    await expect(query.executeTakeFirst({ client })).resolves.toBeUndefined();
+    await expect(query.executeTakeFirstOrThrow({ client })).rejects.toThrow(
+      "Query returned no rows.",
+    );
+    expect(client.query).toHaveBeenCalledTimes(2);
+    for (const [request] of client.query.mock.calls) {
+      expect(request.query).toBe("SELECT user_id FROM event_logs LIMIT 0 OFFSET 2");
+    }
   });
 
   it("forwards query_id and clickhouse_settings through execute", async () => {
@@ -760,6 +823,11 @@ describe("query builder validation", () => {
       format: "JSONEachRow",
       query_id: "select-query-id",
       clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
         max_threads: 1,
         wait_end_of_query: true,
       },
@@ -793,6 +861,13 @@ describe("query builder validation", () => {
       { user_id: 3, event_type: "browse" },
     ]);
     expect(queryClient.query).toHaveBeenCalledWith({
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+      },
       query: "SELECT user_id, event_type FROM event_logs",
       query_params: {},
       format: "JSONEachRow",
@@ -832,7 +907,14 @@ describe("query builder validation", () => {
       query_params: {},
       format: "JSONEachRow",
       query_id: "stream-query-id",
-      clickhouse_settings: { max_threads: 1 },
+      clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
+        max_threads: 1,
+      },
     });
   });
 
@@ -1076,11 +1158,16 @@ describe("query builder validation", () => {
     expect(defaultClient.query).not.toHaveBeenCalled();
     expect(overrideClient.query).toHaveBeenCalledTimes(2);
     expect(overrideClient.query).toHaveBeenNthCalledWith(1, {
-      query: "SELECT * FROM event_logs",
+      query: "SELECT * FROM event_logs LIMIT 1",
       query_params: {},
       format: "JSONEachRow",
       query_id: "override-query-id",
       clickhouse_settings: {
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
         max_threads: 2,
       },
     });

@@ -1,0 +1,7 @@
+{
+  "url": "http://localhost:8123",
+  "user": "quarry",
+  "password": "quarry",
+  "database": "analytics",
+  "out": "src/generated-schema.ts"
+}

@@ -1,0 +1,55 @@
+---
+title: Daily activity
+description: Turn events into a daily series for an activity chart.
+---
+
+Count the events for one tenant on each day. This uses the
+[recipe setup](/docs/recipes#shared-setup) and quickstart seed data.
+
+## Query
+
+```ts recipe="dailyActivity"
+```
+
+Group by the same date expression used in the selection. `day` is an output
+alias, so it can be used in `orderBy()`.
+
+```ts
+const query = dailyActivity(db, 1);
+const rows = await query.execute();
+// { day: string; events: string }[]
+```
+
+## SQL
+
+```sql
+SELECT toDate(created_at) AS day, count() AS events
+FROM events
+PREWHERE tenant_id = {p0:Int64}
+GROUP BY toDate(created_at)
+ORDER BY day ASC
+```
+
+Parameters: `p0 = 1` (the tenant ID).
+
+## Result
+
+```json
+[
+  { "day": "2026-08-01", "events": "1" },
+  { "day": "2026-08-02", "events": "1" },
+  { "day": "2026-08-03", "events": "1" },
+  { "day": "2026-08-04", "events": "1" }
+]
+```
+
+`count()` produces UInt64, so `events` is a string. Convert it for a chart only
+when you know the count fits safely in a JavaScript number. `toDate()` follows
+the timestamp's ClickHouse timezone; define the reporting timezone deliberately
+when adapting this query.
+
+Days with no events are absent. Quarry currently has no `WITH FILL` helper.
+For bounded chart ranges, fill missing days in your chart adapter or use the
+client with appropriate handwritten SQL.
+
+**Next:** [page through the daily results](/docs/recipes/pagination).

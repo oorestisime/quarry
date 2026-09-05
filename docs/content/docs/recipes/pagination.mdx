@@ -1,0 +1,59 @@
+---
+title: Paginate grouped results
+description: Page through daily counts with a stable order and an explicit page size.
+---
+
+Start with [daily activity](/docs/recipes/daily-activity), which returns one row per day
+ordered by day. A unique ordering key makes the page boundary unambiguous for
+a fixed dataset.
+
+## Query
+
+This function reuses `dailyActivity()` from the previous recipe. Both live in
+the same `recipes.ts` file and use the [shared setup](/docs/recipes#shared-setup).
+
+```ts recipe="activityPage"
+```
+
+```ts
+const query = activityPage(db, 1, 2);
+const rows = await query.execute();
+// { day: string; events: string }[]
+```
+
+An offset of 2 skips the first two grouped days. The page size is two rows.
+Validate page input in your application; Quarry requires non-negative integer
+limits and offsets.
+
+## SQL
+
+```sql
+SELECT toDate(created_at) AS day, count() AS events
+FROM events
+PREWHERE tenant_id = {p0:Int64}
+GROUP BY toDate(created_at)
+ORDER BY day ASC
+LIMIT 2
+OFFSET 2
+```
+
+Parameters: `p0 = 1`.
+
+## Result
+
+```json
+[
+  { "day": "2026-08-03", "events": "1" },
+  { "day": "2026-08-04", "events": "1" }
+]
+```
+
+This is a useful pattern for small grouped result sets. A limit on output rows
+does not guarantee that ClickHouse reads or aggregates fewer source events.
+Deep offsets can also be expensive. For large event feeds, design cursor
+pagination around a stable, unique ordering key and appropriate range predicates.
+
+Separate page requests do not share a snapshot. If new data changes the grouped
+rows between requests, offset boundaries can move.
+
+**Next:** [stream an export](/docs/recipes/streaming-export) when you need all matching rows.

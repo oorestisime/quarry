@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Run the analytics example
+    url: https://github.com/oorestisime/quarry/tree/main/examples/analytics-api
+    about: Try a complete application with generated types and seeded ClickHouse data.

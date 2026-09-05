@@ -1,122 +1,129 @@
 ---
-title: Getting started
-description: Install Quarry, define a typed database, and run your first query.
+title: Run the quickstart
+description: Go from a seeded ClickHouse database to a typed analytics endpoint.
 ---
 
-## Install
+This walkthrough uses **Quarry 0.10.0**. You need
+**Node 22 or 24, pnpm 10, Git, and Docker with Compose**. The example uses local
+ports **8123** (ClickHouse) and **3001** (the API).
+
+If you already have a database, [add Quarry to your existing project](/docs/guides/existing-project).
+To explore without installing anything, [open the playground](/playground).
+
+<ReleaseStatus />
+
+## 1. Get the matching example
 
 ```bash
-pnpm add quarry @clickhouse/client
+git clone --branch v0.10.0 --depth 1 https://github.com/oorestisime/quarry.git
+cd quarry
+corepack enable
+pnpm install
+pnpm build:cli
 ```
 
-Quarry expects you to bring your own `@clickhouse/client` instance.
+The `v0.10.0` tag fixes the example and workspace dependencies to the version
+covered by these docs. The example uses the core and CLI built from that checkout.
+See [release guidance](/docs/releases) when upgrading an existing installation.
 
-> Upgrading from `@oorestisime/quarry`? The package moved to `quarry` in
-> `0.9.0`. A `0.8.1` compatibility wrapper keeps existing scoped imports
-> working while you migrate.
-
-## Create a typed DB
-
-Define your schema as a plain TypeScript interface and pass it as the type
-parameter to `createClickHouseDB`.
-
-```ts
-import { createClient } from "@clickhouse/client";
-import { createClickHouseDB } from "quarry";
-
-interface DB {
-  event_logs: {
-    user_id: number;
-    event_type: string;
-    created_at: string;
-    event_date: string;
-    properties: string;
-  };
-  users: {
-    id: number;
-    email: string;
-    status: string;
-  };
-}
-
-const client = createClient({
-  url: "http://localhost:8123",
-});
-
-const db = createClickHouseDB<DB>({ client });
-```
-
-That `db` value is now strongly typed against your schema. Table names,
-columns, and aliases are all checked.
-
-## Why Quarry stays plain
-
-Quarry is a query builder, not a schema modeling framework. The library stays
-honest by typing what your queries read and write under ClickHouse's runtime
-semantics instead of asking you to maintain a second schema DSL.
-
-If you already have a database and want help bootstrapping the `DB` type, use
-the CLI introspection flow instead of writing the interface by hand.
+## 2. Start ClickHouse and generate types
 
 ```bash
-npx @oorestisime/quarry-cli introspect --database analytics --out db.ts
+docker compose -f examples/analytics-api/compose.yaml up -d --wait
+pnpm --filter @quarry/example-analytics db:generate
 ```
 
-For repeatable generation, the introspection guide shows how to keep connection
-options, filters, and column type overrides in `quarry.introspect.json`.
+The container creates an `analytics.events` table with five events: four for
+demo tenant 1 and one for tenant 2. The CLI writes
+`examples/analytics-api/src/generated-schema.ts` from the live schema.
 
-## Build and execute a query
+That file models `user_id` as `ClickHouseUInt64`, `created_at` as
+`ClickHouseDateTime`, and the defaulted `duration_ms` column as `Generated<number>`.
+The types preserve differences between values you insert, compare, and read.
+[Learn how schema generation works](/docs/guides/introspection).
 
-```ts twoslash
-import { createClient } from "@clickhouse/client";
-import { createClickHouseDB } from "quarry";
+## 3. Run the endpoint
 
-interface DB {
-  event_logs: {
-    user_id: number;
-    event_type: string;
-    created_at: string;
-  };
-}
-
-const db = createClickHouseDB<DB>({
-  client: createClient({ url: "http://localhost:8123" }),
-});
-
-const rows = await db
-  .selectFrom("event_logs as e")
-  .select("e.user_id", "e.event_type")
-  .where("e.event_type", "=", "signup")
-  .orderBy("e.created_at", "desc")
-  .limit(50)
-  .execute();
-//      ^?
+```bash
+pnpm --filter @quarry/example-analytics start
 ```
 
-Hover over `rows` above &mdash; the result type is inferred from the columns
-you actually selected.
+Leave that terminal running. In another terminal:
 
-## Inspect SQL without executing
-
-When you want to see what Quarry is going to send to ClickHouse without
-running it, use `toSQL()` instead of `execute()`.
-
-```ts
-const compiled = db
-  .selectFrom("event_logs as e")
-  .select("e.user_id", "e.event_type")
-  .where("e.event_type", "=", "signup")
-  .toSQL();
-
-compiled.query;
-// SELECT e.user_id, e.event_type
-// FROM event_logs AS e
-// WHERE e.event_type = {p0:String}
-
-compiled.params;
-// { p0: "signup" }
+```bash
+curl 'http://localhost:3001/analytics'
 ```
 
-The placeholders are
-[ClickHouse parameterised queries](https://clickhouse.com/docs/en/sql-reference/syntax#defining-and-using-query-parameters),
-not string interpolation. The driver substitutes them server-side.
+```json
+[
+  { "event_type": "purchase", "events": "2", "users": "1" },
+  { "event_type": "signup", "events": "2", "users": "2" }
+]
+```
+
+The counts are **strings** because ClickHouse returns UInt64 values that way
+in JSON. Quarry infers that representation in your editor.
+
+The endpoint fixes the demo tenant to 1. When adapting it, supply the tenant
+from your application's authenticated caller.
+
+## 4. Change a filter and inspect the SQL
+
+```bash
+curl 'http://localhost:3001/analytics?eventType=purchase&from=2026-08-04'
+curl 'http://localhost:3001/sql?eventType=purchase&from=2026-08-04'
+```
+
+The first request returns:
+
+```json
+[{ "event_type": "purchase", "events": "1", "users": "1" }]
+```
+
+The second returns `{ query, params }` without executing the query. Look for
+the tenant condition in `PREWHERE`, the date and event filters in `WHERE`,
+and placeholders such as `{p0:Int64}` with their values in `params`.
+All filters run in ClickHouse.
+
+## 5. Follow the code
+
+Open these files in your checkout:
+
+| File | What to look for |
+| --- | --- |
+| `examples/analytics-api/src/analytics.ts` | A reusable query with optional filters; hover over `AnalyticsRow` for the inferred result |
+| `examples/analytics-api/src/server.ts` | Date validation, request cancellation, and the `/analytics` and `/sql` routes |
+| `examples/analytics-api/src/generated-schema.ts` | Types generated from the running database |
+| `examples/analytics-api/test/api.test.ts` | Expected responses and comparison with handwritten SQL |
+
+To verify the example yourself, run these from the repository root:
+
+```bash
+pnpm --filter @quarry/example-analytics typecheck
+pnpm --filter @quarry/example-analytics test
+```
+
+Continue with [daily activity](/docs/recipes/daily-activity),
+[optional filters](/docs/recipes/optional-filters), or the
+[recipe setup](/docs/recipes) to build your own queries on the same data.
+
+## Stop the example
+
+Stop the API with Ctrl+C, then stop its database:
+
+```bash
+docker compose -f examples/analytics-api/compose.yaml down
+```
+
+The demo container has no persistent data volume. Removing it discards its local
+data; the next startup loads the seed again.
+
+## If a step fails
+
+- **Port 8123 is already occupied:** stop the conflicting local service or change the
+  Compose port mapping and the URL in `introspect.config.json`; set `CLICKHOUSE_URL`
+  to that URL when starting the API.
+- **Database is not healthy:** run `docker compose -f examples/analytics-api/compose.yaml logs clickhouse`.
+- **Port 3001 is occupied:** start with `PORT=3002 pnpm --filter @quarry/example-analytics start`
+  and use that port in the requests.
+- **A method is missing:** check that you selected the `v0.10.0` checkout in step 1.

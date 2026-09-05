@@ -124,7 +124,7 @@ describe("insert builder", () => {
           .selectExpr((eb) => [
             "e.user_id",
             eb.fn.toDate("e.created_at").as("event_date"),
-            eb.fn.sum("e.amount").as("total_amount"),
+            eb.fn.toFloat64(eb.fn.sum("e.amount")).as("total_amount"),
           ])
           .where("e.created_at", ">=", param("2025-01-01", "Date"))
           .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
@@ -132,7 +132,7 @@ describe("insert builder", () => {
       .toSQL();
 
     expect(compiled.query).toBe(
-      "INSERT INTO daily_aggregates (user_id, event_date, total_amount) SELECT e.user_id, toDate(e.created_at) AS event_date, sum(e.amount) AS total_amount FROM event_logs AS e WHERE e.created_at >= {p0:Date} GROUP BY e.user_id, toDate(e.created_at)",
+      "INSERT INTO daily_aggregates (user_id, event_date, total_amount) SELECT e.user_id, toDate(e.created_at) AS event_date, toFloat64(sum(e.amount)) AS total_amount FROM event_logs AS e WHERE e.created_at >= {p0:Date} GROUP BY e.user_id, toDate(e.created_at)",
     );
     expect(compiled.params).toEqual({ p0: "2025-01-01" });
     expect(compiled.values).toBeUndefined();
@@ -196,6 +196,7 @@ describe("insert builder", () => {
 
     expect(() =>
       query.fromSelect(
+        // @ts-expect-error testing runtime source validation without explicit targets
         db.selectFrom("event_logs").selectExpr((eb) => [eb.fn.sum("amount").as("amount")]),
       ),
     ).toThrow("Insert source has already been set for this query.");
@@ -288,7 +289,7 @@ describe("insert builder", () => {
           .selectExpr((eb) => [
             "e.user_id",
             eb.fn.toDate("e.created_at").as("event_date"),
-            eb.fn.sum("e.amount").as("total_amount"),
+            eb.fn.toFloat64(eb.fn.sum("e.amount")).as("total_amount"),
           ])
           .where("e.created_at", ">=", param("2025-01-01", "Date"))
           .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
@@ -303,7 +304,7 @@ describe("insert builder", () => {
 
     expect(client.command).toHaveBeenCalledWith({
       query:
-        "INSERT INTO daily_aggregates (user_id, event_date, total_amount) SELECT e.user_id, toDate(e.created_at) AS event_date, sum(e.amount) AS total_amount FROM event_logs AS e WHERE e.created_at >= {p0:Date} GROUP BY e.user_id, toDate(e.created_at)",
+        "INSERT INTO daily_aggregates (user_id, event_date, total_amount) SELECT e.user_id, toDate(e.created_at) AS event_date, toFloat64(sum(e.amount)) AS total_amount FROM event_logs AS e WHERE e.created_at >= {p0:Date} GROUP BY e.user_id, toDate(e.created_at)",
       query_params: { p0: "2025-01-01" },
       query_id: "insert-select-query-id",
       clickhouse_settings: {
@@ -386,13 +387,14 @@ describe("insert builder", () => {
     await expect(
       db
         .insertInto("daily_aggregates")
+        .columns("user_id", "event_date", "total_amount")
         .fromSelect(
           db
             .selectFrom("event_logs as e")
             .selectExpr((eb) => [
               "e.user_id",
               eb.fn.toDate("e.created_at").as("event_date"),
-              eb.fn.sum("e.amount").as("total_amount"),
+              eb.fn.toFloat64(eb.fn.sum("e.amount")).as("total_amount"),
             ])
             .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),
         )

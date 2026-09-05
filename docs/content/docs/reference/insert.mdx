@@ -61,7 +61,7 @@ This works with both insert shapes:
 - with `fromSelect(...)`, it defines the target-side column list in the
   generated `INSERT INTO table (col, col, ...) SELECT ...` statement
 
-You can call `columns(...)` before either `values(...)` or `fromSelect(...)`.
+Call `columns(...)` before `values(...)` or `fromSelect(...)`.
 
 ## `values(rows)`
 
@@ -121,28 +121,13 @@ db
 `fromSelect(...)` accepts a normal `SelectQueryBuilder`, so the source query
 can use CTEs, joins, filters, aggregates, and query parameters.
 
-<Callout type="warn">
-ClickHouse maps `INSERT INTO ... SELECT` columns by **position**, not by name.
-Quarry type-checks `fromSelect(...)` structurally, so a query can still
-type-check even if the `SELECT` list is in the wrong order.
-
-Make sure the projected columns appear in the same order as the target table,
-or use `.columns(...)` to make the target order explicit.
-</Callout>
-
-```ts
-db
-  .insertInto("users")
-  .columns("id", "email")
-  .fromSelect(
-    db
-      .selectFrom("staging_users as s")
-      .select("s.email", "s.id"), // wrong order for the target columns above
-  );
-```
-
-In that example, ClickHouse will still map the first selected value into `id`
-and the second into `email`.
+ClickHouse maps source values to target columns by **position**. Quarry requires
+explicit `.columns(...)` and explicit source selections, and checks the ordered
+types and column count. Aliases do not change insertion order; selecting
+`email, id` for targets `id, email` fails typechecking when their types differ.
+Columns with the same TypeScript type still require care: types cannot distinguish
+two different string columns. Table stars are rejected because their order is
+not represented by the schema interface.
 
 ## `toSQL()`
 

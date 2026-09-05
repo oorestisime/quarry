@@ -170,7 +170,7 @@ describe("clickhouse insert integration", () => {
             "e.user_id",
             eb.fn.toDate("e.created_at").as("event_date"),
             eb.fn.count().as("event_count"),
-            eb.fn.sum(eb.val(1)).as("total_amount"),
+            eb.fn.toUInt64(eb.fn.sum(eb.val(1))).as("total_amount"),
           ])
           .where("e.created_at", ">=", param("2025-01-01", "Date"))
           .groupBy("e.user_id", (eb) => eb.fn.toDate("e.created_at")),

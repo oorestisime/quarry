@@ -5,6 +5,7 @@ export interface TypeScriptIntrospectionColumn {
   readonly name: string;
   readonly clickhouseType: string;
   readonly position: number;
+  readonly defaultKind?: string;
 }
 
 export interface TypeScriptTypeImport {
@@ -21,6 +22,8 @@ export interface TypeScriptSchemaModuleOptions {
 }
 
 type TypeScriptImportSpec =
+  | "Generated"
+  | "GeneratedAlways"
   | "ClickHouseDate"
   | "ClickHouseDate32"
   | "ClickHouseDateTime"
@@ -289,8 +292,15 @@ function renderColumns(
     .slice()
     .sort((left, right) => left.position - right.position)
     .map((column) => {
-      const type =
+      let type =
         sourceOverrides?.get(column.name) ?? renderTypeScriptType(column.clickhouseType, imports);
+      if (column.defaultKind === "DEFAULT") {
+        imports.add("Generated");
+        type = `Generated<${type}>`;
+      } else if (column.defaultKind === "MATERIALIZED" || column.defaultKind === "ALIAS") {
+        imports.add("GeneratedAlways");
+        type = `GeneratedAlways<${type}>`;
+      }
       return `    ${renderPropertyKey(column.name)}: ${type};`;
     })
     .join("\n");

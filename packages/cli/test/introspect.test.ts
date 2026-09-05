@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildTypeScriptModuleResult,
   fetchDictionaryAttributes,
+  fetchDatabaseColumns,
   filterExcludedObjects,
   formatIntrospectionFailureReport,
   formatIntrospectionSummaryReport,
@@ -502,4 +503,73 @@ describe("CLI introspection helpers", () => {
     expect(query).toHaveBeenCalledTimes(2);
     expect(close).toHaveBeenCalledTimes(1);
   });
+});
+
+it("preserves DEFAULT, MATERIALIZED, and ALIAS metadata from ClickHouse", async () => {
+  const close = vi.fn();
+  vi.mocked(createClient).mockReturnValue({
+    query: vi.fn().mockResolvedValue({
+      json: async () => [
+        {
+          table: "events",
+          name: "created",
+          type: "DateTime",
+          position: 1,
+          default_kind: "DEFAULT",
+        },
+        {
+          table: "events",
+          name: "total",
+          type: "UInt64",
+          position: 2,
+          default_kind: "MATERIALIZED",
+        },
+        { table: "events", name: "copy", type: "UInt32", position: 3, default_kind: "ALIAS" },
+      ],
+    }),
+    close,
+  } as unknown as ReturnType<typeof createClient>);
+  const columns = await fetchDatabaseColumns({
+    url: "http://localhost:8123",
+    database: "default",
+    user: "default",
+    password: "",
+  });
+  expect(columns.map((column) => column.defaultKind)).toEqual(["DEFAULT", "MATERIALIZED", "ALIAS"]);
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it("generates insert wrappers for defaults and computed columns, preserving overrides", () => {
+  const result = buildTypeScriptModuleResult(
+    [{ name: "events", engine: "MergeTree" }],
+    [
+      {
+        objectName: "events",
+        name: "created",
+        clickhouseType: "DateTime",
+        position: 1,
+        defaultKind: "DEFAULT",
+      },
+      {
+        objectName: "events",
+        name: "total",
+        clickhouseType: "UInt64",
+        position: 2,
+        defaultKind: "MATERIALIZED",
+      },
+      {
+        objectName: "events",
+        name: "copy",
+        clickhouseType: "UInt32",
+        position: 3,
+        defaultKind: "ALIAS",
+      },
+    ],
+    {},
+    undefined,
+    { typeOverrides: new Map([["events", new Map([["created", "string"]])]]) },
+  );
+  expect(result.source).toContain("created: Generated<string>;");
+  expect(result.source).toContain("total: GeneratedAlways<ClickHouseUInt64>;");
+  expect(result.source).toContain("copy: GeneratedAlways<number>;");
 });

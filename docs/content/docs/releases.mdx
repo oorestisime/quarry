@@ -1,0 +1,99 @@
+---
+title: Versions and upgrading
+description: Use Quarry 0.10.0 and migrate queries from 0.9.x.
+---
+
+## Which version do these docs describe?
+
+These docs target **Quarry 0.10.0** and **@oorestisime/quarry-cli 0.10.0**.
+Use the matching packages and `v0.10.0` example checkout when following a guide.
+
+<ReleaseStatus />
+
+- **Trying Quarry end to end:** follow the [quickstart](/docs/guides/getting-started)
+  for a seeded database, schema generation, and an analytics endpoint.
+- **Installing in your application:** follow [Add to an existing project](/docs/guides/existing-project).
+- **Upgrading from 0.9.x:** apply the migration notes below. The
+  [0.9.1 documentation](https://github.com/oorestisime/quarry/tree/v0.9.1/docs/content/docs)
+  remains available at its release tag.
+- **Checking your installation:** run `npm ls quarry` or `pnpm why quarry`.
+  See the [0.10.0 changelog](https://github.com/oorestisime/quarry/blob/v0.10.0/CHANGELOG.md)
+  for the complete release changes.
+
+## Changes in 0.10.0
+
+<span id="published-versus-development" />
+
+| Capability | 0.9.1 | 0.10.0 |
+| --- | --- | --- |
+| Selects, inserts, CTEs, ordinary joins, arrays, dictionaries | Available | Available |
+| `LIMIT BY`, totals, streaming, select retries | Available | Available |
+| `executeTakeFirst()` | Returns the first buffered row | Applies SQL `LIMIT 1`, preserving explicit `LIMIT 0` |
+| `leftJoinNullable()` | Unavailable | Available with enforced null settings |
+| Parameter-aware `sql`, `identifier`, window helpers, `unionAll()` | Unavailable | Available |
+| `abortSignal` execution option | Unavailable | Available |
+| `Generated` / `GeneratedAlways` insert types | Unavailable | Available |
+| Consumer compiler-performance budgets and TS 5.9/6/7 package checks | Earlier checks | Expanded checks and lower type-instantiation counts |
+
+On 0.9.1, use `.limit(1).executeTakeFirst()` for a server-side first-row limit.
+In 0.10.0, the first-row helpers add that limit automatically.
+
+## Upgrade from 0.9.x
+
+0.10.0 includes API adjustments and a Node version requirement. Review these
+changes before updating your dependencies.
+
+### Use Node 22 or newer
+
+The core and CLI declare Node 22 as their minimum version. CI covers Node 22 and
+24. Upgrade older Node environments before installing 0.10.0.
+
+### Make INSERT SELECT positions explicit
+
+Pass target columns to `.columns(...)` and select source columns explicitly in
+the matching order. `fromSelect()` now checks positional compatibility. Avoid
+`selectAll()` in this path; see the [insert guide](/docs/guides/inserts).
+
+### Choose one outer-join null policy
+
+Ordinary `leftJoin()` uses ClickHouse default values for unmatched columns.
+`leftJoinNullable()` uses nullable results. Execution enforces the chosen policy
+and rejects mixed modes within a query tree, including subqueries and CTEs.
+See [runtime semantics](/docs/concepts/runtime-semantics).
+
+### Review result-format overrides
+
+Execution rejects settings that conflict with Quarry's JSON result types.
+Remove conflicting serialization overrides or use the official client directly
+when you need a different output representation.
+
+### Regenerate schema types with the matching CLI
+
+Use **@oorestisime/quarry-cli 0.10.0** with **quarry 0.10.0**. The CLI emits
+`Generated` and `GeneratedAlways` metadata, which requires Quarry 0.10.0 or
+newer. Review the generated diff and run your application's type checks;
+defaulted and non-writable columns have different insert requirements.
+
+```bash
+npm install quarry@0.10.0 @clickhouse/client
+npx @oorestisime/quarry-cli@0.10.0 introspect --config quarry.introspect.json
+```
+
+## Package rename
+
+Starting with 0.9.0, the core package is `quarry`. The scoped package
+`@oorestisime/quarry@0.8.1` is a compatibility wrapper pinned to Quarry 0.9.0;
+it does not upgrade you to 0.10.0. Replace the scoped dependency with
+`quarry@0.10.0` and update core imports to `quarry` when migrating.
+The CLI is still named `@oorestisime/quarry-cli`.
+
+## Compatibility policy
+
+Quarry is pre-1.0. Minor releases may change the API with a changelog entry;
+patch releases preserve it. CI tests ESM consumers on Node 22/24, TypeScript
+5.9/6/7, NodeNext and Bundler resolution, and ClickHouse 24.8/25.8.
+These are tested combinations, not a claim that all other versions fail.
+
+Before upgrading, run your own queries, type checks, and generated-schema checks
+against the chosen version. Compiler-performance gains vary with your schema
+and query patterns.

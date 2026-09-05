@@ -1,3 +1,5 @@
+import { ReleaseStatus } from "./release-notice";
+import { DocCard, DocCards } from "./doc-card";
 import * as Twoslash from "fumadocs-twoslash/ui";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import { TypeTable } from "fumadocs-ui/components/type-table";
@@ -8,6 +10,9 @@ export function getMDXComponents(components?: MDXComponents) {
     ...defaultMdxComponents,
     ...Twoslash,
     TypeTable,
+    DocCard,
+    DocCards,
+    ReleaseStatus,
     ...components,
   } satisfies MDXComponents;
 }

@@ -1,0 +1,62 @@
+---
+title: Choosing Quarry
+description: Evaluate a small ClickHouse query builder against raw SQL and adjacent TypeScript tools.
+---
+
+Quarry is useful when application queries need optional filters, shared logic, and
+result types that follow selections. Keep `@clickhouse/client` and introduce the
+builder one query at a time. The [playground](/playground) shows the generated SQL;
+the [analytics API example](/docs/guides/getting-started)
+includes runnable code and synthetic data.
+
+## Raw client or Quarry?
+
+The official client already supports parameters, streaming, settings, and
+cancellation. Quarry adds schema-aware composition; it does not make handwritten
+SQL obsolete or tune ClickHouse for you.
+
+| Decision | Raw `@clickhouse/client` | Quarry with the official client |
+| --- | --- | --- |
+| Parameter binding | Supply SQL placeholders and `query_params` | Builder and `sql` fragments allocate placeholders |
+| Optional filters | Assemble SQL clauses and matching parameters | Reassign an immutable builder with additional predicates |
+| Result types | Manually annotate the result | Infer results from schema, selections, and expressions |
+| Existing schema | Maintain interfaces yourself | Plain interfaces or CLI introspection |
+| Unusual SQL | Full SQL text | `sql` fragments or the original client |
+| Query performance | Inspect and tune ClickHouse SQL | Inspect `toSQL()` and tune the same SQL |
+
+The example's tests compare the raw-client and Quarry implementations on the same
+seed data and filters. Run `pnpm --filter @quarry/example-analytics test` to reproduce
+the comparison. This is a correctness and workflow comparison, not a query-speed
+benchmark.
+
+## Reproduce the four-way comparison
+
+The [comparison fixture](https://github.com/oorestisime/quarry/tree/v0.10.0/examples/comparison)
+runs the same tenant-scoped grouping query, with and without an optional event
+filter, through raw `@clickhouse/client`, Quarry, Kysely with
+`@founderpath/kysely-clickhouse`, and standalone `@hypequery/clickhouse`. It checks
+results against seeded ClickHouse data and prints each builder's SQL and
+parameters. Dependencies are pinned in that example; its README records the tested
+versions and aggregate type annotations. It is a small correctness comparison,
+not a general ranking or server performance benchmark.
+
+## Other options to evaluate
+
+[Kysely](https://kysely.dev/) is worth evaluating if your application already uses
+it for other databases. Check the exact ClickHouse dialect and version against
+your required clauses, introspection workflow, and runtime type mappings.
+
+[hypequery](https://hypequery.com/docs/introduction) offers a standalone ClickHouse
+query builder alongside optional semantic-layer, API, and other packages. You do
+not have to adopt its entire stack to use its builder. Evaluate those packages if
+you want their additional abstractions or integrations.
+
+Quarry's focus is a small abstraction over an existing client with inspectable SQL
+and explicit ClickHouse behavior. To choose, run the same production-shaped query
+against each candidate: optional tenant/date filters, a join, an aggregate, a
+UInt64 result, and an unsupported expression. Check SQL, parameters, inferred
+types, setup, compiler cost, and how much code you can share. Record exact package
+versions; feature support changes over time.
+
+Quarry is pre-1.0 and minor releases may change its API. If you need a broad ORM,
+migrations, or a semantic layer, evaluate tools built for those requirements.

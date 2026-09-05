@@ -1,45 +1,65 @@
 ---
-title: Start Here
-description: Choose the right path through Quarry depending on whether you want to build a query, bootstrap DB types, or understand the deeper semantics.
+title: Build an analytics query
+description: Start with working data, see the SQL, and reuse the query in your application.
 ---
 
-Quarry is a **query builder first**. It is not trying to be an ORM, and it is
-not trying to hide ClickHouse behind a generic multi-dialect SQL abstraction.
+Quarry adds typed query composition to your existing `@clickhouse/client`.
+Table names, filters, and selected columns determine the inputs you can pass
+and the result rows you receive.
 
-> **Package rename:** starting with `0.9.0`, install and import `quarry`.
-> `@oorestisime/quarry@0.8.1` is a compatibility wrapper for existing users.
+## Start with a working example
 
-## Pick a path
+<DocCards>
+  <DocCard href="/docs/guides/getting-started" title="Your first analytics endpoint" eyebrow="Start here · Local example" featured>
+    Start ClickHouse, generate your types, and run a query on real seed data.
+    Follow the SQL all the way to the JSON response.
+  </DocCard>
+  <DocCard href="/docs/guides/existing-project" title="Bring your existing database" eyebrow="Already using ClickHouse?">
+    Keep your client and introduce Quarry one query at a time.
+    Use the npm package in your TypeScript service.
+  </DocCard>
+</DocCards>
 
-- [Build your first query](/docs/guides/getting-started) &mdash; start in plain
-  TypeScript mode, connect `@clickhouse/client`, and run a typed `SELECT`.
-- [Bootstrap an existing DB type](/docs/guides/introspection) &mdash; generate a
-  plain `DB` type from ClickHouse metadata with the experimental CLI package.
-- [Look up the exact API](/docs/reference) &mdash; jump straight to builder methods,
-  DB entry points, and type-driven reference material.
-- [Read the deep-dive docs](/docs/concepts) &mdash; understand runtime semantics,
-  scope rules, ClickHouse quirks, and the architecture behind the builder.
+Just exploring? [Open the playground](/playground) to inspect generated SQL
+without a database.
 
-## Common jobs
+## Build something useful
 
-- [Expressions and functions](/docs/guides/expressions-and-functions) &mdash; use
-  `param(...)`, `eb.fn.*`, casts, date helpers, and predicate callbacks.
-- [Joins](/docs/guides/joins) &mdash; inner joins, left joins, anti joins, joined
-  `FINAL` sources, and joining subqueries.
-- [Arrays and `ARRAY JOIN`](/docs/guides/arrays-and-array-join) &mdash; expand
-  typed array columns into element rows and preserve empty arrays when needed.
-- [CTEs and subqueries](/docs/guides/ctes-and-subqueries) &mdash; reusable query
-  fragments and nested selects.
-- [Grouping and aggregation](/docs/guides/aggregations) &mdash; `GROUP BY`,
-  `HAVING`, `PREWHERE`, aggregates, and query settings.
-- [Inserts](/docs/guides/inserts) &mdash; batch inserts and `INSERT INTO ... SELECT`.
-- [Debugging](/docs/guides/debugging) &mdash; inspect `toSQL()`, read common
-  errors, and use `toAST()` when the SQL is not enough.
-- [Performance](/docs/guides/performance) &mdash; practical guidance for
-  `PREWHERE`, `FINAL`, batch sizing, `groupArray(...)`, and `max_threads`.
+<DocCards>
+  <DocCard href="/docs/recipes/daily-activity" title="Daily activity" eyebrow="01 · Aggregation">
+    Turn events into a daily series for a chart.
+  </DocCard>
+  <DocCard href="/docs/recipes/latest-event" title="Latest event per user" eyebrow="02 · LIMIT BY">
+    Select one recent event from each user's history.
+  </DocCard>
+  <DocCard href="/docs/recipes/optional-filters" title="Dashboard filters" eyebrow="03 · Composition">
+    Add optional filters while keeping typed inputs and results.
+  </DocCard>
+  <DocCard href="/docs/recipes/pagination" title="Paginated reports" eyebrow="04 · Ordering">
+    Page through grouped results in a stable order.
+  </DocCard>
+  <DocCard href="/docs/recipes/streaming-export" title="Streaming exports" eyebrow="05 · Execution">
+    Process rows as they arrive from ClickHouse.
+  </DocCard>
+  <DocCard href="/docs/reference" title="Explore the API" eyebrow="Reference">
+    Find a method, check its signature, and see what it returns.
+  </DocCard>
+</DocCards>
 
-## Status
+Every recipe uses the quickstart's schema and seed data. Its query code comes
+from the runnable example, and CI checks its SQL and expected results against
+ClickHouse.
 
-This package is still in early alpha. The current API is already validated
-against a real ClickHouse instance in integration tests, but the surface may
-still change before a stable release.
+## Find an answer
+
+- [API reference](/docs/reference): method signatures, accepted inputs, and result types.
+- [Schema generation](/docs/guides/introspection): generate types from tables, views, and dictionaries.
+- [SQL and type debugging](/docs/guides/debugging): inspect a query and trace an unexpected result.
+- [ClickHouse support](/docs/concepts/clickhouse-quirks): supported clauses and remaining limitations.
+- [Choosing Quarry](/docs/concepts/choosing-quarry): compare the same task with raw SQL and other libraries.
+
+## Know which version you are using
+
+Quarry is pre-1.0. Minor releases may change the API with a changelog entry;
+patch releases preserve it. These docs cover Quarry 0.10.0. [Release guidance](/docs/releases) identifies
+the differences and explains how to run matching examples.

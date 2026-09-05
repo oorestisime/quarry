@@ -22,8 +22,13 @@ The introspection command:
 
 ## Run it
 
+Use CLI **0.10.0** with core **quarry 0.10.0**. Generated-column metadata
+requires core 0.10.0 or newer.
+
+<ReleaseStatus />
+
 ```bash
-npx @oorestisime/quarry-cli introspect \
+npx @oorestisime/quarry-cli@0.10.0 introspect \
   --url http://localhost:8123 \
   --database analytics \
   --out db.ts
@@ -37,14 +42,14 @@ export CLICKHOUSE_DATABASE=analytics
 export CLICKHOUSE_USER=default
 export CLICKHOUSE_PASSWORD=secret
 
-npx @oorestisime/quarry-cli introspect --out db.ts
+npx @oorestisime/quarry-cli@0.10.0 introspect --out db.ts
 ```
 
 For repeatable generation, put the introspection settings in a JSON config file
 and pass it explicitly:
 
 ```bash
-npx @oorestisime/quarry-cli introspect --config quarry.introspect.json
+npx @oorestisime/quarry-cli@0.10.0 introspect --config quarry.introspect.json
 ```
 
 ```json
@@ -116,13 +121,13 @@ Use `--tablesOnly` when you want to bootstrap table metadata first and deal with
 views later.
 
 ```bash
-npx @oorestisime/quarry-cli introspect --database analytics --tablesOnly --out db.ts
+npx @oorestisime/quarry-cli@0.10.0 introspect --database analytics --tablesOnly --out db.ts
 ```
 
 Use include and exclude filters to limit the generated surface area.
 
 ```bash
-npx @oorestisime/quarry-cli introspect \
+npx @oorestisime/quarry-cli@0.10.0 introspect \
   --database analytics \
   --includePattern '^public_' \
   --excludePattern '^public_tmp_' \
@@ -236,3 +241,22 @@ that keeps the generated output close to what Quarry actually needs:
 
 It avoids asking users to maintain a second schema DSL when the main job is
 still query building.
+
+## Generated columns and schema drift
+
+Introspection reads `system.columns.default_kind`. DEFAULT columns use `Generated<T>`:
+they are required when selected and optional on insert. MATERIALIZED and ALIAS
+columns use `GeneratedAlways<T>` and cannot be passed to `values()` or `columns()`.
+These wrappers preserve separate read, insert, and predicate types for dates and
+wide integers, including configured type overrides.
+
+Check generated types into your application and regenerate them after schema
+changes. The [analytics API example](/docs/guides/getting-started)
+includes a `db:generate` command; CI regenerates its schema and checks for a diff.
+TypeScript can only report schema drift after the TypeScript schema is updated.
+
+
+For large databases, generate the complete schema once and derive service-specific
+aliases with `Pick<DB, "events" | "users">`. This preserves the introspected column
+types while reducing the schema each query module needs to check. See
+[TypeScript performance](/docs/guides/performance#give-each-service-the-schema-it-needs).

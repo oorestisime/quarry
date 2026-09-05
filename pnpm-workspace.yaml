@@ -3,3 +3,5 @@ linkWorkspacePackages: true
 packages:
   - packages/*
   - docs
+  - examples/analytics-api
+  - examples/comparison

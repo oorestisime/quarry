@@ -1,0 +1,27 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    ports:
+      - "127.0.0.1:8123:8123"
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: quarry
+      CLICKHOUSE_PASSWORD: quarry
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "clickhouse-client",
+          "--user",
+          "quarry",
+          "--password",
+          "quarry",
+          "--query",
+          "SELECT count() FROM analytics.events",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
