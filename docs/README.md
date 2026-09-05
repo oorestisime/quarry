@@ -17,7 +17,7 @@ Open http://localhost:3000. `predev` and `prebuild` rebuild the core package aut
 - `content/docs/recipes/`: working queries, SQL, and expected results.
 - `content/docs/reference/`: API lookup and generated type tables.
 - `content/docs/concepts/`: design and runtime semantics.
-- `content/docs/releases.mdx`: published versus development behavior and upgrading.
+- `content/docs/releases.mdx`: release status, version differences, and upgrading.
 
 Keep existing page URLs when reorganizing content. Sidebar order lives in each section's `meta.json`.
 
@@ -58,14 +58,21 @@ Check desktop and mobile navigation, search, code copying, and light/dark readab
 
 ## Release maintenance
 
-Before publishing a docs update for a release:
+The 0.10.0 docs already use versioned install commands, the `v0.10.0` example
+checkout, and release-specific migration notes. `lib/release.ts` is the single
+source for the displayed version and publication status.
 
-1. Update `content/docs/releases.mdx` and `components/release-notice.tsx` to identify the published version and any remaining development-only APIs.
-2. Change the quickstart checkout from the development PR to the release tag and test the instructions from that checkout.
-3. Update the homepage version label and the pinned installation command in the existing-project guide.
-4. Check release-specific prose in recipes and reference links.
+Keep `docsRelease.published` false while preparing the release. This displays
+preview notices on the site and beside the install/checkout instructions. It
+does not imply that the npm packages or tag already exist.
 
-Do not label unreleased examples as available from npm just because the workspace package version is unchanged.
+After **both npm packages** and the **matching Git tag** are published, verify
+the versioned install and quickstart commands, set `docsRelease.published` to
+true, and deploy the docs. That one flag removes the preview notices throughout
+the site; no prose rewrite is needed at publication.
+
+For a later release, update the version, commands, source links, and migration
+notes together and reset the flag while preparing it.
 
 ## Vercel
 

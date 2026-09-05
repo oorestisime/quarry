@@ -6,7 +6,7 @@ description: Trace an unexpected result from your installed version through type
 ## Check the installed version
 
 If an example's method is missing, start with `npm ls quarry` or `pnpm why quarry`.
-These docs include development APIs beyond npm 0.9.1.
+These docs cover Quarry 0.10.0, including APIs absent from 0.9.1.
 [Check release guidance](/docs/releases) before working around a missing method.
 
 ## Inspect the SQL and bound values
@@ -50,8 +50,8 @@ provide an `explain()` helper. See the
 | Column is rejected by TypeScript | Use the active alias and select the column from the subquery that exposes it |
 | An aggregate alias is rejected in GROUP BY | Group by the underlying expression; use output aliases for HAVING or ORDER BY |
 | Counts are strings | UInt64 uses strings in ClickHouse JSON output |
-| Unmatched LEFT JOIN values are zero or empty strings | Ordinary joins use ClickHouse defaults; development `leftJoinNullable()` opts into nulls |
-| Only one result is needed | Development first-row helpers add LIMIT 1; on 0.9.1, call `.limit(1)` explicitly |
+| Unmatched LEFT JOIN values are zero or empty strings | Ordinary joins use ClickHouse defaults; `leftJoinNullable()` in 0.10.0 opts into nulls |
+| Only one result is needed | First-row helpers in 0.10.0 add LIMIT 1; on 0.9.1, call `.limit(1)` explicitly |
 | A first-row query is still expensive | LIMIT restricts returned rows; sorting and aggregation can still process many input rows |
 | An export uses too much memory | Consume `stream()` incrementally and await destination writes |
 

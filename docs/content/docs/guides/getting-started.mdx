@@ -3,29 +3,28 @@ title: Run the quickstart
 description: Go from a seeded ClickHouse database to a typed analytics endpoint.
 ---
 
-This walkthrough runs the development version described by these docs. You need
+This walkthrough uses **Quarry 0.10.0**. You need
 **Node 22 or 24, pnpm 10, Git, and Docker with Compose**. The example uses local
 ports **8123** (ClickHouse) and **3001** (the API).
 
 If you already have a database, [add Quarry to your existing project](/docs/guides/existing-project).
 To explore without installing anything, [open the playground](/playground).
 
+<ReleaseStatus />
+
 ## 1. Get the matching example
 
 ```bash
-git clone https://github.com/oorestisime/quarry.git
+git clone --branch v0.10.0 --depth 1 https://github.com/oorestisime/quarry.git
 cd quarry
-git fetch origin pull/22/head:quarry-preview
-git switch quarry-preview
 corepack enable
 pnpm install
 pnpm build:cli
 ```
 
-The explicit checkout selects [the development changes in PR #22](https://github.com/oorestisime/quarry/pull/22).
-The workspace links the example to that version of Quarry. Installing
-`quarry@0.9.1` separately would use the published API instead; see
-[release guidance](/docs/releases).
+The `v0.10.0` tag fixes the example and workspace dependencies to the version
+covered by these docs. The example uses the core and CLI built from that checkout.
+See [release guidance](/docs/releases) when upgrading an existing installation.
 
 ## 2. Start ClickHouse and generate types
 
@@ -127,4 +126,4 @@ data; the next startup loads the seed again.
 - **Database is not healthy:** run `docker compose -f examples/analytics-api/compose.yaml logs clickhouse`.
 - **Port 3001 is occupied:** start with `PORT=3002 pnpm --filter @quarry/example-analytics start`
   and use that port in the requests.
-- **A method is missing:** check that you selected the development checkout in step 1.
+- **A method is missing:** check that you selected the `v0.10.0` checkout in step 1.

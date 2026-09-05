@@ -3,14 +3,16 @@ title: Add to an existing project
 description: Reuse your ClickHouse client and introduce Quarry one query at a time.
 ---
 
-This page uses APIs available in **quarry 0.9.1**. The rest of this site also
-covers development features; check [release guidance](/docs/releases) before
-using those examples with an npm installation.
+Use **Quarry 0.10.0** with your existing ClickHouse connection. If you are
+upgrading from 0.9.x, review the [migration notes](/docs/releases#upgrade-from-09x)
+for INSERT SELECT, join settings, and the Node 22 minimum.
+
+<ReleaseStatus />
 
 ## Install
 
 ```bash
-npm install quarry@0.9.1 @clickhouse/client
+npm install quarry@0.10.0 @clickhouse/client
 ```
 
 Use an ESM TypeScript project. Reuse the `@clickhouse/client` connection your
@@ -93,5 +95,4 @@ For services using only part of a large schema, derive
 [`Pick<DB, ...>`](/docs/guides/performance#give-each-service-the-schema-it-needs)
 from the shared generated type.
 
-For a complete local database and runnable recipes using the development
-version, continue with [the quickstart](/docs/guides/getting-started).
+For a complete local database and runnable recipes using the same version, continue with [the quickstart](/docs/guides/getting-started).
