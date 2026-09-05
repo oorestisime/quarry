@@ -1,45 +1,47 @@
 ---
-title: Start Here
-description: Choose the right path through Quarry depending on whether you want to build a query, bootstrap DB types, or understand the deeper semantics.
+title: Build an analytics query
+description: Start with working data, see the SQL, and reuse the query in your application.
 ---
 
-Quarry is a **query builder first**. It is not trying to be an ORM, and it is
-not trying to hide ClickHouse behind a generic multi-dialect SQL abstraction.
+Quarry adds typed query composition to your existing `@clickhouse/client`.
+Table names, filters, and selected columns determine the inputs you can pass
+and the result rows you receive.
 
-> **Package rename:** starting with `0.9.0`, install and import `quarry`.
-> `@oorestisime/quarry@0.8.1` is a compatibility wrapper for existing users.
+## Start with a working example
 
-## Pick a path
+[Run the quickstart](/docs/guides/getting-started) to start a seeded ClickHouse
+instance, generate TypeScript types, and query a working analytics endpoint.
+You will see the expected JSON and the SQL that produced it at each step.
 
-- [Build your first query](/docs/guides/getting-started) &mdash; start in plain
-  TypeScript mode, connect `@clickhouse/client`, and run a typed `SELECT`.
-- [Bootstrap an existing DB type](/docs/guides/introspection) &mdash; generate a
-  plain `DB` type from ClickHouse metadata with the experimental CLI package.
-- [Look up the exact API](/docs/reference) &mdash; jump straight to builder methods,
-  DB entry points, and type-driven reference material.
-- [Read the deep-dive docs](/docs/concepts) &mdash; understand runtime semantics,
-  scope rules, ClickHouse quirks, and the architecture behind the builder.
+**Already have ClickHouse?** [Add Quarry to your project](/docs/guides/existing-project)
+and reuse your connection. **Just exploring?** [Try the playground](/playground)
+to inspect SQL without a database.
 
-## Common jobs
+## Build something useful
 
-- [Expressions and functions](/docs/guides/expressions-and-functions) &mdash; use
-  `param(...)`, `eb.fn.*`, casts, date helpers, and predicate callbacks.
-- [Joins](/docs/guides/joins) &mdash; inner joins, left joins, anti joins, joined
-  `FINAL` sources, and joining subqueries.
-- [Arrays and `ARRAY JOIN`](/docs/guides/arrays-and-array-join) &mdash; expand
-  typed array columns into element rows and preserve empty arrays when needed.
-- [CTEs and subqueries](/docs/guides/ctes-and-subqueries) &mdash; reusable query
-  fragments and nested selects.
-- [Grouping and aggregation](/docs/guides/aggregations) &mdash; `GROUP BY`,
-  `HAVING`, `PREWHERE`, aggregates, and query settings.
-- [Inserts](/docs/guides/inserts) &mdash; batch inserts and `INSERT INTO ... SELECT`.
-- [Debugging](/docs/guides/debugging) &mdash; inspect `toSQL()`, read common
-  errors, and use `toAST()` when the SQL is not enough.
-- [Performance](/docs/guides/performance) &mdash; practical guidance for
-  `PREWHERE`, `FINAL`, batch sizing, `groupArray(...)`, and `max_threads`.
+| I want to… | Start with |
+| --- | --- |
+| Plot event counts by day | [Daily activity](/docs/recipes/daily-activity) |
+| Find each user's latest event | [Latest event per user](/docs/recipes/latest-event) |
+| Add optional dashboard filters | [Optional filters](/docs/recipes/optional-filters) |
+| Page through grouped results | [Pagination](/docs/recipes/pagination) |
+| Export rows without buffering everything | [Streaming export](/docs/recipes/streaming-export) |
 
-## Status
+Every recipe uses the quickstart's schema and seed data. Its query code comes
+from the runnable example, and CI checks its SQL and expected results against
+ClickHouse.
 
-This package is still in early alpha. The current API is already validated
-against a real ClickHouse instance in integration tests, but the surface may
-still change before a stable release.
+## Find an answer
+
+- [API reference](/docs/reference): method signatures, accepted inputs, and result types.
+- [Schema generation](/docs/guides/introspection): generate types from tables, views, and dictionaries.
+- [SQL and type debugging](/docs/guides/debugging): inspect a query and trace an unexpected result.
+- [ClickHouse support](/docs/concepts/clickhouse-quirks): supported clauses and remaining limitations.
+- [Choosing Quarry](/docs/concepts/choosing-quarry): compare the same task with raw SQL and other libraries.
+
+## Know which version you are using
+
+Quarry is pre-1.0. Minor releases may change the API with a changelog entry;
+patch releases preserve it. These docs follow development, which currently
+includes changes beyond npm 0.9.1. [Release guidance](/docs/releases) identifies
+the differences and explains how to run matching examples.

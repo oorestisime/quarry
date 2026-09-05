@@ -32,6 +32,8 @@ The first response is:
 
 The second returns one purchase. Counts remain strings because they are UInt64 values in ClickHouse's JSON output. `/sql` returns the parameterized SQL and separate values without executing it.
 
+The [docs recipes](https://ch-quarry.vercel.app/docs/recipes) render functions from `src/recipes.ts` directly. Their tests check the displayed SQL and results against this seed data.
+
 Read [`src/analytics.ts`](src/analytics.ts) for the reusable query and [`src/server.ts`](src/server.ts) for input validation and cancellation. Filters are composed without changing the inferred result type. `DEMO_TENANT_ID` defaults to 1; the seed includes another tenant to verify that the query scopes its reads. This example uses a fixed demo identity; connect the tenant ID to your application's authenticated caller when adapting it.
 
 The checked-in generated schema lets you inspect types before starting Docker. Regenerate it after schema changes; CI regenerates and checks the diff so stale types do not silently accumulate. The introspection config contains local demo credentials.

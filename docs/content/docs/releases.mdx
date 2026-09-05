@@ -1,0 +1,86 @@
+---
+title: Versions and upgrading
+description: Match these docs to your installation and prepare for the next release.
+---
+
+## Which version do these docs describe?
+
+This site documents the **development version** in
+[PR #22](https://github.com/oorestisime/quarry/pull/22).
+The latest published npm version is **0.9.1**, verified September 5, 2026.
+The workspace package version has not yet been bumped; a `0.9.1` version field
+in a source checkout does not mean its APIs match the published package.
+
+- **Trying these docs end to end:** use the development checkout in the
+  [quickstart](/docs/guides/getting-started). Its workspace dependencies match the examples.
+- **Installing from npm:** follow [Add to an existing project](/docs/guides/existing-project),
+  which uses the 0.9.1 API. The
+  [0.9.1 documentation source](https://github.com/oorestisime/quarry/tree/v0.9.1/docs/content/docs)
+  is available at the release tag.
+- **Checking your installation:** run `npm ls quarry` or `pnpm why quarry`
+  in your application. The exact release changes are in the
+  [changelog](https://github.com/oorestisime/quarry/blob/feat/adoption-types-and-performance/CHANGELOG.md).
+
+## Published versus development
+
+| Capability | npm 0.9.1 | Development |
+| --- | --- | --- |
+| Selects, inserts, CTEs, ordinary joins, arrays, dictionaries | Available | Available |
+| `LIMIT BY`, totals, streaming, select retries | Available | Available |
+| `executeTakeFirst()` | Returns the first buffered row | Applies SQL `LIMIT 1`, preserving explicit `LIMIT 0` |
+| `leftJoinNullable()` | Unavailable | Available with enforced null settings |
+| Parameter-aware `sql`, `identifier`, window helpers, `unionAll()` | Unavailable | Available |
+| `abortSignal` execution option | Unavailable | Available |
+| `Generated` / `GeneratedAlways` insert types | Unavailable | Available |
+| Declaration performance improvements and TS 5.9/6/7 package checks | Not the development checks | Included in CI |
+
+Use `.limit(1).executeTakeFirst()` if you need a server-side first-row limit on
+0.9.1. In development, the first-row helpers add that limit automatically.
+
+## Prepare for the next release
+
+The development changes include API adjustments. They are not a patch upgrade
+for every existing application.
+
+### Make INSERT SELECT positions explicit
+
+Pass target columns to `.columns(...)` and select source columns explicitly in
+the matching order. `fromSelect()` now checks positional compatibility. Avoid
+`selectAll()` in this path; see the [insert guide](/docs/guides/inserts).
+
+### Choose one outer-join null policy
+
+Ordinary `leftJoin()` uses ClickHouse default values for unmatched columns.
+`leftJoinNullable()` uses nullable results. Development execution enforces the
+chosen policy and rejects mixed modes within a query tree, including subqueries
+and CTEs. See [runtime semantics](/docs/concepts/runtime-semantics).
+
+### Review result-format overrides
+
+Development execution rejects settings that conflict with Quarry's JSON result
+types. Remove conflicting serialization overrides or use the official client
+directly when you need a different output representation.
+
+### Regenerate schema types
+
+The development CLI emits generated-column metadata. Regenerate with the CLI
+built from the same checkout, review the diff, and run your application's type
+checks. Defaulted and non-writable columns have different insert requirements.
+
+## Package rename
+
+Starting with 0.9.0, the core package is `quarry`. The scoped package
+`@oorestisime/quarry@0.8.1` is a compatibility wrapper. To migrate, replace the
+dependency and update core imports to `quarry`. The CLI is still named
+`@oorestisime/quarry-cli`.
+
+## Compatibility policy
+
+Quarry is pre-1.0. Minor releases may change the API with a changelog entry;
+patch releases preserve it. Development CI tests ESM consumers on Node 22/24,
+TypeScript 5.9/6/7, NodeNext and Bundler resolution, and ClickHouse 24.8/25.8.
+These are tested combinations, not a claim that all other versions fail.
+
+Before upgrading, run your own queries, type checks, and generated-schema checks
+against the chosen version. Compiler-performance gains vary with your schema
+and query patterns.

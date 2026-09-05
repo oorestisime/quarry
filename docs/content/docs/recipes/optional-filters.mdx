@@ -1,0 +1,60 @@
+---
+title: Optional dashboard filters
+description: Reuse a query while adding filters supplied by an application.
+---
+
+Keep required tenant and date filters in the base query, then add an event
+filter when one is supplied. Start with the [shared setup](/docs/recipes#shared-setup).
+
+## Query
+
+```ts recipe="filteredCounts"
+```
+
+Builders are immutable: `where()` returns a new query. Assigning it back to
+`query` is what makes the optional filter take effect. This branch changes only
+a predicate, so both paths retain the same result shape.
+
+```ts
+const query = filteredCounts(db, 1, {
+  from: "2026-08-04 00:00:00",
+  eventType: "purchase",
+});
+const rows = await query.execute();
+// { event_type: string; events: string }[]
+```
+
+## SQL
+
+```sql
+SELECT event_type, count() AS events
+FROM events
+PREWHERE tenant_id = {p0:Int64}
+WHERE created_at >= {p1:String} AND event_type = {p2:String}
+GROUP BY event_type
+ORDER BY event_type ASC
+```
+
+Parameters: `p0 = 1`, `p1 = "2026-08-04 00:00:00"`, `p2 = "purchase"`.
+The values travel separately from the SQL text.
+
+## Result
+
+```json
+[{ "event_type": "purchase", "events": "1" }]
+```
+
+The quickstart's `src/server.ts` validates dates and allowed event types before
+calling its query function. Apply your own request validation at that boundary
+and resolve the tenant from the authenticated caller. Quarry's schema types
+check query construction; they do not validate an incoming HTTP request.
+
+To cancel a query when the request ends, pass its signal:
+
+```ts
+await query.execute({ abortSignal: requestSignal });
+```
+
+Cancellation is a development feature; see [release guidance](/docs/releases).
+For reusable expressions and unions, continue with
+[query composition](/docs/guides/composition).

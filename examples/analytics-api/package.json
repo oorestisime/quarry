@@ -6,7 +6,7 @@
     "start": "tsx src/server.ts",
     "db:generate": "node ../../packages/cli/dist/index.mjs introspect --config introspect.config.json",
     "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit",
-    "test": "tsx --test test/api.test.ts"
+    "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",

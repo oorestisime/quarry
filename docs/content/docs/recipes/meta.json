@@ -1,0 +1,11 @@
+{
+  "title": "Recipes",
+  "pages": [
+    "index",
+    "daily-activity",
+    "latest-event",
+    "optional-filters",
+    "pagination",
+    "streaming-export"
+  ]
+}

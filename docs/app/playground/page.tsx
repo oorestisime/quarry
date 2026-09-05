@@ -1,3 +1,4 @@
+import { ReleaseNotice } from "@/components/release-notice";
 import type { Metadata } from "next";
 import { Playground } from "./playground";
 
@@ -8,5 +9,12 @@ export const metadata: Metadata = {
 };
 
 export default function PlaygroundPage() {
-  return <Playground />;
+  return (
+    <>
+      <div className="mx-auto w-full max-w-6xl px-6 pt-6">
+        <ReleaseNotice />
+      </div>
+      <Playground />
+    </>
+  );
 }

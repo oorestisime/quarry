@@ -1,11 +1,11 @@
 {
-  "title": "Guides",
-  "description": "Task-oriented guides for using Quarry",
+  "title": "Get started & guides",
   "pages": [
+    "getting-started",
+    "existing-project",
+    "introspection",
     "index",
     "composition",
-    "getting-started",
-    "introspection",
     "expressions-and-functions",
     "joins",
     "arrays-and-array-join",

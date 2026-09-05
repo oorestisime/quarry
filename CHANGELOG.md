@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Reorganize docs around a seeded quickstart, existing-project setup, and five executable recipes; identify published versus development APIs throughout the site.
+
 ### Added
 
 - Parameterized `sql` fragments and quoted `identifier` segments for expressions outside the typed helper API.

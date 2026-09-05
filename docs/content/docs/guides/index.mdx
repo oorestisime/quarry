@@ -1,38 +1,29 @@
 ---
-title: Overview
-description: Task-oriented guides for using Quarry.
+title: Query building guides
+description: Learn the building blocks after running your first query.
 ---
 
-Pick the job you want to do.
+New to Quarry? [Run the quickstart](/docs/guides/getting-started) or
+[connect an existing project](/docs/guides/existing-project). For a complete query you can
+adapt, start with [recipes](/docs/recipes).
 
-## Start here
+## Define and reuse queries
 
-- [Getting started](/docs/guides/getting-started) &mdash; install Quarry, create
-  a typed `db`, run a first query, and inspect `toSQL()`.
-- [Schema introspection](/docs/guides/introspection) &mdash; bootstrap plain
-  TypeScript `Tables`, `Views`, and `DB` types from an existing ClickHouse
-  database with the experimental CLI.
+- [Generate schema types](/docs/guides/introspection) from your ClickHouse database.
+- [Compose application queries](/docs/guides/composition) with optional filters, SQL fragments, unions, and windows.
+- [Use expressions and functions](/docs/guides/expressions-and-functions) for dates, casts, conditionals, and aggregates.
+- [Join tables](/docs/guides/joins) while preserving source aliases and result types.
+- [Reuse CTEs and subqueries](/docs/guides/ctes-and-subqueries) to build queries in stages.
 
-## Read queries
+## Work with ClickHouse data
 
-- [Expressions and functions](/docs/guides/expressions-and-functions) &mdash;
-  parameters, casts, date handling, array helpers, string helpers, and
-  `eb.fn.*` patterns.
-- [Joins](/docs/guides/joins) &mdash; type-safe joins, anti joins, joined `FINAL`
-  sources, and subquery joins.
-- [CTEs and subqueries](/docs/guides/ctes-and-subqueries) &mdash; stage reusable
-  subqueries with `with(...)` and nested `selectFrom(...)` calls.
-- [Grouping, aggregation, and ordering](/docs/guides/aggregations) &mdash;
-  aggregation helpers, `PREWHERE`, ordering, and settings.
+- [Arrays and ARRAY JOIN](/docs/guides/arrays-and-array-join): expand array elements into rows.
+- [Aggregations](/docs/guides/aggregations): group results, filter aggregates, and request totals.
+- [Inserts](/docs/guides/inserts): write batches and transform data with INSERT SELECT.
 
-## Write data
+## Run and troubleshoot
 
-- [Inserts](/docs/guides/inserts) &mdash; batch inserts, typed target columns,
-  and `INSERT INTO ... SELECT`.
-
-## Troubleshooting
-
-- [Debugging](/docs/guides/debugging) &mdash; inspect SQL, understand common
-  errors, and separate scope problems from runtime problems.
-- [Performance](/docs/guides/performance) &mdash; what Quarry does and does not
-  do for query performance.
+- [Execution reference](/docs/reference/select#compilation-and-execution): buffered rows, first-row helpers, totals, and streams.
+- [Debugging](/docs/guides/debugging): inspect SQL, parameters, and inferred types.
+- [Performance](/docs/guides/performance): query execution and TypeScript performance.
+- [Versions and upgrading](/docs/releases): match examples to your installed package.

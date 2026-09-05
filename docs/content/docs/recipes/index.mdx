@@ -1,0 +1,69 @@
+---
+title: Recipes
+description: Working analytics queries with generated SQL, inferred types, and expected results.
+---
+
+These recipes run on the [quickstart](/docs/guides/getting-started) database.
+Start that database and generate its types first. Each example uses demo tenant
+1, whose four events span August 1–4, 2026.
+
+| Recipe | What you learn |
+| --- | --- |
+| [Daily activity](/docs/recipes/daily-activity) | Group by a date expression and return chart data |
+| [Latest event per user](/docs/recipes/latest-event) | Use ordered `LIMIT BY` to select one row per group |
+| [Optional filters](/docs/recipes/optional-filters) | Extend immutable queries without losing result types |
+| [Pagination](/docs/recipes/pagination) | Apply a stable order and page through grouped results |
+| [Streaming export](/docs/recipes/streaming-export) | Consume rows incrementally with cancellation |
+
+## Shared setup
+
+The functions live in `examples/analytics-api/src/recipes.ts`, next to the
+generated schema. This is their shared setup:
+
+```ts recipe="setup"
+```
+
+In a script under `examples/analytics-api/src/`, create a client and pass the typed
+DB to a recipe. For example, save this as `run-recipe.ts`:
+
+```ts
+import { createClient } from "@clickhouse/client";
+import { createAnalyticsDB, dailyActivity } from "./recipes";
+
+const client = createClient({
+  url: "http://localhost:8123",
+  username: "quarry",
+  password: "quarry",
+  database: "analytics",
+});
+
+try {
+  const db = createAnalyticsDB(client);
+  const query = dailyActivity(db, 1);
+  console.log(query.toSQL());
+  console.log(await query.execute());
+} finally {
+  await client.close();
+}
+```
+
+Run it from the repository root:
+
+```bash
+pnpm --filter @quarry/example-analytics exec tsx src/run-recipe.ts
+```
+
+Replace `dailyActivity` with another recipe to explore it. The `AnalyticsDB`
+type used by each function comes from the shared setup above. When copying a
+function into your own project, import that type or substitute your own typed DB.
+
+## What is checked
+
+The docs render the query functions directly from the example source.
+The example's TypeScript check validates those functions, and its tests compare
+each recipe's displayed SQL and JSON with ClickHouse execution. The daily
+activity recipe also checks tenant isolation, and the filter recipe checks
+both branches.
+
+These tests use the development version of Quarry. [Release guidance](/docs/releases)
+explains what is available in npm 0.9.1.
