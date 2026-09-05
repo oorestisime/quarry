@@ -19,6 +19,18 @@ export function remarkExamples() {
           node.meta = node.meta.replace(/\s*recipe="\w+"/, "");
         }
       }
+      if (node.type === "code" && !/\btitle=/.test(node.meta ?? "")) {
+        const titles = {
+          ts: "TypeScript",
+          tsx: "TSX",
+          js: "JavaScript",
+          bash: "Terminal",
+          sh: "Terminal",
+          sql: "ClickHouse SQL",
+          json: "JSON",
+        };
+        if (titles[node.lang]) node.meta = `${node.meta ?? ""} title="${titles[node.lang]}"`.trim();
+      }
       for (const child of node.children ?? []) visit(child);
     }
     visit(tree);

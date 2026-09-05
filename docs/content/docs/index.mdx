@@ -9,23 +9,42 @@ and the result rows you receive.
 
 ## Start with a working example
 
-[Run the quickstart](/docs/guides/getting-started) to start a seeded ClickHouse
-instance, generate TypeScript types, and query a working analytics endpoint.
-You will see the expected JSON and the SQL that produced it at each step.
+<DocCards>
+  <DocCard href="/docs/guides/getting-started" title="Your first analytics endpoint" eyebrow="Start here · Local example" featured>
+    Start ClickHouse, generate your types, and run a query on real seed data.
+    Follow the SQL all the way to the JSON response.
+  </DocCard>
+  <DocCard href="/docs/guides/existing-project" title="Bring your existing database" eyebrow="Already using ClickHouse?">
+    Keep your client and introduce Quarry one query at a time.
+    Start with the published npm package.
+  </DocCard>
+</DocCards>
 
-**Already have ClickHouse?** [Add Quarry to your project](/docs/guides/existing-project)
-and reuse your connection. **Just exploring?** [Try the playground](/playground)
-to inspect SQL without a database.
+Just exploring? [Open the playground](/playground) to inspect generated SQL
+without a database.
 
 ## Build something useful
 
-| I want to… | Start with |
-| --- | --- |
-| Plot event counts by day | [Daily activity](/docs/recipes/daily-activity) |
-| Find each user's latest event | [Latest event per user](/docs/recipes/latest-event) |
-| Add optional dashboard filters | [Optional filters](/docs/recipes/optional-filters) |
-| Page through grouped results | [Pagination](/docs/recipes/pagination) |
-| Export rows without buffering everything | [Streaming export](/docs/recipes/streaming-export) |
+<DocCards>
+  <DocCard href="/docs/recipes/daily-activity" title="Daily activity" eyebrow="01 · Aggregation">
+    Turn events into a daily series for a chart.
+  </DocCard>
+  <DocCard href="/docs/recipes/latest-event" title="Latest event per user" eyebrow="02 · LIMIT BY">
+    Select one recent event from each user's history.
+  </DocCard>
+  <DocCard href="/docs/recipes/optional-filters" title="Dashboard filters" eyebrow="03 · Composition">
+    Add optional filters while keeping typed inputs and results.
+  </DocCard>
+  <DocCard href="/docs/recipes/pagination" title="Paginated reports" eyebrow="04 · Ordering">
+    Page through grouped results in a stable order.
+  </DocCard>
+  <DocCard href="/docs/recipes/streaming-export" title="Streaming exports" eyebrow="05 · Execution">
+    Process rows as they arrive from ClickHouse.
+  </DocCard>
+  <DocCard href="/docs/reference" title="Explore the API" eyebrow="Reference">
+    Find a method, check its signature, and see what it returns.
+  </DocCard>
+</DocCards>
 
 Every recipe uses the quickstart's schema and seed data. Its query code comes
 from the runnable example, and CI checks its SQL and expected results against

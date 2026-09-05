@@ -1,6 +1,17 @@
 import Link from "next/link";
 
-export function ReleaseNotice() {
+export function ReleaseNotice({ compact = false }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <aside aria-label="Documentation version" className="docs-release-note">
+        <span className="docs-release-dot" aria-hidden="true" />
+        <span>Development docs. npm: 0.9.1.</span>
+        <Link href="/docs/releases">
+          Check API availability <span aria-hidden="true">→</span>
+        </Link>
+      </aside>
+    );
+  }
   return (
     <aside
       aria-label="Documentation version"

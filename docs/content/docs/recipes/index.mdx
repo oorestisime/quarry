@@ -7,13 +7,26 @@ These recipes run on the [quickstart](/docs/guides/getting-started) database.
 Start that database and generate its types first. Each example uses demo tenant
 1, whose four events span August 1–4, 2026.
 
-| Recipe | What you learn |
-| --- | --- |
-| [Daily activity](/docs/recipes/daily-activity) | Group by a date expression and return chart data |
-| [Latest event per user](/docs/recipes/latest-event) | Use ordered `LIMIT BY` to select one row per group |
-| [Optional filters](/docs/recipes/optional-filters) | Extend immutable queries without losing result types |
-| [Pagination](/docs/recipes/pagination) | Apply a stable order and page through grouped results |
-| [Streaming export](/docs/recipes/streaming-export) | Consume rows incrementally with cancellation |
+<DocCards>
+  <DocCard href="/docs/recipes/daily-activity" title="Daily activity" eyebrow="01 · GROUP BY">
+    Group by a date expression and return chart data.
+  </DocCard>
+  <DocCard href="/docs/recipes/latest-event" title="Latest event per user" eyebrow="02 · LIMIT BY">
+    Use an ordered query to select one row per group.
+  </DocCard>
+  <DocCard href="/docs/recipes/optional-filters" title="Optional filters" eyebrow="03 · WHERE">
+    Extend immutable queries without losing result types.
+  </DocCard>
+  <DocCard href="/docs/recipes/pagination" title="Pagination" eyebrow="04 · LIMIT / OFFSET">
+    Apply a stable order and page through grouped results.
+  </DocCard>
+  <DocCard href="/docs/recipes/streaming-export" title="Streaming export" eyebrow="05 · stream()">
+    Consume rows incrementally with cancellation.
+  </DocCard>
+  <DocCard href="/docs/recipes#shared-setup" title="Run any recipe" eyebrow="Shared setup" featured>
+    Connect to the seed database and execute a query from a script.
+  </DocCard>
+</DocCards>
 
 ## Shared setup
 

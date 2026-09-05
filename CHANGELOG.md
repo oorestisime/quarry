@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Redesign the documentation pages with dedicated light/dark surfaces, a clearer sidebar and article hierarchy, compact release guidance, labeled code panels, and task cards.
 - Reorganize docs around a seeded quickstart, existing-project setup, and five executable recipes; identify published versus development APIs throughout the site.
 
 ### Added

@@ -21,6 +21,15 @@ Open http://localhost:3000. `predev` and `prebuild` rebuild the core package aut
 
 Keep existing page URLs when reorganizing content. Sidebar order lives in each section's `meta.json`.
 
+## Visual system
+
+`app/docs/docs.css` styles the handbook separately from the marketing pages.
+`app/docs/[[...slug]]/page.tsx` owns article headers and section navigation.
+`DocCard` and `DocCards` are available in MDX for task navigation; reserve tables
+for comparisons and structured data. Code blocks receive language labels during
+build, while explicit `title="..."` metadata takes precedence. Search, mobile
+navigation, copying, and type hovers remain Fumadocs components.
+
 ## Examples that stay in sync
 
 Recipe query functions live in `examples/analytics-api/src/recipes.ts`. Mark a named region there with `// #region name` and `// #endregion name`, then reference it from an MDX code block:
