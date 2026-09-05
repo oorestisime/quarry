@@ -2,6 +2,9 @@
 
 CLI for Quarry DB type introspection.
 
+CLI 0.10.0 requires Node 22 or newer. Its generated `Generated` and
+`GeneratedAlways` metadata requires `quarry` 0.10.0 or newer in your application.
+
 ## Usage
 
 ```bash
