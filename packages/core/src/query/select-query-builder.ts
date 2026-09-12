@@ -77,6 +77,7 @@ type SelectAllColumns<
 >;
 
 type ScopeColumnMap = Record<string, QueryColumnMap>;
+
 type EB<Scope extends ScopeMap, Sources extends DatabaseSchema> = ExpressionBuilder<Scope, Sources>;
 
 function parseSelectionParts(selection: string): { expr: string; alias?: string } {
@@ -176,12 +177,14 @@ export class SelectQueryBuilder<
     value: unknown,
   ): string | undefined {
     const columnType = this.getPredicateClickHouseType(ref);
+
     if (!columnType) {
       return undefined;
     }
 
     if ((operator === "in" || operator === "not in") && Array.isArray(value)) {
       const hasDateMember = value.some((member) => member instanceof globalThis.Date);
+
       if (!hasDateMember) {
         return undefined;
       }
@@ -195,10 +198,12 @@ export class SelectQueryBuilder<
   private resolveScopeColumn(ref: ColumnRef<Scope>): QueryColumn | undefined {
     if (ref.includes(".")) {
       const [alias, column] = ref.split(".");
+
       return alias && column ? this.scopeColumns[alias]?.[column] : undefined;
     }
 
     const aliases = Object.keys(this.scopeColumns);
+
     if (aliases.length !== 1) {
       return undefined;
     }
@@ -248,11 +253,13 @@ export class SelectQueryBuilder<
 
     if (table) {
       const columns = this.scopeColumns[table];
+
       if (!columns) {
         return undefined;
       }
 
       Object.assign(resolved, columns);
+
       return resolved;
     }
 
@@ -327,6 +334,7 @@ export class SelectQueryBuilder<
             }
 
             const parsed = parseSelectionString(selection);
+
             const isArrayJoinedRef = this.node.arrayJoins.some(
               (arrayJoin) =>
                 parsed.expr.kind === "ref" &&
@@ -446,6 +454,7 @@ export class SelectQueryBuilder<
           input as (eb: EB<Scope, Sources>) => Expression<unknown>,
         );
       }
+
       return this.next({
         ...this.node,
         where: appendCondition(this.node.where, (input as Expression<unknown>).node),
@@ -517,6 +526,7 @@ export class SelectQueryBuilder<
           input as (eb: EB<Scope, Sources>) => Expression<unknown>,
         );
       }
+
       return this.next({
         ...this.node,
         prewhere: appendCondition(this.node.prewhere, (input as Expression<unknown>).node),
@@ -616,6 +626,7 @@ export class SelectQueryBuilder<
           input as (eb: EB<Scope, Sources>) => Expression<unknown>,
         );
       }
+
       return this.next({
         ...this.node,
         having: appendCondition(this.node.having, (input as Expression<unknown>).node),
@@ -623,9 +634,11 @@ export class SelectQueryBuilder<
     }
 
     const expressionBuilder = this.eb();
+
     const predicateInput = input as
       | HavingRef<Scope, Output>
       | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>);
+
     const leftExpr =
       typeof predicateInput === "function"
         ? predicateInput(expressionBuilder).node
@@ -674,6 +687,7 @@ export class SelectQueryBuilder<
     value: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     const expressionBuilder = this.eb();
+
     const leftExpr =
       typeof input === "function"
         ? input(expressionBuilder).node
@@ -863,6 +877,7 @@ export class SelectQueryBuilder<
     node.settings = { ...node.settings, join_use_nulls: 1 };
     const columns = { ...joined.scopeColumns };
     const sourceColumns = resolveSourceColumns(source);
+
     if (sourceColumns) {
       columns[sourceColumns.alias] = Object.fromEntries(
         Object.entries(sourceColumns.columns).map(([key, column]) => [
@@ -876,6 +891,7 @@ export class SelectQueryBuilder<
         ]),
       );
     }
+
     return this.next<Simplify<Scope & NullableScope<ScopeFromSourceExpression<Sources, Source>>>>(
       node,
       columns,
@@ -955,13 +971,16 @@ export class SelectQueryBuilder<
     Order
   > {
     const resolvedSource = resolveSourceColumns(source);
+
     const nextScopeColumns = resolvedSource
       ? { ...this.scopeColumns, [resolvedSource.alias]: resolvedSource.columns }
       : this.scopeColumns;
+
     const joinedScopeBuilder = new ExpressionBuilder<
       Scope & ScopeFromSourceExpression<Sources, Source>,
       Sources
     >(nextScopeColumns);
+
     const on: ExprNode =
       typeof leftOrCallback === "function"
         ? leftOrCallback(joinedScopeBuilder).node
@@ -1014,6 +1033,7 @@ export class SelectQueryBuilder<
 
     const options = typeof limitOrOptions === "number" ? { limit: limitOrOptions } : limitOrOptions;
     assertValidPaginationValue("LIMIT BY", options.limit);
+
     if (options.offset !== undefined) {
       assertValidPaginationValue("LIMIT BY OFFSET", options.offset);
     }
@@ -1141,13 +1161,17 @@ export class SelectQueryBuilder<
   > {
     const right = query.toAST();
     const count = selectionCount(this.node);
+
     if (count === undefined || count === 0 || count !== selectionCount(right)) {
       throw new Error("UNION ALL requires matching, explicit selection counts.");
     }
+
     if (this.node.withTotals || right.withTotals) {
       throw new Error("UNION ALL does not support WITH TOTALS branches.");
     }
+
     const union = { ...createEmptySelectQueryNode(), unionAll: [this.toAST(), right] };
+
     return this.next<{ _quarry_union: QueryRow<Output> }>(
       {
         ...createEmptySelectQueryNode(),
@@ -1206,6 +1230,7 @@ export class SelectQueryBuilder<
 
     const resolvedClient = this.getClient(options?.client);
     const compiled = this.toSQL();
+
     // ClickHouseClient intentionally models Quarry's default JSONEachRow query shape.
     // WITH TOTALS needs the driver's JSON document format for its separate totals field.
     const queryJSON = resolvedClient.query.bind(resolvedClient) as unknown as (
@@ -1228,6 +1253,7 @@ export class SelectQueryBuilder<
             clickhouse_settings: resultSettings(this.node, options?.clickhouse_settings),
           }),
         });
+
         const response = await result.json<Output>();
 
         if (response.totals === undefined) {
@@ -1247,6 +1273,7 @@ export class SelectQueryBuilder<
 
     const resolvedClient = this.getClient(options?.client);
     const compiled = this.toSQL();
+
     const result = await executeWithRetries(
       this.retries,
       () =>
@@ -1275,6 +1302,7 @@ export class SelectQueryBuilder<
 
   async executeTakeFirst(options?: ClickHouseExecutionOptions): Promise<Output | undefined> {
     const rows = await this.limit(this.node.limit === 0 ? 0 : 1).execute(options);
+
     return rows[0];
   }
 
@@ -1335,10 +1363,12 @@ async function executeWithRetries<T>(
 
   for (let attempt = 1; ; attempt++) {
     signal?.throwIfAborted();
+
     try {
       return await run();
     } catch (error) {
       signal?.throwIfAborted();
+
       if (attempt >= attempts || !isRetryableSelectError(error)) {
         throw error;
       }
@@ -1351,6 +1381,7 @@ async function executeWithRetries<T>(
 const retryableErrorCodes = new Set(["ECONNREFUSED", "ECONNRESET", "EPIPE", "ETIMEDOUT"]);
 
 const retryableStatusCodes = new Set([408, 502, 503, 504]);
+
 const retryableMessages = new Set(["Timeout error.", "socket hang up"]);
 
 function isRetryableSelectError(error: unknown): boolean {
@@ -1365,6 +1396,7 @@ function isRetryableSelectError(error: unknown): boolean {
   };
 
   const code = errorWithMetadata.code;
+
   if (typeof code === "string" && retryableErrorCodes.has(code)) {
     return true;
   }
@@ -1375,6 +1407,7 @@ function isRetryableSelectError(error: unknown): boolean {
       : typeof errorWithMetadata.status === "number"
         ? errorWithMetadata.status
         : undefined;
+
   if (statusCode !== undefined && retryableStatusCodes.has(statusCode)) {
     return true;
   }
@@ -1408,16 +1441,19 @@ function getRetryDelayMs(retries: ClickHouseRetryOptions | undefined): number {
 
 function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
   signal?.throwIfAborted();
+
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", abort);
       resolve();
     }, delayMs);
+
     function abort() {
       clearTimeout(timer);
       signal?.removeEventListener("abort", abort);
       reject(signal?.reason);
     }
+
     signal?.addEventListener("abort", abort, { once: true });
   });
 }

@@ -103,10 +103,13 @@ describe("query builder validation", () => {
       data: [{ event_type: "signup", event_count: "2" }],
       totals: { event_type: "", event_count: "4" },
     });
+
     const queryClient = {
       query: vi.fn().mockResolvedValue({ json }),
     };
+
     const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+
     const query = dbWithClient
       .selectFrom("event_logs as e")
       .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
@@ -122,6 +125,7 @@ describe("query builder validation", () => {
         output_format_json_quote_64bit_integers: 1,
         output_format_json_quote_64bit_floats: 0,
         output_format_json_quote_decimals: 0,
+        output_format_json_quote_denormals: 0,
         output_format_json_named_tuples_as_objects: 1,
         join_use_nulls: 0,
       },
@@ -140,9 +144,11 @@ describe("query builder validation", () => {
       data: [{ event_type: "signup", event_count: "2" }],
       totals: { event_type: "", event_count: "2" },
     });
+
     const queryClient = {
       query: vi.fn().mockRejectedValueOnce(new Error("socket hang up")).mockResolvedValue({ json }),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: { attempts: 2, delayMs: 0 },
@@ -170,6 +176,7 @@ describe("query builder validation", () => {
         output_format_json_quote_64bit_integers: 1,
         output_format_json_quote_64bit_floats: 0,
         output_format_json_quote_decimals: 0,
+        output_format_json_quote_denormals: 0,
         output_format_json_named_tuples_as_objects: 1,
         join_use_nulls: 0,
         max_threads: 1,
@@ -191,7 +198,9 @@ describe("query builder validation", () => {
     const queryClient = {
       query: vi.fn().mockResolvedValue({ json: vi.fn().mockResolvedValue({ data: [] }) }),
     };
+
     const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+
     const query = dbWithClient
       .selectFrom("event_logs as e")
       .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
@@ -206,6 +215,7 @@ describe("query builder validation", () => {
   it("rejects streaming WITH TOTALS queries", async () => {
     const queryClient = { query: vi.fn() };
     const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
+
     const query = dbWithClient
       .selectFrom("event_logs as e")
       .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
@@ -226,11 +236,13 @@ describe("query builder validation", () => {
       .arrayJoin("t.tags")
       .select("t.id", "t.tags")
       .toSQL();
+
     const leftArrayQuery = db
       .selectFrom("typed_samples as t")
       .leftArrayJoin("t.tags")
       .select("t.id", "t.tags")
       .toSQL();
+
     const unqualifiedArrayQuery = db
       .selectFrom("typed_samples")
       .arrayJoin("tags")
@@ -326,6 +338,7 @@ describe("query builder validation", () => {
 
   it("compiles whereNull and whereNotNull predicates", () => {
     const whereNullQuery = db.selectFrom("typed_samples").selectAll().whereNull("nickname").toSQL();
+
     const whereNotNullQuery = db
       .selectFrom("typed_samples")
       .selectAll()
@@ -661,6 +674,7 @@ describe("query builder validation", () => {
   it("accepts structurally-typed expression-like objects (not just instanceof Expression)", () => {
     const eb = new ExpressionBuilder<any>();
     const realExpr = eb.cmp("label", "=", "a");
+
     // Simulate a cross-package or wrapped value that satisfies the type
     // but is not the exact local constructor instance.
     const structuralExpr = {
@@ -722,12 +736,15 @@ describe("query builder validation", () => {
         event_type: "signup",
       },
     ]);
+
     const queryClient = {
       query: vi.fn().mockResolvedValue({ json }),
     };
+
     const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
     });
+
     const query = dbWithClient
       .selectFrom("event_logs")
       .select("user_id", "event_type")
@@ -748,6 +765,7 @@ describe("query builder validation", () => {
         output_format_json_quote_64bit_integers: 1,
         output_format_json_quote_64bit_floats: 0,
         output_format_json_quote_decimals: 0,
+        output_format_json_quote_denormals: 0,
         output_format_json_named_tuples_as_objects: 1,
         join_use_nulls: 0,
       },
@@ -763,18 +781,21 @@ describe("query builder validation", () => {
       const client = {
         query: vi.fn().mockResolvedValue({ json: async () => [{ user_id: 2 }] }),
       };
+
       let query = db
         .selectFrom("event_logs")
         .select("user_id")
         .where("user_id", ">", 1)
         .orderBy("user_id")
         .offset(2);
+
       if (limit !== undefined) query = query.limit(limit);
       const original = query.toAST();
       const options = { client };
       await expect(query.executeTakeFirst(options)).resolves.toEqual({ user_id: 2 });
       await expect(query.executeTakeFirstOrThrow(options)).resolves.toEqual({ user_id: 2 });
       expect(client.query).toHaveBeenCalledTimes(2);
+
       for (const [request] of client.query.mock.calls) {
         expect(request).toMatchObject({
           query:
@@ -782,6 +803,7 @@ describe("query builder validation", () => {
           query_params: { p0: 1 },
         });
       }
+
       expect(query.toAST()).toEqual(original);
     },
   );
@@ -794,6 +816,7 @@ describe("query builder validation", () => {
       "Query returned no rows.",
     );
     expect(client.query).toHaveBeenCalledTimes(2);
+
     for (const [request] of client.query.mock.calls) {
       expect(request.query).toBe("SELECT user_id FROM event_logs LIMIT 0 OFFSET 2");
     }
@@ -801,12 +824,15 @@ describe("query builder validation", () => {
 
   it("forwards query_id and clickhouse_settings through execute", async () => {
     const json = vi.fn().mockResolvedValue([]);
+
     const queryClient = {
       query: vi.fn().mockResolvedValue({ json }),
     };
+
     const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
     });
+
     const query = dbWithClient.selectFrom("event_logs").selectAll();
 
     await query.execute({
@@ -826,6 +852,7 @@ describe("query builder validation", () => {
         output_format_json_quote_64bit_integers: 1,
         output_format_json_quote_64bit_floats: 0,
         output_format_json_quote_decimals: 0,
+        output_format_json_quote_denormals: 0,
         output_format_json_named_tuples_as_objects: 1,
         join_use_nulls: 0,
         max_threads: 1,
@@ -842,9 +869,11 @@ describe("query builder validation", () => {
       ];
       yield [{ json: () => ({ user_id: 3, event_type: "browse" }) }];
     });
+
     const queryClient = {
       query: vi.fn().mockResolvedValue({ json: vi.fn(), stream }),
     };
+
     const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
     const rows = [];
 
@@ -865,6 +894,7 @@ describe("query builder validation", () => {
         output_format_json_quote_64bit_integers: 1,
         output_format_json_quote_64bit_floats: 0,
         output_format_json_quote_decimals: 0,
+        output_format_json_quote_denormals: 0,
         output_format_json_named_tuples_as_objects: 1,
         join_use_nulls: 0,
       },
@@ -878,16 +908,19 @@ describe("query builder validation", () => {
     const resultStream = vi.fn().mockImplementation(async function* () {
       yield [{ json: () => ({ user_id: 1, event_type: "signup" }) }];
     });
+
     const queryClient = {
       query: vi
         .fn()
         .mockRejectedValueOnce(new Error("socket hang up"))
         .mockResolvedValue({ json: vi.fn(), stream: resultStream }),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: { attempts: 2, delayMs: 0 },
     });
+
     const rows = [];
 
     for await (const row of dbWithRetries
@@ -911,6 +944,7 @@ describe("query builder validation", () => {
         output_format_json_quote_64bit_integers: 1,
         output_format_json_quote_64bit_floats: 0,
         output_format_json_quote_decimals: 0,
+        output_format_json_quote_denormals: 0,
         output_format_json_named_tuples_as_objects: 1,
         join_use_nulls: 0,
         max_threads: 1,
@@ -922,6 +956,7 @@ describe("query builder validation", () => {
     const queryClient = {
       query: vi.fn().mockResolvedValue({ json: vi.fn() }),
     };
+
     const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({ client: queryClient });
 
     await expect(async () => {
@@ -933,9 +968,11 @@ describe("query builder validation", () => {
 
   it("retries select execution with the configured DB-level retry options", async () => {
     const json = vi.fn().mockResolvedValue([{ user_id: 1, event_type: "signup" }]);
+
     const queryClient = {
       query: vi.fn().mockRejectedValueOnce(new Error("socket hang up")).mockResolvedValue({ json }),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -955,10 +992,13 @@ describe("query builder validation", () => {
     const connectionRefused = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8124"), {
       code: "ECONNREFUSED",
     });
+
     const json = vi.fn().mockResolvedValue([{ user_id: 1 }]);
+
     const queryClient = {
       query: vi.fn().mockRejectedValueOnce(connectionRefused).mockResolvedValue({ json }),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -977,9 +1017,11 @@ describe("query builder validation", () => {
   it("retries select execution for temporary HTTP status errors", async () => {
     const temporaryError = Object.assign(new Error("temporary response"), { statusCode: 503 });
     const json = vi.fn().mockResolvedValue([{ user_id: 1 }]);
+
     const queryClient = {
       query: vi.fn().mockRejectedValueOnce(temporaryError).mockResolvedValue({ json }),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -997,9 +1039,11 @@ describe("query builder validation", () => {
 
   it("does not retry non-transient select execution errors", async () => {
     const syntaxError = Object.assign(new Error("Syntax error"), { code: "62" });
+
     const queryClient = {
       query: vi.fn().mockRejectedValue(syntaxError),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -1017,9 +1061,11 @@ describe("query builder validation", () => {
 
   it("does not retry ClickHouse server errors even when the message mentions timeout", async () => {
     const serverTimeout = Object.assign(new Error("Timeout exceeded"), { code: "159" });
+
     const queryClient = {
       query: vi.fn().mockRejectedValue(serverTimeout),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -1042,6 +1088,7 @@ describe("query builder validation", () => {
         .mockResolvedValueOnce({ json: vi.fn().mockRejectedValue(new Error("Timeout error.")) })
         .mockResolvedValueOnce({ json: vi.fn().mockResolvedValue([{ user_id: 2 }]) }),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -1059,9 +1106,11 @@ describe("query builder validation", () => {
 
   it("does not retry select execution without DB-level retry options", async () => {
     const error = new Error("socket hang up");
+
     const queryClient = {
       query: vi.fn().mockRejectedValue(error),
     };
+
     const dbWithoutRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
     });
@@ -1075,9 +1124,11 @@ describe("query builder validation", () => {
 
   it("stops retrying select execution after the configured attempts", async () => {
     const connectionReset = Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+
     const queryClient = {
       query: vi.fn().mockRejectedValue(connectionReset),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -1097,6 +1148,7 @@ describe("query builder validation", () => {
     const queryClient = {
       query: vi.fn(),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -1116,6 +1168,7 @@ describe("query builder validation", () => {
     const queryClient = {
       query: vi.fn(),
     };
+
     const dbWithRetries = createClickHouseDB<QueryBuilderTestDB>({
       client: queryClient,
       retries: {
@@ -1135,13 +1188,17 @@ describe("query builder validation", () => {
     const defaultClient = {
       query: vi.fn(),
     };
+
     const overrideJson = vi.fn().mockResolvedValue([]);
+
     const overrideClient = {
       query: vi.fn().mockResolvedValue({ json: overrideJson }),
     };
+
     const dbWithClient = createClickHouseDB<QueryBuilderTestDB>({
       client: defaultClient,
     });
+
     const query = dbWithClient.selectFrom("event_logs").selectAll();
 
     const options = {
@@ -1166,6 +1223,7 @@ describe("query builder validation", () => {
         output_format_json_quote_64bit_integers: 1,
         output_format_json_quote_64bit_floats: 0,
         output_format_json_quote_decimals: 0,
+        output_format_json_quote_denormals: 0,
         output_format_json_named_tuples_as_objects: 1,
         join_use_nulls: 0,
         max_threads: 2,
@@ -1278,7 +1336,7 @@ describe("query builder validation", () => {
       .toSQL();
 
     expect(query.query).toBe(
-      "SELECT dictGetOrDefault('partner_rates', 'currency', t.id, {p0:String}, t.created_at) AS currency_at_date FROM typed_samples AS t",
+      "SELECT dictGetOrDefault('partner_rates', 'currency', t.id, t.created_at, {p0:String}) AS currency_at_date FROM typed_samples AS t",
     );
     expect(query.params).toEqual({ p0: "USD" });
   });

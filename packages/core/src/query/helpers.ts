@@ -96,6 +96,7 @@ export function resolveSourceColumns<DB extends DatabaseSchema>(
 ): ResolvedSourceColumns | undefined {
   if (isAliasedQueryLike(source)) {
     const columns = source.getOutputColumns?.();
+
     return columns ? { alias: source.alias, columns } : undefined;
   }
 

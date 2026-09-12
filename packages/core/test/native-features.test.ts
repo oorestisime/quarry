@@ -5,18 +5,21 @@ interface DB {
   users: { id: number; email: string };
   events: { user_id: number; event_type: string };
 }
+
 const db = createClickHouseDB<DB>();
 
 describe("composable SQL", () => {
   it("binds hostile values and merges nested fragment parameters with builder parameters", () => {
     const value = "'); DROP TABLE users; --";
     const predicate = sql`${identifier("u", "email")} = ${value}`;
+
     const compiled = db
       .selectFrom("users as u")
       .select(sql<string>`concat(${identifier("u", "email")}, ${"!"})`.as("label"))
       .where(predicate)
       .where("u.id", "=", param(42, "UInt32"))
       .toSQL();
+
     expect(compiled).toEqual({
       query:
         "SELECT concat(u.email, {p0:String}) AS label FROM users AS u WHERE (u.email = {p1:String}) AND u.id = {p2:UInt32}",
@@ -68,10 +71,12 @@ describe("query contracts", () => {
       .selectFrom("users as u")
       .leftJoinNullable("events as e", "u.id", "e.user_id")
       .select("u.id");
+
     const mixed = db
       .selectFrom(nullable.as("n"))
       .leftJoin("events as e", "n.id", "e.user_id")
       .select("n.id");
+
     expect(() => mixed.toSQL()).toThrow("one outer-join null policy");
   });
   it("checks INSERT SELECT arity for untyped callers", () => {
@@ -93,10 +98,12 @@ describe("query contracts", () => {
     const controller = new AbortController();
     const error = Object.assign(new Error("reset"), { code: "ECONNRESET" });
     const client = { query: vi.fn().mockRejectedValue(error) };
+
     const promise = createClickHouseDB<DB>({ client, retries: { attempts: 3, delayMs: 60_000 } })
       .selectFrom("users")
       .select("id")
       .execute({ abortSignal: controller.signal });
+
     await vi.waitFor(() => expect(client.query).toHaveBeenCalledTimes(1));
     controller.abort(new Error("cancelled"));
     await expect(promise).rejects.toThrow("cancelled");

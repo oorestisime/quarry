@@ -1,4 +1,5 @@
 export type ClickHouseSettingValue = string | number | boolean;
+
 export type ClickHouseSettings = Record<string, ClickHouseSettingValue>;
 
 interface ClickHouseQueryResult {
@@ -84,5 +85,7 @@ export function toClickHouseExecutionParams(
 }
 
 export type QueryCapableClickHouseClient = ClickHouseQueryClient;
+
 export type InsertCapableClickHouseClient = ClickHouseInsertClient;
+
 export type CommandCapableClickHouseClient = ClickHouseCommandClient;

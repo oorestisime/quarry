@@ -21,19 +21,21 @@ export interface TypeScriptSchemaModuleOptions {
   readonly typeOverrides?: TypeScriptColumnTypeOverrides;
 }
 
-type TypeScriptImportSpec =
-  | "Generated"
-  | "GeneratedAlways"
-  | "ClickHouseDate"
-  | "ClickHouseDate32"
-  | "ClickHouseDateTime"
-  | "ClickHouseDateTime64"
-  | "ClickHouseDecimal"
-  | "ClickHouseInt64"
-  | "ClickHouseUInt64"
-  | "TypedDictionary"
-  | "TypedTable"
-  | "TypedView";
+const quarryTypeImports = [
+  "Generated",
+  "GeneratedAlways",
+  "ClickHouseDate",
+  "ClickHouseDate32",
+  "ClickHouseDateTime",
+  "ClickHouseDateTime64",
+  "ClickHouseDecimal",
+  "ClickHouseInt64",
+  "ClickHouseUInt64",
+  "TypedDictionary",
+  "TypedTable",
+  "TypedView",
+] as const;
+type TypeScriptImportSpec = (typeof quarryTypeImports)[number];
 
 interface TypeScriptIntrospectionSource {
   readonly name: string;
@@ -81,15 +83,28 @@ function toInterfaceBaseName(value: string): string {
 
 function buildInterfaceNames(
   sources: readonly TypeScriptIntrospectionSource[],
+  imports: readonly TypeScriptTypeImport[] = [],
 ): Map<string, string> {
   const interfaceNames = new Map<string, string>();
-  const usedNames = new Map<string, number>();
+  const usedNames = new Set([
+    "Tables",
+    "Views",
+    "Dictionaries",
+    "DB",
+    "Array",
+    "Record",
+    ...quarryTypeImports,
+    ...imports.map((spec) => spec.as ?? spec.name),
+  ]);
 
   for (const source of sources) {
     const baseName = toInterfaceBaseName(source.name);
-    const nextIndex = (usedNames.get(baseName) ?? 0) + 1;
-    usedNames.set(baseName, nextIndex);
-    interfaceNames.set(source.name, nextIndex === 1 ? baseName : `${baseName}${nextIndex}`);
+    let name = baseName;
+    for (let suffix = 2; usedNames.has(name); suffix++) {
+      name = `${baseName}${suffix}`;
+    }
+    usedNames.add(name);
+    interfaceNames.set(source.name, name);
   }
 
   return interfaceNames;
@@ -137,12 +152,15 @@ function renderScalarType(
   imports: Set<TypeScriptImportSpec>,
   allowAliases: boolean,
 ): string | undefined {
+  if (normalized === "JSON" || (normalized.startsWith("JSON(") && normalized.endsWith(")"))) {
+    return "Record<string, unknown>";
+  }
+
   if (
     normalized === "String" ||
     normalized === "UUID" ||
     normalized === "IPv4" ||
     normalized === "IPv6" ||
-    normalized === "JSON" ||
     /^FixedString\(\d+\)$/.test(normalized) ||
     /^Enum(?:8|16)\(/.test(normalized) ||
     /^Int(?:128|256)$/.test(normalized) ||
@@ -348,7 +366,7 @@ export function generateTypeScriptSchemaModule(
   const imports = new Set<TypeScriptImportSpec>();
   const dicts = dictionaries ?? [];
   const sources = [...tables, ...views, ...dicts];
-  const interfaceNames = buildInterfaceNames(sources);
+  const interfaceNames = buildInterfaceNames(sources, options.imports);
   const rowInterfaces = sources.map((source) =>
     renderRowInterface(
       source.name,

@@ -2,6 +2,7 @@ import type { QueryColumn } from "./column-metadata";
 import type { ColumnType, TypedDictionary, TypedTable, TypedView } from "./db-types";
 
 export type DatabaseSchema = object;
+
 export type ScopeMap = Record<string, Record<string, unknown>>;
 
 export type Simplify<T> = { [K in keyof T]: T[K] } & {};
@@ -22,7 +23,9 @@ export type SelectValue<T> =
     : T extends QueryColumn<infer Select, any>
       ? Select
       : T;
+
 export type InsertValue<T> = T extends ColumnType<any, infer Insert, any> ? Insert : SelectValue<T>;
+
 export type WhereValue<T> =
   T extends ColumnType<any, any, infer Where>
     ? Where

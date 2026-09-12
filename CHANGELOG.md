@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pass range dictionary lookup arguments in ClickHouse order in `dictGetOrDefault`.
+- Preserve milliseconds and UTC for inferred JavaScript Date parameters. Compare inferred Date arrays without narrowing timestamp precision.
+- Apply the SELECT join policy to INSERT SELECT execution, including inherited client settings and conflicting overrides.
+- Generate native `JSON` columns as `Record<string, unknown>`, including parameterized JSON types.
+- Allocate distinct generated row interface names when sources collide with schema maps, imported types, or generated suffixes.
+
+### Changed
+
+- **Breaking:** expression value and predicate types are now structurally enforced. Invalid helper arguments previously accepted through `eb.ref()` or aliases produce TypeScript errors.
+- **Breaking:** cast results preserve nullable input types. `avg`, `avgIf`, and numeric `quantile` return `number | null` because empty results serialize as null. Typed execution requires `output_format_json_quote_denormals = 0`.
+- **Breaking:** `eb.and()` and `eb.or()` require nonempty tuples. Empty arrays are rejected by TypeScript and throw immediately for JavaScript callers.
+
 ## [0.10.0] - 2026-09-05
 
 ### Documentation

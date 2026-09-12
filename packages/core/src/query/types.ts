@@ -343,6 +343,7 @@ export type ParamLike<T> = T | ClickHouseParam<T>;
 type NonNullish<T> = Exclude<T, null>;
 
 export type PredicateOperator = "=" | "!=" | ">" | ">=" | "<" | "<=" | "in" | "not in";
+
 export type RefPredicateOperator = "=" | "!=" | ">" | ">=" | "<" | "<=";
 
 export type PredicateValue<Value, Operator extends PredicateOperator> = Operator extends

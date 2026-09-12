@@ -1,3 +1,10 @@
 {
-  "ignorePatterns": ["README.md", "docs/**", "dist/**", "internal-docs/**", "queries/**/*.sql"]
+  "ignorePatterns": [
+    "README.md",
+    "docs/**",
+    "dist/**",
+    "internal-docs/**",
+    "queries/**/*.sql",
+    "packages/core/tools/oxlint/anti-slop/**"
+  ]
 }

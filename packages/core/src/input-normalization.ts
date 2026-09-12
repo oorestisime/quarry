@@ -14,6 +14,7 @@ function formatDateTimeValue(value: Date, precision = 0): string {
   }
 
   const milliseconds = padNumber(value.getUTCMilliseconds(), 3);
+
   const fractional =
     precision <= 3 ? milliseconds.slice(0, precision) : milliseconds.padEnd(precision, "0");
 
@@ -35,6 +36,7 @@ export function normalizeClickHouseInputValue(value: unknown, clickhouseType: st
 
   if (clickhouseType.startsWith("Array(") && clickhouseType.endsWith(")")) {
     const memberType = clickhouseType.slice("Array(".length, -1);
+
     return globalThis.Array.isArray(value)
       ? value.map((member) => normalizeClickHouseInputValue(member, memberType))
       : value;
@@ -53,7 +55,8 @@ export function normalizeClickHouseInputValue(value: unknown, clickhouseType: st
       return formatDateTimeValue(value);
     }
 
-    const dateTime64Match = /^DateTime64\((\d+)\)$/.exec(clickhouseType);
+    const dateTime64Match = /^DateTime64\((\d+)(?:,\s*'UTC')?\)$/.exec(clickhouseType);
+
     if (dateTime64Match) {
       return formatDateTimeValue(value, Number(dateTime64Match[1]));
     }

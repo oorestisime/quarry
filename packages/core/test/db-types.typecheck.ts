@@ -30,31 +30,40 @@ interface AdvancedTypecheckDB {
 }
 
 const advancedDb = createClickHouseDB<AdvancedTypecheckDB>();
+
 const advancedUsersQuery = advancedDb
   .selectFrom("users as u")
   .select("u.id", "u.created_at", "u.big_user_id", "u.custom_metric")
   .where("u.created_at", ">=", new Date("2025-01-01T00:00:00.000Z"))
   .where("u.big_user_id", "=", 42n)
   .where("u.custom_metric", "=", 1);
+
 const advancedViewQuery = advancedDb
   .selectFrom("daily_users as d")
   .select("d.signup_date", "d.total_users");
 
 type AdvancedUserRow = InferResult<typeof advancedUsersQuery>;
+
 type AdvancedViewRow = InferResult<typeof advancedViewQuery>;
+
 type SelectableAdvancedUser = Selectable<AdvancedTypecheckDB["users"]>;
+
 type InsertableAdvancedUser = Insertable<AdvancedTypecheckDB["users"]>;
+
 type SelectableAdvancedView = Selectable<AdvancedTypecheckDB["daily_users"]>;
+
 type SelectablePlainAdvancedRow = Selectable<{
   created_at: ClickHouseDateTime64;
   big_user_id: ClickHouseUInt64;
   custom_metric: ColumnType<string, number, number>;
 }>;
+
 type InsertablePlainAdvancedRow = Insertable<{
   created_at: ClickHouseDateTime64;
   big_user_id: ClickHouseUInt64;
   custom_metric: ColumnType<string, number, number>;
 }>;
+
 type AdvancedViewInsertable = Insertable<AdvancedTypecheckDB["daily_users"]>;
 
 const validAdvancedUserRow: AdvancedUserRow = {
@@ -113,12 +122,19 @@ const advancedInsertResultPromise: Promise<ClickHouseInsertResult> = advancedDb
   .execute();
 
 void validAdvancedUserRow;
+
 void validAdvancedViewRow;
+
 void validSelectableAdvancedUser;
+
 void validInsertableAdvancedUser;
+
 void validSelectableAdvancedView;
+
 void validSelectablePlainAdvancedRow;
+
 void validInsertablePlainAdvancedRow;
+
 void advancedInsertResultPromise;
 
 const _invalidSelectableAdvancedUser: SelectableAdvancedUser = {
@@ -168,6 +184,7 @@ interface AliasTypecheckDB {
 }
 
 const aliasDb = createClickHouseDB<AliasTypecheckDB>();
+
 const aliasQuery = aliasDb
   .selectFrom("typed_aliases as t")
   .select(
@@ -215,6 +232,7 @@ const aliasInsertResultPromise: Promise<ClickHouseInsertResult> = aliasDb
   .execute();
 
 void validAliasRow;
+
 void aliasInsertResultPromise;
 
 // @ts-expect-error ClickHouseDate should not accept numeric predicate values

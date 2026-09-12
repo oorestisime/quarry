@@ -53,6 +53,7 @@ const client: ClickHouseClient = {
 };
 
 const db = createClickHouseDB<InsertTypecheckDB>();
+
 const dbWithClient = createClickHouseDB<InsertTypecheckDB>({ client });
 
 const executionOptions = {
@@ -121,8 +122,11 @@ const validInsertFromSelectPromise: Promise<ClickHouseInsertResult> = dbWithClie
   .execute(executionOptions);
 
 void validInsertResultPromise;
+
 void validTypedSamplesInsertPromise;
+
 void validJsonInsertPromise;
+
 void validInsertFromSelectPromise;
 
 db.insertInto("users").values([

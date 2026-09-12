@@ -19,8 +19,11 @@ interface DB {
     alias_id: GeneratedAlways<number>;
   };
 }
+
 let context: ClickHouseTestContext;
+
 const db = createClickHouseDB<DB>();
+
 describe("native composition and runtime contracts", () => {
   beforeAll(async () => {
     context = await startClickHouse();
@@ -34,11 +37,13 @@ describe("native composition and runtime contracts", () => {
       .leftJoin("event_logs as e", "u.id", "e.user_id")
       .select("e.event_type")
       .where("u.id", "=", 43);
+
     const nullable = db
       .selectFrom("users as u")
       .leftJoinNullable("event_logs as e", "u.id", "e.user_id")
       .select("e.event_type")
       .where("u.id", "=", 43);
+
     expect(await ordinary.execute({ client: context.client })).toEqual([{ event_type: "" }]);
     expect(await nullable.execute({ client: context.client })).toEqual([{ event_type: null }]);
   });
@@ -54,10 +59,12 @@ describe("native composition and runtime contracts", () => {
           },
         }),
     };
+
     const rows = await db
       .selectFrom("users")
       .selectExpr((eb) => [eb.fn.count().as("n")])
       .execute({ client });
+
     expect(rows).toEqual([{ n: "43" }]);
   });
   it("combines branch aliases and parameters with global ordering and supports CTEs", async () => {
@@ -83,11 +90,13 @@ describe("native composition and runtime contracts", () => {
   });
   it("executes nested SQL fragments with bound values", async () => {
     const suffix = "'; DROP TABLE users; --";
+
     const rows = await db
       .selectFrom("users")
       .selectExpr((eb) => [sql<string>`concat(${eb.ref("email")}, ${suffix})`.as("label")])
       .where("id", "=", 1)
       .execute({ client: context.client });
+
     expect(rows).toEqual([{ label: `alice@example.com${suffix}` }]);
   });
   it("preserves fragment predicate precedence when composing additional filters", async () => {
@@ -97,6 +106,7 @@ describe("native composition and runtime contracts", () => {
       .where(sql`id = ${1} OR id = ${2}`)
       .where("id", "=", 2)
       .execute({ client: context.client });
+
     expect(rows).toEqual([{ id: 2 }]);
   });
   it("executes ranking and running aggregation windows", async () => {
@@ -119,6 +129,7 @@ describe("native composition and runtime contracts", () => {
       .where("id", "<=", 3)
       .orderBy("id")
       .execute({ client: context.client });
+
     expect(rows).toEqual([
       { id: 1, position: "1", running: "1" },
       { id: 2, position: "2", running: "3" },
@@ -148,6 +159,7 @@ describe("native composition and runtime contracts", () => {
       .select("a.b")
       .where("a.b", "=", "dot")
       .execute({ client: context.client });
+
     expect(rows).toEqual([{ "a.b": "dot" }]);
   });
   it("omits DEFAULT and server-generated values on insert", async () => {

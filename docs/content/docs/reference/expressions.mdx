@@ -140,7 +140,9 @@ Operators allowed for `cmpRef` are restricted to equality and ordering
 
 ### `eb.and(expressions)`
 
-Wraps an array of expressions in a logical `AND`.
+Wraps a nonempty tuple of expressions in a logical `AND`. TypeScript rejects
+empty arrays and general arrays whose length is unknown. JavaScript callers get
+an immediate error if the array is empty.
 
 ```ts
 db
@@ -155,7 +157,7 @@ db
 
 ### `eb.or(expressions)`
 
-Same shape, logical `OR`.
+Same nonempty tuple requirement, logical `OR`. An empty array throws immediately.
 
 ```ts
 db
@@ -194,15 +196,19 @@ types come back as `string`.
 You can chain `.as("alias")` on any `Expression` to give it a name in the
 projection.
 
+The tables below show the value type parameter of `Expression`. Helpers also
+carry a separate predicate input type; for example, a date expression reads as
+`string` while accepting `string | Date` in predicates.
+
 ### Aggregates
 
 Every aggregate returns an `Expression<T>` where `T` follows the
 [runtime-honest typing](/docs/concepts/runtime-semantics) rules: 64-bit
 integer results (`count`, `uniq`, `sum` of `UInt64`) come back as `string`;
-`avg` always returns `number` because ClickHouse produces `Float64` for it;
+`avg` and `avgIf` return `number | null` because empty results serialize as null;
 `min` / `max` / `any` / `anyLast` / `argMin` / `argMax` preserve the input type; `groupArray`
 preserves the input type except that `NULL` elements are dropped from nullable
-inputs. `quantile` returns `number`.
+inputs. Numeric `quantile` returns `number | null` for the same empty-input reason.
 
 #### Count and numeric
 
@@ -213,11 +219,11 @@ inputs. `quantile` returns `number`.
 | `eb.fn.countDistinct(value)`        | `Expression<string>`             | `count(DISTINCT value)`. Respects `count_distinct_implementation`. |
 | `eb.fn.sum(value)`                  | `Expression<number \| string>`   | Returns `string` for 64-bit integer columns, `number` otherwise.  |
 | `eb.fn.sumIf(value, condition)`     | `Expression<number \| string>`   | Sums only rows where `condition` is truthy.                       |
-| `eb.fn.avg(value)`                  | `Expression<number>`             | Always returns `number` (ClickHouse produces `Float64`).          |
-| `eb.fn.avgIf(value, condition)`     | `Expression<number>`             | Average over rows where `condition` is truthy.                    |
+| `eb.fn.avg(value)`                  | `Expression<number \| null>`     | Empty input serializes as `null`.                                |
+| `eb.fn.avgIf(value, condition)`     | `Expression<number \| null>`     | `null` when no values contribute.                               |
 | `eb.fn.min(value)`                  | `Expression<T>`                  | Minimum. Return type matches the input column type.               |
 | `eb.fn.max(value)`                  | `Expression<T>`                  | Maximum. Return type matches the input column type.               |
-| `eb.fn.quantile(level, value)`      | `Expression<number>`             | Approximate quantile. `level` must be between `0` and `1`.         |
+| `eb.fn.quantile(level, value)`      | `Expression<number \| null>`     | Approximate numeric quantile; empty input is `null`. `level` must be between `0` and `1`. |
 
 #### Distinct
 
@@ -277,6 +283,10 @@ variants; for any you need that we do not yet wrap, you can fall through to
 These mirror the ClickHouse `toX` family. The result type follows the
 [runtime semantics](/docs/concepts/runtime-semantics): 64-bit ints come back
 as `string`, decimals come back as `number`, dates come back as `string`.
+
+The table shows results for non-nullable inputs. A nullable column or expression
+adds `null` to the result: `toUInt32` of `string | null` yields
+`Expression<number | null>`. This is preserved through aliases and subqueries.
 
 | Helper                                 | Returns              | ClickHouse type produced |
 | -------------------------------------- | -------------------- | ------------------------ |

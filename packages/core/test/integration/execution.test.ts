@@ -319,6 +319,7 @@ describe("clickhouse integration", () => {
 
   it("limits first-row execution while preserving ordered offsets and empty limits", async () => {
     const options = { client: getContext().client };
+
     const query = db
       .selectFrom("users")
       .select("id")
@@ -326,6 +327,7 @@ describe("clickhouse integration", () => {
       .orderBy("id")
       .offset(1)
       .limit(10);
+
     await expect(query.executeTakeFirst(options)).resolves.toEqual({ id: 2 });
     await expect(query.executeTakeFirstOrThrow(options)).resolves.toEqual({ id: 2 });
     await expect(query.execute(options)).resolves.toEqual([{ id: 2 }, { id: 3 }]);
@@ -412,9 +414,11 @@ describe("clickhouse integration", () => {
   it("executes CTEs built conditionally and passed as pre-built SelectQueryBuilder", async () => {
     function buildActiveUsersCte(includeSignup: boolean) {
       let query = db.selectFrom("event_logs as e").select("e.user_id").groupBy("e.user_id");
+
       if (includeSignup) {
         query = query.where("e.event_type", "=", "signup");
       }
+
       return query;
     }
 
