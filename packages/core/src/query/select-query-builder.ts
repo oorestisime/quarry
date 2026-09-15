@@ -1,4 +1,4 @@
-import type { ExprNode, RefNode, SelectQueryNode, SelectionNode } from "../ast/query";
+import type { ExprNode, LimitByNode, RefNode, SelectQueryNode, SelectionNode } from "../ast/query";
 import type { QueryColumn, QueryColumnMap } from "../column-metadata";
 import { compileSelectQuery, type CompiledQuery } from "../compiler/query-compiler";
 import { quoteIdentifier } from "../compiler/identifiers";
@@ -80,7 +80,7 @@ type ScopeColumnMap = Record<string, QueryColumnMap>;
 
 type EB<Scope extends ScopeMap, Sources extends DatabaseSchema> = ExpressionBuilder<Scope, Sources>;
 
-function parseSelectionParts(selection: string): { expr: string; alias?: string } {
+function parseSelectionParts(selection: string) {
   const match = selection.match(/^(.*?)\s+as\s+(.*?)$/i);
 
   if (!match) {
@@ -174,6 +174,7 @@ export class SelectQueryBuilder<
   private getBoundPredicateClickHouseType(
     ref: ColumnRef<Scope>,
     operator: PredicateOperator,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- This metadata lookup accepts any predicate value and only specializes Date values and arrays containing Dates.
     value: unknown,
   ): string | undefined {
     const columnType = this.getPredicateClickHouseType(ref);
@@ -195,7 +196,7 @@ export class SelectQueryBuilder<
     return value instanceof globalThis.Date ? columnType : undefined;
   }
 
-  private resolveScopeColumn(ref: ColumnRef<Scope>): QueryColumn | undefined {
+  private resolveScopeColumn(ref: string): QueryColumn | undefined {
     if (ref.includes(".")) {
       const [alias, column] = ref.split(".");
 
@@ -223,7 +224,7 @@ export class SelectQueryBuilder<
     for (const selection of selections) {
       if (typeof selection === "string") {
         const { expr, alias } = parseSelectionParts(selection);
-        const column = this.resolveScopeColumn(expr as ColumnRef<Scope>);
+        const column = this.resolveScopeColumn(expr);
         const outputName = alias ?? expr.split(".").at(-1);
 
         if (!column || !outputName) {
@@ -445,22 +446,22 @@ export class SelectQueryBuilder<
       | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Public WHERE overloads constrain schema values and explicit parameters; their shared implementation has no single concrete value type.
     value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     if (arguments.length === 1) {
       if (typeof input === "function") {
-        return this.addExpressionCondition(
-          "where",
-          input as (eb: EB<Scope, Sources>) => Expression<unknown>,
-        );
+        return this.addExpressionCondition("where", input);
       }
 
       return this.next({
         ...this.node,
+        // SAFETY: The one-argument overload permits only an expression or callback; the callback returned above.
         where: appendCondition(this.node.where, (input as Expression<unknown>).node),
       });
     }
 
+    // SAFETY: The three-argument overloads accept only a column reference or expression callback here.
     return this.addPredicate(
       "where",
       input as ColumnRef<Scope> | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>),
@@ -517,22 +518,22 @@ export class SelectQueryBuilder<
       | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Public PREWHERE overloads constrain schema values and explicit parameters; their shared implementation has no single concrete value type.
     value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     if (arguments.length === 1) {
       if (typeof input === "function") {
-        return this.addExpressionCondition(
-          "prewhere",
-          input as (eb: EB<Scope, Sources>) => Expression<unknown>,
-        );
+        return this.addExpressionCondition("prewhere", input);
       }
 
       return this.next({
         ...this.node,
+        // SAFETY: The one-argument overload permits only an expression or callback; the callback returned above.
         prewhere: appendCondition(this.node.prewhere, (input as Expression<unknown>).node),
       });
     }
 
+    // SAFETY: The three-argument overloads accept only a column reference or expression callback here.
     return this.addPredicate(
       "prewhere",
       input as ColumnRef<Scope> | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>),
@@ -617,24 +618,24 @@ export class SelectQueryBuilder<
       | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Public HAVING overloads constrain schema/output values and explicit parameters; their shared implementation has no single concrete value type.
     value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     if (arguments.length === 1) {
       if (typeof input === "function") {
-        return this.addExpressionCondition(
-          "having",
-          input as (eb: EB<Scope, Sources>) => Expression<unknown>,
-        );
+        return this.addExpressionCondition("having", input);
       }
 
       return this.next({
         ...this.node,
+        // SAFETY: The one-argument overload permits only an expression or callback; the callback returned above.
         having: appendCondition(this.node.having, (input as Expression<unknown>).node),
       });
     }
 
     const expressionBuilder = this.eb();
 
+    // SAFETY: The three-argument overloads accept only a HAVING reference or expression callback here.
     const predicateInput = input as
       | HavingRef<Scope, Output>
       | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>);
@@ -684,6 +685,7 @@ export class SelectQueryBuilder<
     key: "where" | "prewhere",
     input: ColumnRef<Scope> | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>),
     operator: PredicateOperator | undefined,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- WHERE and PREWHERE overloads share this AST-building path for arbitrary schema values, explicit parameters, and subqueries.
     value: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     const expressionBuilder = this.eb();
@@ -1017,6 +1019,7 @@ export class SelectQueryBuilder<
         ...this.node.orderBy,
         {
           expr: { kind: "ref", name: column },
+          // SAFETY: The input is "asc" | "desc"; toUpperCase preserves those values but returns string in TypeScript.
           direction: direction.toUpperCase() as "ASC" | "DESC",
         },
       ],
@@ -1038,17 +1041,22 @@ export class SelectQueryBuilder<
       assertValidPaginationValue("LIMIT BY OFFSET", options.offset);
     }
 
+    const limitBy: LimitByNode = {
+      limit: options.limit,
+      expressions: expressions.map((expression) =>
+        typeof expression === "function"
+          ? expression(this.eb()).node
+          : ({ kind: "ref", name: expression } satisfies RefNode),
+      ),
+    };
+
+    if (options.offset !== undefined) {
+      limitBy.offset = options.offset;
+    }
+
     return this.next({
       ...this.node,
-      limitBy: {
-        limit: options.limit,
-        ...(options.offset === undefined ? {} : { offset: options.offset }),
-        expressions: expressions.map((expression) =>
-          typeof expression === "function"
-            ? expression(this.eb()).node
-            : ({ kind: "ref", name: expression } satisfies RefNode),
-        ),
-      },
+      limitBy,
     });
   }
 
@@ -1231,20 +1239,10 @@ export class SelectQueryBuilder<
     const resolvedClient = this.getClient(options?.client);
     const compiled = this.toSQL();
 
-    // ClickHouseClient intentionally models Quarry's default JSONEachRow query shape.
-    // WITH TOTALS needs the driver's JSON document format for its separate totals field.
-    const queryJSON = resolvedClient.query.bind(resolvedClient) as unknown as (
-      params: ReturnType<typeof toClickHouseExecutionParams> & {
-        query: string;
-        query_params: Record<string, unknown>;
-        format: "JSON";
-      },
-    ) => Promise<ClickHouseJSONQueryResult>;
-
     return executeWithRetries(
       this.retries,
       async () => {
-        const result = await queryJSON({
+        const result = await resolvedClient.query({
           query: compiled.query,
           query_params: compiled.params,
           format: "JSON",
@@ -1321,10 +1319,6 @@ export class SelectQueryBuilder<
   }
 }
 
-interface ClickHouseJSONQueryResult {
-  json<T>(): Promise<{ data: T[]; totals?: T }>;
-}
-
 function assertValidPaginationValue(
   kind: "LIMIT" | "OFFSET" | "LIMIT BY" | "LIMIT BY OFFSET",
   value: number,
@@ -1384,28 +1378,23 @@ const retryableStatusCodes = new Set([408, 502, 503, 504]);
 
 const retryableMessages = new Set(["Timeout error.", "socket hang up"]);
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- JavaScript can throw any value; this boundary checks Error identity and metadata before deciding whether to retry.
 function isRetryableSelectError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
 
-  const errorWithMetadata = error as Error & {
-    code?: unknown;
-    status?: unknown;
-    statusCode?: unknown;
-  };
-
-  const code = errorWithMetadata.code;
+  const code = "code" in error ? error.code : undefined;
 
   if (typeof code === "string" && retryableErrorCodes.has(code)) {
     return true;
   }
 
   const statusCode =
-    typeof errorWithMetadata.statusCode === "number"
-      ? errorWithMetadata.statusCode
-      : typeof errorWithMetadata.status === "number"
-        ? errorWithMetadata.status
+    "statusCode" in error && typeof error.statusCode === "number"
+      ? error.statusCode
+      : "status" in error && typeof error.status === "number"
+        ? error.status
         : undefined;
 
   if (statusCode !== undefined && retryableStatusCodes.has(statusCode)) {

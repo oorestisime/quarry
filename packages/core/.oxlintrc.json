@@ -26,7 +26,9 @@
     "anti-slop/no-object-parameters": "error",
     "anti-slop/no-reflect-apply": "error",
     "anti-slop/no-reflect-get": "error",
-    "anti-slop/no-runtime-typeof": "error",
+    // Core uses runtime type checks for overload dispatch, serialization, and boundary validation.
+    // Parsing inputs does not eliminate these checks; banning them would only move them into wrappers.
+    "anti-slop/no-runtime-typeof": "off",
     "anti-slop/no-shape-in-symbol-names": "error",
     "anti-slop/no-unknown-parameters": "error",
     "anti-slop/no-unknown-returns": "error",

@@ -12,15 +12,18 @@ import { resultSettings } from "../query/result-settings";
 
 export interface CompiledQuery {
   query: string;
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- Compiled bindings retain heterogeneous values; their ClickHouse types live in the SQL placeholders.
   params: Record<string, unknown>;
 }
 
 export interface CompiledInsertQuery<Row> {
   query: string;
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- INSERT SELECT bindings use the same heterogeneous SQL-placeholder contract as SELECT queries.
   params: Record<string, unknown>;
   values?: Row[];
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- Runtime type inference starts with arbitrary AST values and classifies the representations supported below.
 function inferClickHouseType(value: unknown): string {
   if (Array.isArray(value)) {
     const firstValue = value.find((item) => item !== null && item !== undefined);
@@ -62,9 +65,11 @@ function compileSettingValue(value: string | number | boolean): string {
 
 class CompileContext {
   private paramIndex = 0;
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- Each generated parameter name maps to its own normalized value and separately emitted ClickHouse type.
   readonly params: Record<string, unknown> = {};
   aliases = new Set<string>();
 
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- AST bindings can contain arbitrary schema values; explicit ClickHouse types bypass inference.
   bind(value: unknown, clickhouseType?: string): string {
     const name = `p${this.paramIndex++}`;
     const type = clickhouseType ?? inferClickHouseType(value);
@@ -329,6 +334,7 @@ export function compileInsertQuery<Row extends object>(
     return {
       query: `INSERT INTO ${quoteTable(query.table)}${columns} FORMAT JSONEachRow`,
       params: {},
+      // SAFETY: InsertQueryBuilder supplies rows accepted as Row[] by values(); the AST erases that generic to object[].
       values: structuredClone(query.source.rows as Row[]),
     };
   }

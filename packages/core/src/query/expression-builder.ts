@@ -1,4 +1,4 @@
-import type { ExprNode } from "../ast/query";
+import type { ExprNode, WindowNode } from "../ast/query";
 import type { QueryColumnMap } from "../column-metadata";
 import type { ClickHouseParam } from "../param";
 import type {
@@ -75,19 +75,21 @@ export class Expression<T, Where = T> {
       if (first > last) throw new Error("Window frame start must not follow its end.");
     }
 
-    return new Expression(
-      {
-        kind: "window",
-        expression: this.node,
-        partitionBy: (options.partitionBy ?? []).map((expr) => expr.node),
-        orderBy: (options.orderBy ?? []).map((order) => ({
-          expr: order.by.node,
-          direction: order.direction === "desc" ? "DESC" : "ASC",
-        })),
-        ...(options.rows ? { rows: { ...options.rows } } : {}),
-      },
-      this.clickhouseType,
-    );
+    const node: WindowNode = {
+      kind: "window",
+      expression: this.node,
+      partitionBy: (options.partitionBy ?? []).map((expr) => expr.node),
+      orderBy: (options.orderBy ?? []).map((order) => ({
+        expr: order.by.node,
+        direction: order.direction === "desc" ? "DESC" : "ASC",
+      })),
+    };
+
+    if (options.rows) {
+      node.rows = { ...options.rows };
+    }
+
+    return new Expression(node, this.clickhouseType);
   }
 }
 
@@ -528,6 +530,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
   cmp(
     left: ColumnRef<Scope> | Expression<unknown>,
     operator: PredicateOperator,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Public overloads constrain the value to the left operand; this shared implementation also handles arbitrary explicit parameters.
     right: unknown,
   ): Expression<number> {
     return new Expression({
@@ -1054,6 +1057,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
   }
 
   private toDateTimeUnit(unit: DateTimeUnitInput): (typeof DATE_TIME_UNITS)[DateTimeUnit] {
+    // SAFETY: DateTimeUnitInput contains only DATE_TIME_UNITS keys and their lowercase forms.
     const normalizedUnit = unit.toUpperCase() as DateTimeUnit;
     const resolvedUnit = DATE_TIME_UNITS[normalizedUnit];
 
@@ -1071,6 +1075,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
   private toDictionaryKeyExpr(
     key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
   ): ExprNode {
+    // SAFETY: Array.isArray handles the array branch but does not exclude readonly arrays from the other branch's type.
     return Array.isArray(key)
       ? { kind: "function", name: "tuple", args: key.map((item) => this.toExpr(item)) }
       : this.toExpr(key as ExpressionInput<Scope>);
@@ -1095,12 +1100,13 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
     return createValueNode(value);
   }
 
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Predicate operands may be subqueries, expressions, or arbitrary schema/param<T> values, distinguished here before creating AST nodes.
   private toPredicateRightExpr(value: unknown): ExprNode {
     if (isQueryLike(value)) {
       return toSubqueryExpr(value);
     }
 
-    return this.toValueExpr(value as ParamLike<unknown> | Expression<unknown>);
+    return this.toValueExpr(value);
   }
 
   private resolveClickHouseType(ref: ColumnRef<Scope>): string | undefined {

@@ -18,6 +18,7 @@ export function sql<T = unknown>(
   });
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- SQL interpolations can contain arbitrary bound values; this boundary distinguishes expressions and explicit parameters.
 function toNode(value: unknown): ExprNode {
   if (value instanceof Expression) return value.node;
 

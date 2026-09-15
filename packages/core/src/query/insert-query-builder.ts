@@ -113,6 +113,7 @@ export class InsertQueryBuilder<
       );
     }
 
+    // SAFETY: The callable check above establishes that the client's optional, typed insert method is present.
     return resolvedClient as InsertCapableClickHouseClient;
   }
 
@@ -125,6 +126,7 @@ export class InsertQueryBuilder<
       );
     }
 
+    // SAFETY: The callable check above establishes that the client's optional, typed command method is present.
     return resolvedClient as CommandCapableClickHouseClient;
   }
 
@@ -135,12 +137,13 @@ export class InsertQueryBuilder<
 
     if (this.node.source.kind === "values") {
       const resolvedClient = this.getInsertClient(options?.client);
-      const values = this.node.source.rows.map((row) => normalizeInsertValue(row)) as Row[];
+      const values = this.node.source.rows.map((row) => normalizeInsertValue(row));
 
       return resolvedClient.insert({
         table: quoteTable(this.node.table),
         values,
         format: "JSONEachRow",
+        // SAFETY: columns() requires a nonempty tuple, and mapping identifiers preserves its length.
         columns: this.node.columns?.map(quoteIdentifier) as [string, ...string[]] | undefined,
         ...toClickHouseExecutionParams(options ?? {}),
       });

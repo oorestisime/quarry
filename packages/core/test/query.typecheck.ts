@@ -53,18 +53,24 @@ interface TypecheckDB {
 
 const db = createClickHouseDB<TypecheckDB>();
 
-const client: ClickHouseClient = {
-  query: async () => ({
-    json: async <T>() => [] as T[],
-  }),
-  insert: async () => ({
-    executed: true,
-    query_id: "insert-query-id",
-  }),
-  command: async () => ({
-    query_id: "command-query-id",
-  }),
-};
+declare const client: ClickHouseClient;
+
+async function checkClientQueryFormats() {
+  const rows = await (
+    await client.query({ query: "SELECT 1 AS id", format: "JSONEachRow" })
+  ).json<{ id: number }>();
+  rows satisfies { id: number }[];
+  // @ts-expect-error JSONEachRow does not return a document with a data field
+  rows.data;
+
+  const document = await (
+    await client.query({ query: "SELECT 1 AS id", format: "JSON" })
+  ).json<{ id: number }>();
+  document.data satisfies { id: number }[];
+  document.totals satisfies { id: number } | undefined;
+  // @ts-expect-error JSON returns a document, not an array of rows
+  document satisfies { id: number }[];
+}
 
 const basicQuery = db.selectFrom("event_logs as e").select("e.user_id", "e.event_type");
 

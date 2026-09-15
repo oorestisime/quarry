@@ -39,18 +39,7 @@ interface InsertTypecheckDB {
   };
 }
 
-const client: ClickHouseClient = {
-  query: async () => ({
-    json: async <T>() => [] as T[],
-  }),
-  insert: async () => ({
-    executed: true,
-    query_id: "insert-query-id",
-  }),
-  command: async () => ({
-    query_id: "command-query-id",
-  }),
-};
+declare const client: ClickHouseClient;
 
 const db = createClickHouseDB<InsertTypecheckDB>();
 

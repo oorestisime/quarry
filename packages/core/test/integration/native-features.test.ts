@@ -48,8 +48,10 @@ describe("native composition and runtime contracts", () => {
     expect(await nullable.execute({ client: context.client })).toEqual([{ event_type: null }]);
   });
   it("overrides client defaults that would otherwise change result types", async () => {
-    const client = {
-      query: (params: Parameters<ClickHouseClient["query"]>[0]) =>
+    const client: ClickHouseClient = {
+      query: <Format extends "JSON" | "JSONEachRow">(
+        params: Omit<Parameters<ClickHouseClient["query"]>[0], "format"> & { format: Format },
+      ) =>
         context.client.query({
           ...params,
           clickhouse_settings: {

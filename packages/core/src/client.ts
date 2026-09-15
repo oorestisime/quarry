@@ -7,6 +7,15 @@ interface ClickHouseQueryResult {
   stream?<T>(): AsyncIterable<readonly ClickHouseResultRow<T>[]>;
 }
 
+interface ClickHouseJSONQueryResult {
+  json<T>(): Promise<ClickHouseJSONResponse<T>>;
+}
+
+interface ClickHouseJSONResponse<T> {
+  data: T[];
+  totals?: T;
+}
+
 interface ClickHouseResultRow<T> {
   json(): T;
 }
@@ -17,10 +26,23 @@ interface ClickHouseBaseParams {
   abort_signal?: AbortSignal;
 }
 
+// Separate interfaces let TypeScript check generic drivers against each format independently.
+interface ClickHouseJSONQueryClient {
+  query(
+    params: ClickHouseBaseParams & {
+      query: string;
+      // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- Driver query parameters are heterogeneous values whose ClickHouse types are specified in the SQL placeholders.
+      query_params?: Record<string, unknown>;
+      format: "JSON";
+    },
+  ): Promise<ClickHouseJSONQueryResult>;
+}
+
 interface ClickHouseQueryClient {
   query(
     params: ClickHouseBaseParams & {
       query: string;
+      // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- Driver query parameters are heterogeneous values whose ClickHouse types are specified in the SQL placeholders.
       query_params?: Record<string, unknown>;
       format: "JSONEachRow";
     },
@@ -51,12 +73,14 @@ interface ClickHouseCommandClient {
   command(
     params: ClickHouseBaseParams & {
       query: string;
+      // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- Driver command parameters use the same heterogeneous SQL-placeholder contract as queries.
       query_params?: Record<string, unknown>;
     },
   ): Promise<ClickHouseCommandResult>;
 }
 
-export type ClickHouseClient = ClickHouseQueryClient &
+export type ClickHouseClient = ClickHouseJSONQueryClient &
+  ClickHouseQueryClient &
   Partial<ClickHouseInsertClient> &
   Partial<ClickHouseCommandClient>;
 
@@ -75,16 +99,24 @@ export interface ClickHouseRetryOptions {
 export function toClickHouseExecutionParams(
   options: ClickHouseExecutionOptions,
 ): ClickHouseBaseParams {
-  return {
-    ...(options.abortSignal === undefined ? {} : { abort_signal: options.abortSignal }),
-    ...(options.queryId === undefined ? {} : { query_id: options.queryId }),
-    ...(options.clickhouse_settings === undefined
-      ? {}
-      : { clickhouse_settings: options.clickhouse_settings }),
-  };
+  const params: ClickHouseBaseParams = {};
+
+  if (options.abortSignal !== undefined) {
+    params.abort_signal = options.abortSignal;
+  }
+
+  if (options.queryId !== undefined) {
+    params.query_id = options.queryId;
+  }
+
+  if (options.clickhouse_settings !== undefined) {
+    params.clickhouse_settings = options.clickhouse_settings;
+  }
+
+  return params;
 }
 
-export type QueryCapableClickHouseClient = ClickHouseQueryClient;
+export type QueryCapableClickHouseClient = ClickHouseJSONQueryClient & ClickHouseQueryClient;
 
 export type InsertCapableClickHouseClient = ClickHouseInsertClient;
 
