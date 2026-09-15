@@ -174,7 +174,6 @@ export class SelectQueryBuilder<
   private getBoundPredicateClickHouseType(
     ref: ColumnRef<Scope>,
     operator: PredicateOperator,
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- This metadata lookup accepts any predicate value and only specializes Date values and arrays containing Dates.
     value: unknown,
   ): string | undefined {
     const columnType = this.getPredicateClickHouseType(ref);
@@ -446,7 +445,6 @@ export class SelectQueryBuilder<
       | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Public WHERE overloads constrain schema values and explicit parameters; their shared implementation has no single concrete value type.
     value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     if (arguments.length === 1) {
@@ -518,7 +516,6 @@ export class SelectQueryBuilder<
       | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Public PREWHERE overloads constrain schema values and explicit parameters; their shared implementation has no single concrete value type.
     value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     if (arguments.length === 1) {
@@ -618,7 +615,6 @@ export class SelectQueryBuilder<
       | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>)
       | Expression<unknown>,
     operator?: PredicateOperator,
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Public HAVING overloads constrain schema/output values and explicit parameters; their shared implementation has no single concrete value type.
     value?: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     if (arguments.length === 1) {
@@ -685,7 +681,6 @@ export class SelectQueryBuilder<
     key: "where" | "prewhere",
     input: ColumnRef<Scope> | ((expressionBuilder: EB<Scope, Sources>) => Expression<unknown>),
     operator: PredicateOperator | undefined,
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- WHERE and PREWHERE overloads share this AST-building path for arbitrary schema values, explicit parameters, and subqueries.
     value: unknown,
   ): SelectQueryBuilder<Sources, Scope, Output, OutputColumns, Order> {
     const expressionBuilder = this.eb();
@@ -1378,7 +1373,6 @@ const retryableStatusCodes = new Set([408, 502, 503, 504]);
 
 const retryableMessages = new Set(["Timeout error.", "socket hang up"]);
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- JavaScript can throw any value; this boundary checks Error identity and metadata before deciding whether to retry.
 function isRetryableSelectError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;

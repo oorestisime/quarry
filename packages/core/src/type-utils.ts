@@ -3,7 +3,6 @@ import type { ColumnType, TypedDictionary, TypedTable, TypedView } from "./db-ty
 
 export type DatabaseSchema = object;
 
-// oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- This generic constraint describes user-defined column types, not an unvalidated runtime payload.
 export type ScopeMap = Record<string, Record<string, unknown>>;
 
 export type Simplify<T> = { [K in keyof T]: T[K] } & {};

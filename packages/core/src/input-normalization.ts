@@ -21,7 +21,6 @@ function formatDateTimeValue(value: Date, precision = 0): string {
   return `${base}.${fractional}`;
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters, anti-slop/no-unknown-returns -- Only known representations are normalized; other driver values pass through, and conversions do not preserve the input type.
 export function normalizeClickHouseInputValue(value: unknown, clickhouseType: string): unknown {
   if (value === null || value === undefined) {
     return value;
@@ -66,7 +65,6 @@ export function normalizeClickHouseInputValue(value: unknown, clickhouseType: st
   return value;
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters, anti-slop/no-unknown-returns -- Insert rows contain arbitrary nested schema values; bigint conversion changes their types while other values pass through.
 export function normalizeInsertValue(value: unknown): unknown {
   if (value === null || value === undefined) {
     return value;

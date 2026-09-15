@@ -31,7 +31,6 @@ interface ClickHouseJSONQueryClient {
   query(
     params: ClickHouseBaseParams & {
       query: string;
-      // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- Driver query parameters are heterogeneous values whose ClickHouse types are specified in the SQL placeholders.
       query_params?: Record<string, unknown>;
       format: "JSON";
     },
@@ -42,7 +41,6 @@ interface ClickHouseQueryClient {
   query(
     params: ClickHouseBaseParams & {
       query: string;
-      // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- Driver query parameters are heterogeneous values whose ClickHouse types are specified in the SQL placeholders.
       query_params?: Record<string, unknown>;
       format: "JSONEachRow";
     },
@@ -73,7 +71,6 @@ interface ClickHouseCommandClient {
   command(
     params: ClickHouseBaseParams & {
       query: string;
-      // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- Driver command parameters use the same heterogeneous SQL-placeholder contract as queries.
       query_params?: Record<string, unknown>;
     },
   ): Promise<ClickHouseCommandResult>;

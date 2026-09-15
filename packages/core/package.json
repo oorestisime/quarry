@@ -55,9 +55,6 @@
     "typecheck:performance": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.performance.json --extendedDiagnostics",
     "prepublishOnly": "pnpm build"
   },
-  "devDependencies": {
-    "@oxlint/plugins": "1.57.0"
-  },
   "engines": {
     "node": ">=22"
   }

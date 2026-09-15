@@ -114,7 +114,6 @@ export function toSubqueryExpr(query: { toAST(): SelectQueryNode }): SubqueryExp
   };
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- The AST stores arbitrary schema values or param<T> payloads without imposing a closed set of driver-supported types.
 export function createValueNode(value: unknown, clickhouseType?: string): ValueNode {
   if (value === null) {
     throw new Error(

@@ -530,7 +530,6 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
   cmp(
     left: ColumnRef<Scope> | Expression<unknown>,
     operator: PredicateOperator,
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Public overloads constrain the value to the left operand; this shared implementation also handles arbitrary explicit parameters.
     right: unknown,
   ): Expression<number> {
     return new Expression({
@@ -1100,7 +1099,6 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
     return createValueNode(value);
   }
 
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Predicate operands may be subqueries, expressions, or arbitrary schema/param<T> values, distinguished here before creating AST nodes.
   private toPredicateRightExpr(value: unknown): ExprNode {
     if (isQueryLike(value)) {
       return toSubqueryExpr(value);
