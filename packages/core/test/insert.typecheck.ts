@@ -39,20 +39,10 @@ interface InsertTypecheckDB {
   };
 }
 
-const client: ClickHouseClient = {
-  query: async () => ({
-    json: async <T>() => [] as T[],
-  }),
-  insert: async () => ({
-    executed: true,
-    query_id: "insert-query-id",
-  }),
-  command: async () => ({
-    query_id: "command-query-id",
-  }),
-};
+declare const client: ClickHouseClient;
 
 const db = createClickHouseDB<InsertTypecheckDB>();
+
 const dbWithClient = createClickHouseDB<InsertTypecheckDB>({ client });
 
 const executionOptions = {
@@ -121,8 +111,11 @@ const validInsertFromSelectPromise: Promise<ClickHouseInsertResult> = dbWithClie
   .execute(executionOptions);
 
 void validInsertResultPromise;
+
 void validTypedSamplesInsertPromise;
+
 void validJsonInsertPromise;
+
 void validInsertFromSelectPromise;
 
 db.insertInto("users").values([

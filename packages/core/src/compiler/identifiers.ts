@@ -10,9 +10,11 @@ export function quoteIdentifier(name: string): string {
   if (!name || name.includes("\0")) {
     throw new Error("SQL identifiers must be non-empty and cannot contain NUL.");
   }
+
   if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !keywords.has(name.toLowerCase())) {
     return name;
   }
+
   return `\`${name.replaceAll("\\", "\\\\").replaceAll("`", "\\`")}\``;
 }
 

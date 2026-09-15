@@ -1,4 +1,4 @@
-import type { ExprNode } from "../ast/query";
+import type { ExprNode, WindowNode } from "../ast/query";
 import type { QueryColumnMap } from "../column-metadata";
 import type { ClickHouseParam } from "../param";
 import type {
@@ -28,6 +28,8 @@ import type {
 
 type ScopeColumnMap = Record<string, QueryColumnMap>;
 
+type NonEmpty<T> = readonly [T, ...T[]];
+
 export interface WindowOptions {
   partitionBy?: readonly Expression<unknown>[];
   orderBy?: readonly { by: Expression<unknown>; direction?: "asc" | "desc" }[];
@@ -38,6 +40,9 @@ export interface WindowOptions {
 }
 
 export class Expression<T, Where = T> {
+  declare readonly __valueType: T;
+  declare readonly __whereType: Where;
+
   constructor(
     readonly node: ExprNode,
     readonly clickhouseType?: string,
@@ -50,36 +55,48 @@ export class Expression<T, Where = T> {
   over(options: WindowOptions = {}): Expression<T, Where> {
     if (options.rows) {
       const { start, end } = options.rows;
+
       for (const bound of [start, end]) {
         if (typeof bound === "number" && !Number.isSafeInteger(bound))
           throw new Error("Window row offsets must be safe integers.");
       }
+
       if (typeof start !== "number" && start !== "unbounded preceding" && start !== "current row")
         throw new Error("Invalid window frame start.");
+
       if (typeof end !== "number" && end !== "unbounded following" && end !== "current row")
         throw new Error("Invalid window frame end.");
+
       const first =
         start === "unbounded preceding" ? -Infinity : start === "current row" ? 0 : start;
+
       const last = end === "unbounded following" ? Infinity : end === "current row" ? 0 : end;
+
       if (first > last) throw new Error("Window frame start must not follow its end.");
     }
-    return new Expression(
-      {
-        kind: "window",
-        expression: this.node,
-        partitionBy: (options.partitionBy ?? []).map((expr) => expr.node),
-        orderBy: (options.orderBy ?? []).map((order) => ({
-          expr: order.by.node,
-          direction: order.direction === "desc" ? "DESC" : "ASC",
-        })),
-        ...(options.rows ? { rows: { ...options.rows } } : {}),
-      },
-      this.clickhouseType,
-    );
+
+    const node: WindowNode = {
+      kind: "window",
+      expression: this.node,
+      partitionBy: (options.partitionBy ?? []).map((expr) => expr.node),
+      orderBy: (options.orderBy ?? []).map((order) => ({
+        expr: order.by.node,
+        direction: order.direction === "desc" ? "DESC" : "ASC",
+      })),
+    };
+
+    if (options.rows) {
+      node.rows = { ...options.rows };
+    }
+
+    return new Expression(node, this.clickhouseType);
   }
 }
 
-export class AliasedExpression<_Value, Alias extends string, _Where = _Value> {
+export class AliasedExpression<Value, Alias extends string, Where = Value> {
+  declare readonly __valueType: Value;
+  declare readonly __whereType: Where;
+
   constructor(
     readonly node: ExprNode,
     readonly alias: Alias,
@@ -87,24 +104,34 @@ export class AliasedExpression<_Value, Alias extends string, _Where = _Value> {
   ) {}
 }
 
-type ArrayInput<Scope extends ScopeMap> = ArrayColumnRef<Scope> | Expression<readonly unknown[]>;
+type ArrayInput<Scope extends ScopeMap> =
+  | ArrayColumnRef<Scope>
+  | Expression<readonly unknown[], unknown>;
+
 type EmptyableInput<Scope extends ScopeMap> =
   | EmptyableColumnRef<Scope>
-  | Expression<string>
-  | Expression<string | null>
-  | Expression<readonly unknown[]>
-  | Expression<readonly unknown[] | null>;
+  | Expression<string, unknown>
+  | Expression<string | null, unknown>
+  | Expression<readonly unknown[], unknown>
+  | Expression<readonly unknown[] | null, unknown>;
+
 type StringInput<Scope extends ScopeMap> =
   | StringColumnRef<Scope>
-  | Expression<string>
-  | Expression<string | null>;
+  | Expression<string, unknown>
+  | Expression<string | null, unknown>;
+
 type StringValueInput =
   | ParamLike<string>
   | ClickHouseParam<string | null>
-  | Expression<string>
-  | Expression<string | null>;
-type NumericValueInput = ParamLike<number> | Expression<number>;
+  | Expression<string, unknown>
+  | Expression<string | null, unknown>;
+
+type NumericValueInput = ParamLike<number> | Expression<number, unknown>;
+
+type WideIntegerInput = string | number | bigint;
+
 type ExpressionInput<Scope extends ScopeMap> = ColumnRef<Scope> | Expression<unknown>;
+
 const DATE_TIME_UNITS = {
   NANOSECOND: {
     literal: "nanosecond",
@@ -162,40 +189,65 @@ const DATE_TIME_UNITS = {
     subtract: "subtractYears",
   },
 } as const;
+
 type DateTimeUnit = keyof typeof DATE_TIME_UNITS;
+
 type DateTimeUnitInput = DateTimeUnit | Lowercase<DateTimeUnit>;
-type ValueInput<Scope extends ScopeMap, Value = unknown> = ColumnRef<Scope> | Expression<Value>;
+
+type ValueInput<Scope extends ScopeMap, Value = unknown> =
+  | ColumnRef<Scope>
+  | Expression<Value, unknown>;
+
 type ResolveValueInput<Scope extends ScopeMap, Value extends ValueInput<Scope>> =
   Value extends ColumnRef<Scope>
     ? ResolveColumnType<Scope, Value>
-    : Value extends Expression<infer Result>
+    : Value extends Expression<infer Result, unknown>
       ? Result
       : never;
+
 type ResolveRefOrExpressionInput<Scope extends ScopeMap, Value> =
   Value extends ColumnRef<Scope>
     ? ResolveColumnType<Scope, Value>
-    : Value extends Expression<infer Result>
+    : Value extends Expression<infer Result, unknown>
       ? Result
       : never;
+
 type ResolveStringValueInput<Value> =
   Value extends ClickHouseParam<infer Result>
     ? Result
-    : Value extends Expression<infer Result>
+    : Value extends Expression<infer Result, unknown>
       ? Result
       : Value extends string
         ? string
         : never;
+
 type MaybeNullable<Result, Output> = null extends Result ? Output | null : Output;
+
+type CastExpression<Scope extends ScopeMap, Value, Output, Where = Output> = Expression<
+  MaybeNullable<ResolveRefOrExpressionInput<Scope, Value>, Output>,
+  MaybeNullable<ResolveRefOrExpressionInput<Scope, Value>, Where>
+>;
+
 type MaybeNullableFromStringValues<Values extends readonly unknown[], Output> = MaybeNullable<
   { [Index in keyof Values]: ResolveStringValueInput<Values[Index]> }[number],
   Output
 >;
+
 type NonNullValue<T> = Exclude<T, null>;
-type ComparableValueInput<Value> = NonNullValue<Value> | ClickHouseParam<Value> | Expression<Value>;
-type FallbackValueInput<Value> = ParamLike<NonNullValue<Value>> | Expression<NonNullValue<Value>>;
+
+type ComparableValueInput<Value> =
+  | NonNullValue<Value>
+  | ClickHouseParam<Value>
+  | Expression<Value, unknown>;
+
+type FallbackValueInput<Value> =
+  | ParamLike<NonNullValue<Value>>
+  | Expression<NonNullValue<Value>, unknown>;
+
 type ResolveValueInputs<Scope extends ScopeMap, Values extends readonly ValueInput<Scope>[]> = {
   [Index in keyof Values]: ResolveValueInput<Scope, Values[Index]>;
 };
+
 type AllNullable<Types extends readonly unknown[]> = Types extends readonly [
   infer Head,
   ...infer Tail,
@@ -204,6 +256,7 @@ type AllNullable<Types extends readonly unknown[]> = Types extends readonly [
     ? AllNullable<Tail>
     : false
   : true;
+
 type CoalesceResult<Types extends readonly unknown[]> =
   | Exclude<Types[number], null>
   | (AllNullable<Types> extends true ? null : never);
@@ -212,23 +265,26 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap, Sources extends Dat
   rowNumber(): Expression<string>;
   rank(): Expression<string>;
   denseRank(): Expression<string>;
-  count(): Expression<string>;
-  countIf(condition: Expression<unknown>): Expression<string>;
-  now(): Expression<string>;
-  today(): Expression<string>;
+  count(): Expression<string, WideIntegerInput>;
+  countIf(condition: Expression<unknown>): Expression<string, WideIntegerInput>;
+  now(): Expression<string, string | Date>;
+  today(): Expression<string, string | Date>;
   jsonExtractString(
     column: ColumnRef<Scope> | Expression<unknown>,
     key: string,
   ): Expression<string>;
   sum(value: ValueInput<Scope>): Expression<number | string>;
   sumIf(value: ValueInput<Scope>, condition: Expression<unknown>): Expression<number | string>;
-  avg(value: ValueInput<Scope>): Expression<number>;
-  avgIf(value: ValueInput<Scope>, condition: Expression<unknown>): Expression<number>;
+  avg(value: ValueInput<Scope>): Expression<number | null>;
+  avgIf(value: ValueInput<Scope>, condition: Expression<unknown>): Expression<number | null>;
   min<Value extends ValueInput<Scope>>(value: Value): Expression<ResolveValueInput<Scope, Value>>;
   max<Value extends ValueInput<Scope>>(value: Value): Expression<ResolveValueInput<Scope, Value>>;
-  uniq(value: ValueInput<Scope>): Expression<string>;
-  uniqExact(value: ValueInput<Scope>): Expression<string>;
-  uniqIf(value: ValueInput<Scope>, condition: Expression<unknown>): Expression<string>;
+  uniq(value: ValueInput<Scope>): Expression<string, WideIntegerInput>;
+  uniqExact(value: ValueInput<Scope>): Expression<string, WideIntegerInput>;
+  uniqIf(
+    value: ValueInput<Scope>,
+    condition: Expression<unknown>,
+  ): Expression<string, WideIntegerInput>;
   groupArray<Value extends ValueInput<Scope>>(
     value: Value,
   ): Expression<NonNullValue<ResolveValueInput<Scope, Value>>[]>;
@@ -244,19 +300,33 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap, Sources extends Dat
     value: Value,
     by: ValueInput<Scope>,
   ): Expression<ResolveValueInput<Scope, Value>>;
-  quantile(level: number, value: ValueInput<Scope>): Expression<number>;
-  toInt32(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
-  toInt64(value: ColumnRef<Scope> | Expression<unknown>): Expression<string>;
-  toUInt32(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
-  toUInt64(value: ColumnRef<Scope> | Expression<unknown>): Expression<string>;
-  toFloat32(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
-  toFloat64(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
-  toDate(value: ColumnRef<Scope> | Expression<unknown>): Expression<string>;
-  toDateTime(value: ColumnRef<Scope> | Expression<unknown>): Expression<string>;
-  toDateTime64(
-    value: ColumnRef<Scope> | Expression<unknown>,
+  quantile(level: number, value: ValueInput<Scope>): Expression<number | null>;
+  toInt32<Value extends ExpressionInput<Scope>>(value: Value): CastExpression<Scope, Value, number>;
+  toInt64<Value extends ExpressionInput<Scope>>(
+    value: Value,
+  ): CastExpression<Scope, Value, string, WideIntegerInput>;
+  toUInt32<Value extends ExpressionInput<Scope>>(
+    value: Value,
+  ): CastExpression<Scope, Value, number>;
+  toUInt64<Value extends ExpressionInput<Scope>>(
+    value: Value,
+  ): CastExpression<Scope, Value, string, WideIntegerInput>;
+  toFloat32<Value extends ExpressionInput<Scope>>(
+    value: Value,
+  ): CastExpression<Scope, Value, number>;
+  toFloat64<Value extends ExpressionInput<Scope>>(
+    value: Value,
+  ): CastExpression<Scope, Value, number>;
+  toDate<Value extends ExpressionInput<Scope>>(
+    value: Value,
+  ): CastExpression<Scope, Value, string, string | Date>;
+  toDateTime<Value extends ExpressionInput<Scope>>(
+    value: Value,
+  ): CastExpression<Scope, Value, string, string | Date>;
+  toDateTime64<Value extends ExpressionInput<Scope>>(
+    value: Value,
     precision: number,
-  ): Expression<string>;
+  ): CastExpression<Scope, Value, string, string | Date>;
   toStartOfMonth(value: ExpressionInput<Scope>): Expression<string>;
   toStartOfWeek(value: ExpressionInput<Scope>): Expression<string>;
   toStartOfDay(value: ExpressionInput<Scope>): Expression<string>;
@@ -279,41 +349,49 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap, Sources extends Dat
   ): Expression<string>;
   toYYYYMM(value: ExpressionInput<Scope>): Expression<number>;
   toYYYYMMDD(value: ExpressionInput<Scope>): Expression<number>;
-  toString(value: ColumnRef<Scope> | Expression<unknown>): Expression<string>;
-  toDecimal64(value: ColumnRef<Scope> | Expression<unknown>, scale: number): Expression<number>;
-  toDecimal128(value: ColumnRef<Scope> | Expression<unknown>, scale: number): Expression<number>;
+  toString<Value extends ExpressionInput<Scope>>(
+    value: Value,
+  ): CastExpression<Scope, Value, string>;
+  toDecimal64<Value extends ExpressionInput<Scope>>(
+    value: Value,
+    scale: number,
+  ): CastExpression<Scope, Value, number>;
+  toDecimal128<Value extends ExpressionInput<Scope>>(
+    value: Value,
+    scale: number,
+  ): CastExpression<Scope, Value, number>;
   has<Ref extends ArrayColumnRef<Scope>>(
     array: Ref,
     element:
       | ParamLike<ResolveArrayElementType<Scope, Ref>>
-      | Expression<ResolveArrayElementType<Scope, Ref>>,
+      | Expression<ResolveArrayElementType<Scope, Ref>, unknown>,
   ): Expression<number>;
   has<Element>(
-    array: Expression<readonly Element[]>,
-    element: ParamLike<Element> | Expression<Element>,
+    array: Expression<readonly Element[], unknown>,
+    element: ParamLike<Element> | Expression<Element, unknown>,
   ): Expression<number>;
   hasAny<Ref extends ArrayColumnRef<Scope>>(
     array: Ref,
     elements:
       | ParamLike<readonly ResolveArrayElementType<Scope, Ref>[]>
-      | Expression<readonly ResolveArrayElementType<Scope, Ref>[]>,
+      | Expression<readonly ResolveArrayElementType<Scope, Ref>[], unknown>,
   ): Expression<number>;
   hasAny<Element>(
-    array: Expression<readonly Element[]>,
-    elements: ParamLike<readonly Element[]> | Expression<readonly Element[]>,
+    array: Expression<readonly Element[], unknown>,
+    elements: ParamLike<readonly Element[]> | Expression<readonly Element[], unknown>,
   ): Expression<number>;
   hasAll<Ref extends ArrayColumnRef<Scope>>(
     array: Ref,
     elements:
       | ParamLike<readonly ResolveArrayElementType<Scope, Ref>[]>
-      | Expression<readonly ResolveArrayElementType<Scope, Ref>[]>,
+      | Expression<readonly ResolveArrayElementType<Scope, Ref>[], unknown>,
   ): Expression<number>;
   hasAll<Element>(
-    array: Expression<readonly Element[]>,
-    elements: ParamLike<readonly Element[]> | Expression<readonly Element[]>,
+    array: Expression<readonly Element[], unknown>,
+    elements: ParamLike<readonly Element[]> | Expression<readonly Element[], unknown>,
   ): Expression<number>;
   length<Ref extends ArrayColumnRef<Scope>>(array: Ref): Expression<string>;
-  length<Element>(array: Expression<readonly Element[]>): Expression<string>;
+  length<Element>(array: Expression<readonly Element[], unknown>): Expression<string>;
   isNull<Value extends ValueInput<Scope>>(value: Value): Expression<number>;
   isNotNull<Value extends ValueInput<Scope>>(value: Value): Expression<number>;
   nullIf<Value extends ValueInput<Scope>>(
@@ -388,8 +466,8 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap, Sources extends Dat
   ceil<Value extends ValueInput<Scope>>(value: Value): Expression<ResolveValueInput<Scope, Value>>;
   floor<Value extends ValueInput<Scope>>(value: Value): Expression<ResolveValueInput<Scope, Value>>;
   countDistinct(value: ValueInput<Scope>): Expression<string>;
-  now64(precision: number): Expression<string>;
-  toUInt8(value: ColumnRef<Scope> | Expression<unknown>): Expression<number>;
+  now64(precision: number): Expression<string, string | Date>;
+  toUInt8<Value extends ExpressionInput<Scope>>(value: Value): CastExpression<Scope, Value, number>;
   toYear(value: ExpressionInput<Scope>): Expression<number>;
   toMonth(value: ExpressionInput<Scope>): Expression<number>;
   dictGet<Dict extends SourceName<Sources>, Attr extends DictionaryAttributeName<Sources, Dict>>(
@@ -407,7 +485,7 @@ interface ExpressionBuilderFunctions<Scope extends ScopeMap, Sources extends Dat
     key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
     defaultValue:
       | ParamLike<DictionaryAttributeType<Sources, Dict, Attr>>
-      | Expression<DictionaryAttributeType<Sources, Dict, Attr>>,
+      | Expression<DictionaryAttributeType<Sources, Dict, Attr>, unknown>,
     rangeDate?: ExpressionInput<Scope>,
   ): Expression<DictionaryAttributeType<Sources, Dict, Attr>>;
   dictHas<Dict extends SourceName<Sources>>(
@@ -428,6 +506,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
 
   val<T>(value: ParamLike<T>): Expression<T> {
     const node = createValueNode(value);
+
     return new Expression(node, node.clickhouseType);
   }
 
@@ -481,9 +560,9 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
     sumIf: (value: ValueInput<Scope>, condition: Expression<unknown>) =>
       this.callFunction<number | string>("sumIf", [this.toExpr(value), condition.node]),
     avg: (value: ValueInput<Scope>) =>
-      this.callFunction<number>("avg", [this.toExpr(value)], "Float64"),
+      this.callFunction<number | null>("avg", [this.toExpr(value)], "Float64"),
     avgIf: (value: ValueInput<Scope>, condition: Expression<unknown>) =>
-      this.callFunction<number>("avgIf", [this.toExpr(value), condition.node], "Float64"),
+      this.callFunction<number | null>("avgIf", [this.toExpr(value), condition.node], "Float64"),
     min: <Value extends ValueInput<Scope>>(value: Value) =>
       this.callFunction<ResolveValueInput<Scope, Value>, ResolveValueInput<Scope, Value>>(
         "min",
@@ -545,38 +624,35 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
         throw new Error("quantile level must be a finite number between 0 and 1.");
       }
 
-      return this.callParametricFunction<number>(
+      return this.callParametricFunction<number | null>(
         "quantile",
         [{ kind: "raw", sql: String(level) }],
         [this.toExpr(value)],
         "Float64",
       );
     },
-    toInt32: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<number>("toInt32", [this.toExpr(value)], "Int32"),
-    toInt64: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<string, string | number | bigint>("toInt64", [this.toExpr(value)], "Int64"),
-    toUInt32: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<number>("toUInt32", [this.toExpr(value)], "UInt32"),
-    toUInt64: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<string, string | number | bigint>(
-        "toUInt64",
-        [this.toExpr(value)],
-        "UInt64",
-      ),
-    toFloat32: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<number>("toFloat32", [this.toExpr(value)], "Float32"),
-    toFloat64: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<number>("toFloat64", [this.toExpr(value)], "Float64"),
-    toDate: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<string, string | Date>("toDate", [this.toExpr(value)], "Date"),
-    toDateTime: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<string, string | Date>("toDateTime", [this.toExpr(value)], "DateTime"),
-    toDateTime64: (value: ColumnRef<Scope> | Expression<unknown>, precision: number) =>
-      this.callFunction<string, string | Date>(
+    toInt32: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<number, Value>("toInt32", value, "Int32"),
+    toInt64: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<string, Value, WideIntegerInput>("toInt64", value, "Int64"),
+    toUInt32: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<number, Value>("toUInt32", value, "UInt32"),
+    toUInt64: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<string, Value, WideIntegerInput>("toUInt64", value, "UInt64"),
+    toFloat32: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<number, Value>("toFloat32", value, "Float32"),
+    toFloat64: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<number, Value>("toFloat64", value, "Float64"),
+    toDate: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<string, Value, string | Date>("toDate", value, "Date"),
+    toDateTime: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<string, Value, string | Date>("toDateTime", value, "DateTime"),
+    toDateTime64: <Value extends ExpressionInput<Scope>>(value: Value, precision: number) =>
+      this.callCastFunction<string, Value, string | Date>(
         "toDateTime64",
-        [this.toExpr(value), this.toIntegerLiteral(precision, "DateTime64 precision", 9)],
+        value,
         `DateTime64(${precision})`,
+        [this.toIntegerLiteral(precision, "DateTime64 precision", 9)],
       ),
     toStartOfMonth: (value: ExpressionInput<Scope>) =>
       this.callFunction<string>("toStartOfMonth", [this.toExpr(value)]),
@@ -618,25 +694,21 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
       this.callFunction<number>("toYYYYMM", [this.toExpr(value)], "UInt32"),
     toYYYYMMDD: (value: ExpressionInput<Scope>) =>
       this.callFunction<number>("toYYYYMMDD", [this.toExpr(value)], "UInt32"),
-    toString: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<string>("toString", [this.toExpr(value)], "String"),
-    toDecimal64: (value: ColumnRef<Scope> | Expression<unknown>, scale: number) =>
-      this.callFunction<number>(
-        "toDecimal64",
-        [this.toExpr(value), this.toIntegerLiteral(scale, "Decimal64 scale", 18)],
-        `Decimal64(${scale})`,
-      ),
-    toDecimal128: (value: ColumnRef<Scope> | Expression<unknown>, scale: number) =>
-      this.callFunction<number>(
-        "toDecimal128",
-        [this.toExpr(value), this.toIntegerLiteral(scale, "Decimal128 scale", 38)],
-        `Decimal128(${scale})`,
-      ),
+    toString: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<string, Value>("toString", value, "String"),
+    toDecimal64: <Value extends ExpressionInput<Scope>>(value: Value, scale: number) =>
+      this.callCastFunction<number, Value>("toDecimal64", value, `Decimal64(${scale})`, [
+        this.toIntegerLiteral(scale, "Decimal64 scale", 18),
+      ]),
+    toDecimal128: <Value extends ExpressionInput<Scope>>(value: Value, scale: number) =>
+      this.callCastFunction<number, Value>("toDecimal128", value, `Decimal128(${scale})`, [
+        this.toIntegerLiteral(scale, "Decimal128 scale", 38),
+      ]),
     has: (array: ArrayInput<Scope>, element: ParamLike<unknown> | Expression<unknown>) =>
       this.callFunction<number>("has", [this.toExpr(array), this.toValueExpr(element)], "UInt8"),
     hasAny: (
       array: ArrayInput<Scope>,
-      elements: ParamLike<readonly unknown[]> | Expression<readonly unknown[]>,
+      elements: ParamLike<readonly unknown[]> | Expression<readonly unknown[], unknown>,
     ) =>
       this.callFunction<number>(
         "hasAny",
@@ -645,7 +717,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
       ),
     hasAll: (
       array: ArrayInput<Scope>,
-      elements: ParamLike<readonly unknown[]> | Expression<readonly unknown[]>,
+      elements: ParamLike<readonly unknown[]> | Expression<readonly unknown[], unknown>,
     ) =>
       this.callFunction<number>(
         "hasAll",
@@ -816,8 +888,8 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
         [this.toIntegerLiteral(precision, "now64 precision", 9)],
         `DateTime64(${precision})`,
       ),
-    toUInt8: (value: ColumnRef<Scope> | Expression<unknown>) =>
-      this.callFunction<number>("toUInt8", [this.toExpr(value)], "UInt8"),
+    toUInt8: <Value extends ExpressionInput<Scope>>(value: Value) =>
+      this.callCastFunction<number, Value>("toUInt8", value, "UInt8"),
     toYear: (value: ExpressionInput<Scope>) =>
       this.callFunction<number>("toYear", [this.toExpr(value)], "UInt16"),
     toMonth: (value: ExpressionInput<Scope>) =>
@@ -836,9 +908,11 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
         this.toStringLiteral(attrName),
         this.toDictionaryKeyExpr(key),
       ];
+
       if (rangeDate !== undefined) {
         args.push(this.toExpr(rangeDate));
       }
+
       return this.callFunction<DictionaryAttributeType<Sources, Dict, Attr>>("dictGet", args);
     },
     dictGetOrDefault: <
@@ -850,18 +924,21 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
       key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
       defaultValue:
         | ParamLike<DictionaryAttributeType<Sources, Dict, Attr>>
-        | Expression<DictionaryAttributeType<Sources, Dict, Attr>>,
+        | Expression<DictionaryAttributeType<Sources, Dict, Attr>, unknown>,
       rangeDate?: ExpressionInput<Scope>,
     ) => {
       const args: ExprNode[] = [
         this.toStringLiteral(dictName),
         this.toStringLiteral(attrName),
         this.toDictionaryKeyExpr(key),
-        this.toValueExpr(defaultValue),
       ];
+
       if (rangeDate !== undefined) {
         args.push(this.toExpr(rangeDate));
       }
+
+      args.push(this.toValueExpr(defaultValue));
+
       return this.callFunction<DictionaryAttributeType<Sources, Dict, Attr>>(
         "dictGetOrDefault",
         args,
@@ -873,9 +950,11 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
       rangeDate?: ExpressionInput<Scope>,
     ) => {
       const args: ExprNode[] = [this.toStringLiteral(dictName), this.toDictionaryKeyExpr(key)];
+
       if (rangeDate !== undefined) {
         args.push(this.toExpr(rangeDate));
       }
+
       return this.callFunction<number>("dictHas", args, "UInt8");
     },
   };
@@ -893,7 +972,11 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
     });
   }
 
-  and(expressions: readonly Expression<unknown>[]): Expression<unknown> {
+  and(expressions: NonEmpty<Expression<unknown>>): Expression<unknown> {
+    if (expressions.length === 0) {
+      throw new Error("AND requires at least one condition.");
+    }
+
     return new Expression({
       kind: "logical",
       op: "AND",
@@ -901,12 +984,37 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
     });
   }
 
-  or(expressions: readonly Expression<unknown>[]): Expression<unknown> {
+  or(expressions: NonEmpty<Expression<unknown>>): Expression<unknown> {
+    if (expressions.length === 0) {
+      throw new Error("OR requires at least one condition.");
+    }
+
     return new Expression({
       kind: "logical",
       op: "OR",
       conditions: expressions.map((expression) => expression.node),
     });
+  }
+
+  private callCastFunction<Output, Value extends ExpressionInput<Scope>, Where = Output>(
+    name: string,
+    value: Value,
+    clickhouseType: string,
+    parameters: readonly ExprNode[] = [],
+  ): CastExpression<Scope, Value, Output, Where> {
+    const inputType = this.resolveExpressionClickHouseType(value);
+
+    const nullable =
+      inputType?.startsWith("Nullable(") || inputType?.startsWith("LowCardinality(Nullable(");
+
+    return this.callFunction<
+      MaybeNullable<ResolveRefOrExpressionInput<Scope, Value>, Output>,
+      MaybeNullable<ResolveRefOrExpressionInput<Scope, Value>, Where>
+    >(
+      name,
+      [this.toExpr(value), ...parameters],
+      nullable ? `Nullable(${clickhouseType})` : clickhouseType,
+    );
   }
 
   private callFunction<T, Where = T>(
@@ -948,6 +1056,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
   }
 
   private toDateTimeUnit(unit: DateTimeUnitInput): (typeof DATE_TIME_UNITS)[DateTimeUnit] {
+    // SAFETY: DateTimeUnitInput contains only DATE_TIME_UNITS keys and their lowercase forms.
     const normalizedUnit = unit.toUpperCase() as DateTimeUnit;
     const resolvedUnit = DATE_TIME_UNITS[normalizedUnit];
 
@@ -965,6 +1074,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
   private toDictionaryKeyExpr(
     key: ExpressionInput<Scope> | readonly ExpressionInput<Scope>[],
   ): ExprNode {
+    // SAFETY: Array.isArray handles the array branch but does not exclude readonly arrays from the other branch's type.
     return Array.isArray(key)
       ? { kind: "function", name: "tuple", args: key.map((item) => this.toExpr(item)) }
       : this.toExpr(key as ExpressionInput<Scope>);
@@ -981,7 +1091,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
     };
   }
 
-  private toValueExpr<T>(value: ParamLike<T> | Expression<T>): ExprNode {
+  private toValueExpr<T>(value: ParamLike<T> | Expression<T, unknown>): ExprNode {
     if (value instanceof Expression) {
       return value.node;
     }
@@ -994,7 +1104,7 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
       return toSubqueryExpr(value);
     }
 
-    return this.toValueExpr(value as ParamLike<unknown> | Expression<unknown>);
+    return this.toValueExpr(value);
   }
 
   private resolveClickHouseType(ref: ColumnRef<Scope>): string | undefined {
@@ -1004,10 +1114,12 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
 
     if (ref.includes(".")) {
       const [alias, column] = ref.split(".");
+
       return alias && column ? this.scopeColumns[alias]?.[column]?.clickhouseType : undefined;
     }
 
     const aliases = Object.keys(this.scopeColumns);
+
     if (aliases.length !== 1) {
       return undefined;
     }
@@ -1033,11 +1145,13 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
 
   private resolveArrayClickHouseType(value: ValueInput<Scope>): string | undefined {
     const innerType = this.resolveValueClickHouseType(value);
+
     return innerType ? `Array(${innerType})` : undefined;
   }
 
   private resolveNullableClickHouseType(value: ValueInput<Scope>): string | undefined {
     const clickhouseType = this.resolveValueClickHouseType(value);
+
     if (!clickhouseType) {
       return undefined;
     }
@@ -1047,11 +1161,13 @@ export class ExpressionBuilder<Scope extends ScopeMap, Sources extends DatabaseS
 
   private resolveMaybeNullableStringType(value: ExpressionInput<Scope>): string {
     const clickhouseType = this.resolveExpressionClickHouseType(value);
+
     return clickhouseType?.startsWith("Nullable(") ? "Nullable(String)" : "String";
   }
 
   private resolveMaybeNullableUInt8Type(value: ExpressionInput<Scope>): string {
     const clickhouseType = this.resolveExpressionClickHouseType(value);
+
     return clickhouseType?.startsWith("Nullable(") ? "Nullable(UInt8)" : "UInt8";
   }
 }

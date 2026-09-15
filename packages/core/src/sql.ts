@@ -10,6 +10,7 @@ export function sql<T = unknown>(
   if (!Array.isArray(strings.raw) || strings.length !== values.length + 1) {
     throw new Error("Use sql as a tagged template literal.");
   }
+
   return new Expression({
     kind: "fragment",
     strings: [...strings],
@@ -19,14 +20,17 @@ export function sql<T = unknown>(
 
 function toNode(value: unknown): ExprNode {
   if (value instanceof Expression) return value.node;
+
   if (isClickHouseParam(value)) {
     return { kind: "value", value: value.value, clickhouseType: value.clickhouseType };
   }
+
   if (value === null || value === undefined) {
     throw new Error(
       'Bind null explicitly with param(null, "Nullable(...)"); undefined cannot be bound.',
     );
   }
+
   return { kind: "value", value };
 }
 

@@ -53,36 +53,49 @@ interface TypecheckDB {
 
 const db = createClickHouseDB<TypecheckDB>();
 
-const client: ClickHouseClient = {
-  query: async () => ({
-    json: async <T>() => [] as T[],
-  }),
-  insert: async () => ({
-    executed: true,
-    query_id: "insert-query-id",
-  }),
-  command: async () => ({
-    query_id: "command-query-id",
-  }),
-};
+declare const client: ClickHouseClient;
+
+async function checkClientQueryFormats() {
+  const rows = await (
+    await client.query({ query: "SELECT 1 AS id", format: "JSONEachRow" })
+  ).json<{ id: number }>();
+  rows satisfies { id: number }[];
+  // @ts-expect-error JSONEachRow does not return a document with a data field
+  rows.data;
+
+  const document = await (
+    await client.query({ query: "SELECT 1 AS id", format: "JSON" })
+  ).json<{ id: number }>();
+  document.data satisfies { id: number }[];
+  document.totals satisfies { id: number } | undefined;
+  // @ts-expect-error JSON returns a document, not an array of rows
+  document satisfies { id: number }[];
+}
 
 const basicQuery = db.selectFrom("event_logs as e").select("e.user_id", "e.event_type");
+
 const distinctQuery = db.selectFrom("event_logs as e").distinct().select("e.event_type");
+
 const distinctOnQuery = db
   .selectFrom("event_logs as e")
   .distinctOn("e.user_id")
   .select("e.user_id", "e.event_type");
+
 const selectAllQuery = db.selectFrom("event_logs as e").selectAll();
+
 const selectAllAliasQuery = db
   .selectFrom("users as u")
   .innerJoin("event_logs as e", "u.id", "e.user_id")
   .selectAll("u");
+
 const signupsSubquery = db
   .selectFrom("event_logs as e")
   .select("e.user_id", "e.event_type")
   .where("e.event_type", "=", "signup")
   .as("signups");
+
 const finalEventLogsSource = db.table("event_logs").as("e").final();
+
 const withActiveUsers = db.with("active_users", (db) =>
   db
     .selectFrom("event_logs as e")
@@ -90,6 +103,7 @@ const withActiveUsers = db.with("active_users", (db) =>
     .where("e.event_type", "=", "signup")
     .groupBy("e.user_id"),
 );
+
 const withMultipleCtes = db
   .with("active_users", (db) =>
     db
@@ -110,33 +124,43 @@ const prebuiltCteQuery = db
   .select("e.user_id")
   .where("e.event_type", "=", "signup")
   .groupBy("e.user_id");
+
 const withPrebuiltCte = db.with("active_users", prebuiltCteQuery);
+
 const selectFromSubqueryQuery = db.selectFrom(signupsSubquery).selectAll("signups");
+
 const selectFromFinalTableSourceQuery = db
   .selectFrom(finalEventLogsSource)
   .select("e.user_id", "e.event_type");
+
 const selectFromCteQuery = withActiveUsers.selectFrom("active_users as au").select("au.user_id");
+
 const selectFromMultipleCtesQuery = withMultipleCtes
   .selectFrom("active_user_emails as aue")
   .select("aue.id", "aue.email");
+
 const selectFromPrebuiltCteQuery = withPrebuiltCte
   .selectFrom("active_users as au")
   .select("au.user_id");
+
 const groupedQuery = db
   .selectFrom("event_logs as e")
   .selectExpr((eb) => ["e.user_id", eb.fn.count().as("event_count")])
   .groupBy("e.user_id")
   .orderBy("event_count", "desc");
+
 const downloadsSubquery = db
   .selectFrom(db.table("inquiry_downloads").as("d").final())
   .selectExpr((eb) => ["d.user_id", eb.fn.count().as("inquiries_count")])
   .prewhere("d.created_at", ">=", param("2025-01-01 00:00:00", "DateTime"))
   .groupBy("d.user_id")
   .as("downloads");
+
 const activeUsersSubquery = db
   .selectFrom("event_logs as e")
   .select("e.user_id")
   .where("e.event_type", "=", "signup");
+
 const selectFromJoinSubquerySettingsQuery = db
   .selectFrom("users as u")
   .leftJoin(downloadsSubquery, "downloads.user_id", "u.id")
@@ -147,12 +171,14 @@ const selectFromJoinSubquerySettingsQuery = db
   .limit(20)
   .offset(40)
   .settings({ join_algorithm: "grace_hash" });
+
 const leftAntiJoinQuery = db
   .selectFrom("users as u")
   .leftAntiJoin("event_logs as e", "u.id", "e.user_id")
   .select("u.id", "u.email", "e.event_type")
   .where("u.status", "=", "active")
   .orderBy("u.id", "asc");
+
 const typeCastQuery = db
   .selectFrom("typed_samples as t")
   .selectExpr((eb) => [
@@ -172,6 +198,7 @@ const typeCastQuery = db
   ])
   .where((eb) => eb.fn.toUInt32("t.id"), ">", 0)
   .orderBy("t.id", "asc");
+
 const arrayFunctionQuery = db
   .selectFrom("typed_samples as t")
   .selectExpr((eb) => [
@@ -185,6 +212,7 @@ const arrayFunctionQuery = db
   ])
   .where((eb) => eb.fn.notEmpty("t.tags"))
   .orderBy("t.id", "asc");
+
 const stringFunctionQuery = db
   .selectFrom("typed_samples as t")
   .selectExpr((eb) => [
@@ -203,6 +231,7 @@ const stringFunctionQuery = db
   ])
   .where((eb) => eb.fn.notEmpty("t.label"))
   .orderBy("t.id", "asc");
+
 const nullableStringFunctionQuery = db
   .selectFrom("typed_samples as t")
   .selectExpr((eb) => [
@@ -220,6 +249,7 @@ const nullableStringFunctionQuery = db
     eb.fn.trimBoth(eb.fn.concat("  ", eb.ref("t.nickname"), "  ")).as("nickname_trimmed"),
   ])
   .orderBy("t.id", "asc");
+
 const nullFunctionQuery = db
   .selectFrom("typed_samples as t")
   .selectExpr((eb) => [
@@ -232,6 +262,7 @@ const nullFunctionQuery = db
     eb.fn.ifNull("t.nickname", param("Unknown", "String")).as("nickname_or_default"),
   ])
   .orderBy("t.id", "asc");
+
 const aggregateFunctionQuery = db.selectFrom("typed_samples as t").selectExpr((eb) => {
   const isActive = eb.cmp("t.status", "=", "active");
 
@@ -256,6 +287,7 @@ const aggregateFunctionQuery = db.selectFrom("typed_samples as t").selectExpr((e
     eb.fn.anyLast("t.label").as("any_last_label"),
   ];
 });
+
 const nullableGroupArrayQuery = db
   .selectFrom("typed_samples as t")
   .selectExpr((eb) => [eb.fn.groupArray("t.nickname").as("nicknames")]);
@@ -278,25 +310,45 @@ const heavyHitterFunctionQuery = db
   ]);
 
 type BasicRow = InferResult<typeof basicQuery>;
+
 type DistinctRow = InferResult<typeof distinctQuery>;
+
 type DistinctOnRow = InferResult<typeof distinctOnQuery>;
+
 type SelectAllRow = InferResult<typeof selectAllQuery>;
+
 type SelectAllAliasRow = InferResult<typeof selectAllAliasQuery>;
+
 type SelectFromSubqueryRow = InferResult<typeof selectFromSubqueryQuery>;
+
 type SelectFromFinalTableSourceRow = InferResult<typeof selectFromFinalTableSourceQuery>;
+
 type SelectFromCteRow = InferResult<typeof selectFromCteQuery>;
+
 type SelectFromMultipleCtesRow = InferResult<typeof selectFromMultipleCtesQuery>;
+
 type SelectFromPrebuiltCteRow = InferResult<typeof selectFromPrebuiltCteQuery>;
+
 type GroupedRow = InferResult<typeof groupedQuery>;
+
 type SelectFromJoinSubquerySettingsRow = InferResult<typeof selectFromJoinSubquerySettingsQuery>;
+
 type LeftAntiJoinRow = InferResult<typeof leftAntiJoinQuery>;
+
 type TypeCastRow = InferResult<typeof typeCastQuery>;
+
 type ArrayFunctionRow = InferResult<typeof arrayFunctionQuery>;
+
 type StringFunctionRow = InferResult<typeof stringFunctionQuery>;
+
 type NullableStringFunctionRow = InferResult<typeof nullableStringFunctionQuery>;
+
 type NullFunctionRow = InferResult<typeof nullFunctionQuery>;
+
 type AggregateFunctionRow = InferResult<typeof aggregateFunctionQuery>;
+
 type NullableGroupArrayRow = InferResult<typeof nullableGroupArrayQuery>;
+
 type HeavyHitterFunctionRow = InferResult<typeof heavyHitterFunctionQuery>;
 
 const validRow: BasicRow = {
@@ -480,41 +532,70 @@ const executionOptions = {
 };
 
 const validRowsPromise: Promise<BasicRow[]> = basicQuery.execute(executionOptions);
+
 const validFirstRowPromise: Promise<BasicRow | undefined> =
   basicQuery.executeTakeFirst(executionOptions);
+
 const validFirstOrThrowRowPromise: Promise<BasicRow> =
   basicQuery.executeTakeFirstOrThrow(executionOptions);
 
 const dbWithClient = createClickHouseDB<TypecheckDB>({ client });
+
 const validRowsWithoutPassingClient: Promise<BasicRow[]> = dbWithClient
   .selectFrom("event_logs as e")
   .select("e.user_id", "e.event_type")
   .execute();
+
 void validRow;
+
 void validDistinctRow;
+
 void validDistinctOnRow;
+
 void validSelectAllRow;
+
 void validSelectAllAliasRow;
+
 void validSelectFromSubqueryRow;
+
 void validSelectFromFinalTableSourceRow;
+
 void validSelectFromCteRow;
+
 void validSelectFromMultipleCtesRow;
+
 void validSelectFromPrebuiltCteRow;
+
 void validGroupedRow;
+
 void validSelectFromJoinSubquerySettingsRow;
+
 void validLeftAntiJoinRow;
+
 void validTypeCastRow;
+
 void validArrayFunctionRow;
+
 void validStringFunctionRow;
+
 void validNullableStringFunctionRow;
+
 void validNullFunctionRow;
+
 void validAggregateFunctionRow;
+
 void validNullableGroupArrayRow;
+
 void validHeavyHitterFunctionRow;
+
 void executionOptions;
+
 void validRowsPromise;
+
 void validFirstRowPromise;
+
 void validFirstOrThrowRowPromise;
+
 void validRowsWithoutPassingClient;
 
 db.selectFrom("users as u")
@@ -727,21 +808,27 @@ const advancedAggregateQuery = db
     eb.fn.argMax("t.label", "t.created_at").as("last_label"),
     eb.fn.quantile(0.95, "t.amount").as("amount_p95"),
   ]);
+
 type AdvancedAggregateRow = InferResult<typeof advancedAggregateQuery>;
+
 ({ first_label: "alpha", last_label: "beta", amount_p95: 123.45 }) satisfies AdvancedAggregateRow;
 
 const arrayJoinQuery = db
   .selectFrom("typed_samples as t")
   .arrayJoin("t.tags")
   .select("t.id", "t.tags");
+
 type ArrayJoinRow = InferResult<typeof arrayJoinQuery>;
+
 ({ id: 1, tags: "trial" }) satisfies ArrayJoinRow;
 
 const leftArrayJoinQuery = db
   .selectFrom("typed_samples as t")
   .leftArrayJoin("t.tags")
   .select("t.id", "t.tags");
+
 type LeftArrayJoinRow = InferResult<typeof leftArrayJoinQuery>;
+
 ({ id: 2, tags: "" }) satisfies LeftArrayJoinRow;
 
 const multipleArrayJoinsQuery = db
@@ -749,7 +836,9 @@ const multipleArrayJoinsQuery = db
   .arrayJoin("t.tags")
   .arrayJoin("t.scores")
   .select("t.id", "t.tags", "t.scores");
+
 type MultipleArrayJoinsRow = InferResult<typeof multipleArrayJoinsQuery>;
+
 ({ id: 1, tags: "trial", scores: 20 }) satisfies MultipleArrayJoinsRow;
 
 db.selectFrom("event_logs as e")
@@ -762,9 +851,12 @@ const totalsQuery = db
   .selectExpr((eb) => ["e.event_type", eb.fn.count().as("event_count")])
   .groupBy("e.event_type")
   .withTotals();
+
 const totalsResult: ClickHouseTotalsResult<{ event_type: string; event_count: string }> =
   await totalsQuery.executeWithTotals();
+
 void totalsResult.rows;
+
 void totalsResult.totals;
 
 // @ts-expect-error invalid selection column
@@ -933,6 +1025,7 @@ rows.forEach((row) => {
 });
 
 const results = await db.selectFrom("event_logs as e").select("e.event_type").execute();
+
 for (const result of results) {
   console.log(result.event_type);
 }

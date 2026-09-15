@@ -1,9 +1,19 @@
 export type ClickHouseSettingValue = string | number | boolean;
+
 export type ClickHouseSettings = Record<string, ClickHouseSettingValue>;
 
 interface ClickHouseQueryResult {
   json<T>(): Promise<T[]>;
   stream?<T>(): AsyncIterable<readonly ClickHouseResultRow<T>[]>;
+}
+
+interface ClickHouseJSONQueryResult {
+  json<T>(): Promise<ClickHouseJSONResponse<T>>;
+}
+
+interface ClickHouseJSONResponse<T> {
+  data: T[];
+  totals?: T;
 }
 
 interface ClickHouseResultRow<T> {
@@ -14,6 +24,17 @@ interface ClickHouseBaseParams {
   clickhouse_settings?: ClickHouseSettings;
   query_id?: string;
   abort_signal?: AbortSignal;
+}
+
+// Separate interfaces let TypeScript check generic drivers against each format independently.
+interface ClickHouseJSONQueryClient {
+  query(
+    params: ClickHouseBaseParams & {
+      query: string;
+      query_params?: Record<string, unknown>;
+      format: "JSON";
+    },
+  ): Promise<ClickHouseJSONQueryResult>;
 }
 
 interface ClickHouseQueryClient {
@@ -55,7 +76,8 @@ interface ClickHouseCommandClient {
   ): Promise<ClickHouseCommandResult>;
 }
 
-export type ClickHouseClient = ClickHouseQueryClient &
+export type ClickHouseClient = ClickHouseJSONQueryClient &
+  ClickHouseQueryClient &
   Partial<ClickHouseInsertClient> &
   Partial<ClickHouseCommandClient>;
 
@@ -74,15 +96,25 @@ export interface ClickHouseRetryOptions {
 export function toClickHouseExecutionParams(
   options: ClickHouseExecutionOptions,
 ): ClickHouseBaseParams {
-  return {
-    ...(options.abortSignal === undefined ? {} : { abort_signal: options.abortSignal }),
-    ...(options.queryId === undefined ? {} : { query_id: options.queryId }),
-    ...(options.clickhouse_settings === undefined
-      ? {}
-      : { clickhouse_settings: options.clickhouse_settings }),
-  };
+  const params: ClickHouseBaseParams = {};
+
+  if (options.abortSignal !== undefined) {
+    params.abort_signal = options.abortSignal;
+  }
+
+  if (options.queryId !== undefined) {
+    params.query_id = options.queryId;
+  }
+
+  if (options.clickhouse_settings !== undefined) {
+    params.clickhouse_settings = options.clickhouse_settings;
+  }
+
+  return params;
 }
 
-export type QueryCapableClickHouseClient = ClickHouseQueryClient;
+export type QueryCapableClickHouseClient = ClickHouseJSONQueryClient & ClickHouseQueryClient;
+
 export type InsertCapableClickHouseClient = ClickHouseInsertClient;
+
 export type CommandCapableClickHouseClient = ClickHouseCommandClient;

@@ -5,6 +5,7 @@ export const resultFormatSettings = {
   output_format_json_quote_64bit_integers: 1,
   output_format_json_quote_64bit_floats: 0,
   output_format_json_quote_decimals: 0,
+  output_format_json_quote_denormals: 0,
   output_format_json_named_tuples_as_objects: 1,
 } as const;
 
@@ -15,6 +16,7 @@ export function resultSettings(
 ): ClickHouseSettings {
   const queries: SelectQueryNode[] = [];
   const modes = new Set<boolean>();
+
   function expression(node: ExprNode): void {
     switch (node.kind) {
       case "subqueryExpr":
@@ -41,13 +43,16 @@ export function resultSettings(
         break;
     }
   }
+
   function visit(node: SelectQueryNode): void {
     queries.push(node);
     node.unionAll?.forEach(visit);
     node.with.forEach((cte) => visit(cte.query));
+
     if (node.from?.kind === "subquery") visit(node.from.query);
     node.joins.forEach((join) => {
       if (join.joinType !== "INNER") modes.add(join.nullable ?? false);
+
       if (join.source.kind === "subquery") visit(join.source.query);
       expression(join.on);
     });
@@ -61,12 +66,15 @@ export function resultSettings(
     node.orderBy.forEach((order) => expression(order.expr));
     node.limitBy?.expressions.forEach(expression);
   }
+
   visit(query);
+
   if (modes.size > 1)
     throw new Error(
       "Use one outer-join null policy throughout a query, including subqueries and UNION ALL branches.",
     );
   const required = { ...resultFormatSettings, join_use_nulls: modes.has(true) ? 1 : 0 };
+
   for (const settings of [...queries.map((node) => node.settings), options]) {
     for (const [name, expected] of Object.entries(required)) {
       if (settings[name] !== undefined && Number(settings[name]) !== expected) {
@@ -76,5 +84,6 @@ export function resultSettings(
       }
     }
   }
+
   return { ...options, ...required };
 }

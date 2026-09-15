@@ -12,6 +12,7 @@ import { normalizeInsertValue } from "../input-normalization";
 import type { Simplify } from "../type-utils";
 import { quoteIdentifier, quoteTable } from "../compiler/identifiers";
 import { selectionCount } from "./selection-count";
+import { resultSettings } from "./result-settings";
 
 export type { CompiledInsertQuery } from "../compiler/query-compiler";
 
@@ -41,7 +42,9 @@ export class InsertQueryBuilder<
     { [Index in keyof Columns]: Row[Columns[Index]] }
   > {
     if (this.node.source) throw new Error("Set insert columns before the insert source.");
+
     if (new Set(columns).size !== columns.length) throw new Error("Insert columns must be unique.");
+
     return this.next<
       Simplify<Pick<Row, Columns[number]>>,
       { [Index in keyof Columns]: Row[Columns[Index]] }
@@ -83,9 +86,11 @@ export class InsertQueryBuilder<
     }
 
     const select = query.toAST();
+
     if (!this.node.columns || selectionCount(select) !== this.node.columns.length) {
       throw new Error("INSERT SELECT column count must match the explicit target columns.");
     }
+
     return this.next({
       ...this.node,
       source: {
@@ -108,6 +113,7 @@ export class InsertQueryBuilder<
       );
     }
 
+    // SAFETY: The callable check above establishes that the client's optional, typed insert method is present.
     return resolvedClient as InsertCapableClickHouseClient;
   }
 
@@ -120,6 +126,7 @@ export class InsertQueryBuilder<
       );
     }
 
+    // SAFETY: The callable check above establishes that the client's optional, typed command method is present.
     return resolvedClient as CommandCapableClickHouseClient;
   }
 
@@ -130,12 +137,13 @@ export class InsertQueryBuilder<
 
     if (this.node.source.kind === "values") {
       const resolvedClient = this.getInsertClient(options?.client);
-      const values = this.node.source.rows.map((row) => normalizeInsertValue(row)) as Row[];
+      const values = this.node.source.rows.map((row) => normalizeInsertValue(row));
 
       return resolvedClient.insert({
         table: quoteTable(this.node.table),
         values,
         format: "JSONEachRow",
+        // SAFETY: columns() requires a nonempty tuple, and mapping identifiers preserves its length.
         columns: this.node.columns?.map(quoteIdentifier) as [string, ...string[]] | undefined,
         ...toClickHouseExecutionParams(options ?? {}),
       });
@@ -143,10 +151,14 @@ export class InsertQueryBuilder<
 
     const resolvedClient = this.getCommandClient(options?.client);
     const compiled = this.toSQL();
+
     const result = await resolvedClient.command({
       query: compiled.query,
       query_params: compiled.params,
-      ...toClickHouseExecutionParams(options ?? {}),
+      ...toClickHouseExecutionParams({
+        ...options,
+        clickhouse_settings: resultSettings(this.node.source.query, options?.clickhouse_settings),
+      }),
     });
 
     return {

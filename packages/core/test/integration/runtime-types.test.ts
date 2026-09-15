@@ -225,14 +225,23 @@ function buildNow64Query() {
 }
 
 type TypedSampleRow = InferResult<ReturnType<typeof buildTypedSamplesQuery>>;
+
 type TypeCastRow = InferResult<ReturnType<typeof buildTypeCastQuery>>;
+
 type ArrayFunctionRow = InferResult<ReturnType<typeof buildArrayFunctionQuery>>;
+
 type StringFunctionRow = InferResult<ReturnType<typeof buildStringFunctionQuery>>;
+
 type NullableStringFunctionRow = InferResult<ReturnType<typeof buildNullableStringFunctionQuery>>;
+
 type DateTimeFunctionRow = InferResult<ReturnType<typeof buildDateTimeFunctionQuery>>;
+
 type NullFunctionRow = InferResult<ReturnType<typeof buildNullFunctionQuery>>;
+
 type AggregateFunctionRow = InferResult<ReturnType<typeof buildAggregateFunctionQuery>>;
+
 type JsonSampleRow = InferResult<ReturnType<typeof buildJsonSamplesQuery>>;
+
 type HeavyHitterFunctionRow = InferResult<ReturnType<typeof buildHeavyHitterFunctionQuery>>;
 
 const expectedRows: TypedSampleRow[] = [

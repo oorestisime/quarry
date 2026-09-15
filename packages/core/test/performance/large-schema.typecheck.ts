@@ -7,9 +7,13 @@ import {
 } from "../../src";
 
 type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+
 type TwoDigits = `${Digit}${Digit}`;
+
 type TableName = `table_${"a" | "b" | "c" | "d"}${TwoDigits}`;
+
 type ViewName = `view_${"a" | "b" | "c"}${TwoDigits}`;
+
 type DictionaryName = `dictionary_${Digit}`;
 
 interface LargeRow {
@@ -82,19 +86,31 @@ db.selectFrom("table_a00").selectExpr((eb) => [
 ]);
 
 type DirectRow = InferResult<typeof directQuery>;
+
 type AliasedRow = InferResult<typeof aliasedQuery>;
+
 type DictionaryResultRow = InferResult<typeof dictionaryQuery>;
+
 type FinalRow = InferResult<typeof finalQuery>;
+
 type ViewRow = InferResult<typeof viewQuery>;
 
 declare const directRow: DirectRow;
+
 declare const aliasedRow: AliasedRow;
+
 declare const dictionaryRow: DictionaryResultRow;
+
 declare const finalRow: FinalRow;
+
 declare const viewRow: ViewRow;
 
 void directRow;
+
 void aliasedRow;
+
 void dictionaryRow;
+
 void finalRow;
+
 void viewRow;

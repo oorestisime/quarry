@@ -40,7 +40,9 @@ export function parseTableExpression(expression: string): TableNode {
   };
 }
 
-function isTableSourceLike(value: unknown): value is TableSourceLike {
+function isTableSourceLike(
+  value: string | TableSourceLike | AliasedQueryLike,
+): value is TableSourceLike {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -49,7 +51,9 @@ function isTableSourceLike(value: unknown): value is TableSourceLike {
   );
 }
 
-function isAliasedQueryLike(value: unknown): value is AliasedQueryLike {
+function isAliasedQueryLike(
+  value: string | TableSourceLike | AliasedQueryLike,
+): value is AliasedQueryLike {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -96,6 +100,7 @@ export function resolveSourceColumns<DB extends DatabaseSchema>(
 ): ResolvedSourceColumns | undefined {
   if (isAliasedQueryLike(source)) {
     const columns = source.getOutputColumns?.();
+
     return columns ? { alias: source.alias, columns } : undefined;
   }
 

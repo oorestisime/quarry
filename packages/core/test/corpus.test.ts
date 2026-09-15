@@ -44,6 +44,7 @@ import {
 } from "./cases";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
+
 const queriesDir = resolve(currentDir, "../queries");
 
 const plainDb = createClickHouseDB<SpikeDB>();

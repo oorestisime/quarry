@@ -309,6 +309,12 @@ describe("insert builder", () => {
       query_id: "insert-select-query-id",
       clickhouse_settings: {
         async_insert: 1,
+        output_format_json_quote_64bit_integers: 1,
+        output_format_json_quote_64bit_floats: 0,
+        output_format_json_quote_decimals: 0,
+        output_format_json_quote_denormals: 0,
+        output_format_json_named_tuples_as_objects: 1,
+        join_use_nulls: 0,
       },
     });
   });
@@ -318,6 +324,7 @@ describe("insert builder", () => {
       query: vi.fn(),
       insert: vi.fn().mockRejectedValue(new Error("socket hang up")),
     };
+
     const dbWithRetries = createClickHouseDB<InsertTestDB>({
       client,
       retries: {

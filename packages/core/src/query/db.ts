@@ -64,6 +64,7 @@ export class ClickHouseDB<DB extends DatabaseSchema, Sources extends DatabaseSch
     node.with = structuredClone(this.withs);
     node.from = parseSourceExpression(source);
     const resolvedSource = resolveSourceColumns(source);
+
     const scopeColumns = resolvedSource
       ? { [resolvedSource.alias]: resolvedSource.columns }
       : undefined;

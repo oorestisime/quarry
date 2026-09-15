@@ -1,0 +1,19 @@
+{
+  "ignorePatterns": [
+    "test/**",
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**"
+  ],
+  "rules": {
+    "oxc/no-accumulating-spread": "error"
+  }
+}

@@ -25,6 +25,7 @@ function inferClickHouseType(value: unknown): string {
   if (Array.isArray(value)) {
     const firstValue = value.find((item) => item !== null && item !== undefined);
     const memberType = firstValue === undefined ? "String" : inferClickHouseType(firstValue);
+
     return `Array(${memberType})`;
   }
 
@@ -41,7 +42,7 @@ function inferClickHouseType(value: unknown): string {
   }
 
   if (value instanceof Date) {
-    return "DateTime";
+    return "DateTime64(3, 'UTC')";
   }
 
   return "String";
@@ -68,6 +69,7 @@ class CompileContext {
     const name = `p${this.paramIndex++}`;
     const type = clickhouseType ?? inferClickHouseType(value);
     this.params[name] = normalizeClickHouseInputValue(value, type);
+
     return `{${name}:${type}}`;
   }
 }
@@ -80,20 +82,25 @@ function compileExpr(expr: ExprNode, context: CompileContext): string {
       return expr.parts.map(quoteIdentifier).join(".");
     case "window": {
       const parts = [];
+
       if (expr.partitionBy.length)
         parts.push(
           `PARTITION BY ${expr.partitionBy.map((part) => compileExpr(part, context)).join(", ")}`,
         );
+
       if (expr.orderBy.length)
         parts.push(
           `ORDER BY ${expr.orderBy.map((order) => `${compileExpr(order.expr, context)} ${order.direction}`).join(", ")}`,
         );
+
       if (expr.rows)
         parts.push(
           `ROWS BETWEEN ${compileWindowBound(expr.rows.start)} AND ${compileWindowBound(expr.rows.end)}`,
         );
+
       return `${compileExpr(expr.expression, context)} OVER (${parts.join(" ")})`;
     }
+
     case "fragment":
       return expr.strings.reduce(
         (sql, part, index) =>
@@ -117,11 +124,29 @@ function compileExpr(expr: ExprNode, context: CompileContext): string {
     case "subqueryExpr":
       return `(${compileQuerySql(expr.query, context)})`;
     case "binary":
+      if (
+        (expr.op === "IN" || expr.op === "NOT IN") &&
+        expr.right.kind === "value" &&
+        expr.right.clickhouseType === undefined &&
+        Array.isArray(expr.right.value) &&
+        expr.right.value.length > 0 &&
+        expr.right.value.every((value) => value instanceof Date)
+      ) {
+        // IN rejects DateTime64 arrays against DateTime and can narrow higher
+        // precision columns. has compares using a common type without truncation.
+        const left = compileExpr(expr.left, context);
+        const right = compileExpr(expr.right, context);
+        const membership = `has(${right}, ${left})`;
+
+        return expr.op === "NOT IN" ? `NOT ${membership}` : membership;
+      }
+
       return `${compileExpr(expr.left, context)} ${expr.op} ${compileExpr(expr.right, context)}`;
     case "logical":
       return expr.conditions
         .map((condition) => {
           const compiled = compileExpr(condition, context);
+
           return condition.kind === "logical" || condition.kind === "fragment"
             ? `(${compiled})`
             : compiled;
@@ -132,6 +157,7 @@ function compileExpr(expr: ExprNode, context: CompileContext): string {
 
 function compileWindowBound(bound: number | string): string {
   if (typeof bound === "string") return bound.toUpperCase();
+
   return bound === 0
     ? "CURRENT ROW"
     : `${Math.abs(bound)} ${bound < 0 ? "PRECEDING" : "FOLLOWING"}`;
@@ -141,6 +167,7 @@ function compileSource(source: SourceNode, context: CompileContext): string {
   if (source.kind === "table") {
     const alias = source.alias ? ` AS ${quoteIdentifier(source.alias)}` : "";
     const final = source.final ? " FINAL" : "";
+
     return `${quoteTable(source.name)}${alias}${final}`;
   }
 
@@ -149,6 +176,7 @@ function compileSource(source: SourceNode, context: CompileContext): string {
 
 function compileSelection(selection: SelectionNode, context: CompileContext): string {
   const compiled = compileExpr(selection.expr, context);
+
   return selection.alias ? `${compiled} AS ${quoteIdentifier(selection.alias)}` : compiled;
 }
 
@@ -159,6 +187,7 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
       (source) => source.alias ?? (source.kind === "table" ? source.name : ""),
     ),
   );
+
   try {
     return compileQueryBody(node, context);
   } finally {
@@ -168,9 +197,11 @@ function compileQuerySql(node: SelectQueryNode, context: CompileContext): string
 
 function compileRef(name: string, context: CompileContext): string {
   const dot = name.indexOf(".");
+
   if (dot !== -1 && context.aliases.has(name.slice(0, dot))) {
     return `${quoteIdentifier(name.slice(0, dot))}.${quoteIdentifier(name.slice(dot + 1))}`;
   }
+
   return quoteIdentifier(name);
 }
 
@@ -180,6 +211,7 @@ function compileQueryBody(node: SelectQueryNode, context: CompileContext): strin
       .map((branch) => `(${compileQuerySql(branch, context)})`)
       .join(" UNION ALL ");
   }
+
   if (!node.from) {
     throw new Error("Cannot compile a query without a FROM clause");
   }
@@ -262,6 +294,7 @@ function compileQueryBody(node: SelectQueryNode, context: CompileContext): strin
   }
 
   const settingsEntries = Object.entries(node.settings);
+
   if (settingsEntries.length > 0) {
     parts.push(
       `SETTINGS ${settingsEntries.map(([key, value]) => `${quoteIdentifier(key)} = ${compileSettingValue(value)}`).join(", ")}`,
@@ -296,6 +329,7 @@ export function compileInsertQuery<Row extends object>(
     return {
       query: `INSERT INTO ${quoteTable(query.table)}${columns} FORMAT JSONEachRow`,
       params: {},
+      // SAFETY: InsertQueryBuilder supplies rows accepted as Row[] by values(); the AST erases that generic to object[].
       values: structuredClone(query.source.rows as Row[]),
     };
   }
